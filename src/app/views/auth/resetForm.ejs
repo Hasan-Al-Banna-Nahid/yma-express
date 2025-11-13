@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title><%= title || "Reset password" %></title>
+    <style>
+      :root {
+        --bg: #f6f9fc;
+        --text: #0c1116;
+        --muted: #6b7280;
+        --border: #e5e7eb;
+        --card: #ffffff;
+        --brand: #7c3aed;
+        --error-bg: #fee2e2;
+        --error-text: #b91c1c;
+        --error-border: #fca5a5;
+        --radius: 16px;
+        --radius-input: 10px;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        margin: 0;
+        font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial,
+          sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+
+      /* Page shell */
+      .page {
+        display: grid;
+        place-items: start center;
+        padding: 40px 16px;
+      }
+      .card {
+        width: 100%;
+        max-width: 620px;
+        background: var(--card);
+        border-radius: var(--radius);
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.06);
+        border: 1px solid rgba(2, 6, 12, 0.06);
+        padding: 28px;
+      }
+
+      /* Header / copy */
+      h1 {
+        margin: 0 0 8px;
+        font-size: 22px;
+        line-height: 1.2;
+        letter-spacing: -0.01em;
+      }
+      .intro {
+        margin: 0 0 16px;
+        color: #0c1116;
+        font-size: 15px;
+        line-height: 1.7;
+      }
+
+      /* Errors */
+      .error {
+        color: var(--error-text);
+        background: var(--error-bg);
+        border: 1px solid var(--error-border);
+        padding: 10px 12px;
+        border-radius: 10px;
+        margin: 0 0 14px;
+        font-size: 14px;
+      }
+
+      /* Form */
+      .form {
+        margin-top: 24px;
+      }
+      .field {
+        margin-bottom: 18px;
+      }
+      label {
+        display: block;
+        font-weight: 600;
+        font-size: 14px;
+        margin-bottom: 8px;
+      }
+      input[type="password"] {
+        width: 100%;
+        height: 44px;
+        padding: 10px 12px;
+        font-size: 15px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-input);
+        outline: none;
+        background: #fff;
+        transition: box-shadow 0.15s ease, border-color 0.15s ease;
+      }
+      input[type="password"]:focus {
+        border-color: #c4b5fd;
+        box-shadow: 0 0 0 4px rgba(124, 58, 237, 0.12);
+      }
+
+      /* Button */
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        max-width: 200px;
+        height: 44px;
+        border: 0;
+        border-radius: 12px;
+        background: var(--brand);
+        color: #fff;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+        cursor: pointer;
+        transition: transform 0.05s ease, box-shadow 0.2s ease,
+          opacity 0.2s ease;
+      }
+      .btn:hover {
+        box-shadow: 0 8px 18px rgba(124, 58, 237, 0.25);
+        transform: translateY(-1px);
+      }
+      .btn:active {
+        transform: translateY(0);
+      }
+      .btn[disabled] {
+        opacity: 0.6;
+        cursor: not-allowed;
+        box-shadow: none;
+      }
+
+      .muted {
+        color: var(--muted);
+        font-size: 12px;
+        margin-top: 12px;
+      }
+
+      /* Layout niceties */
+      .actions {
+        margin-top: 8px;
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <section class="card">
+        <h1>Reset your password</h1>
+        <p class="intro">Enter a new password below.</p>
+
+        <% if (error) { %>
+        <div class="error"><%= error %></div>
+        <% } %> <% if (token) { %>
+        <form
+          class="form"
+          method="POST"
+          action="/auth/reset-password"
+          id="resetForm"
+          novalidate
+        >
+          <input type="hidden" name="token" value="<%= token %>" />
+
+          <div class="field">
+            <label for="password">New password *</label>
+            <input
+              id="password"
+              name="password"
+              type="password"
+              required
+              minlength="8"
+              autocomplete="new-password"
+            />
+          </div>
+
+          <div class="field">
+            <label for="passwordConfirm">Re-enter new password *</label>
+            <input
+              id="passwordConfirm"
+              name="passwordConfirm"
+              type="password"
+              required
+              minlength="8"
+              autocomplete="new-password"
+            />
+          </div>
+
+          <div class="actions">
+            <button type="submit" class="btn" id="submitBtn">SAVE</button>
+          </div>
+
+          <div class="muted">Link is valid for 10 minutes.</div>
+        </form>
+        <% } %>
+      </section>
+    </main>
+
+    <script>
+      (function () {
+        const form = document.getElementById("resetForm");
+        const btn = document.getElementById("submitBtn");
+        if (!form || !btn) return;
+
+        form.addEventListener("submit", function () {
+          // quick client-side double-check like your React validators
+          const pass = document.getElementById("password");
+          const pass2 = document.getElementById("passwordConfirm");
+
+          if (pass && pass2 && pass.value !== pass2.value) {
+            alert("Passwords do not match");
+            pass2.focus();
+            event.preventDefault();
+            return false;
+          }
+
+          btn.disabled = true;
+          btn.textContent = "SAVING...";
+        });
+      })();
+    </script>
+  </body>
+</html>

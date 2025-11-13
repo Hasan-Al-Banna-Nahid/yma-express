@@ -1,0 +1,129 @@
+{"level":"info","message":"Server running on port 5000","timestamp":"2025-08-19T09:50:54.184Z"}
+{"level":"info","message":"MongoDB connected successfully","timestamp":"2025-08-19T09:50:57.260Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-19T11:46:46.343Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-19T11:46:46.466Z"}
+{"level":"info","message":"Server running on port 5000","timestamp":"2025-08-19T15:40:18.502Z"}
+{"level":"info","message":"MongoDB connected successfully","timestamp":"2025-08-19T15:40:21.970Z"}
+{"level":"info","message":"Server running on port 5000","timestamp":"2025-08-19T20:07:58.506Z"}
+{"level":"info","message":"MongoDB connected successfully","timestamp":"2025-08-19T20:08:00.464Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-19T23:14:19.955Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-20T04:56:54.555Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-20T04:56:57.159Z"}
+{"level":"info","message":"Server running on port 5000","timestamp":"2025-08-20T07:22:22.938Z"}
+{"level":"info","message":"MongoDB connected successfully","timestamp":"2025-08-20T07:22:25.455Z"}
+{"level":"info","message":"Server running on port 5000","timestamp":"2025-08-20T08:11:31.780Z"}
+{"level":"info","message":"MongoDB connected successfully","timestamp":"2025-08-20T08:11:34.030Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-20T10:51:53.435Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-20T11:08:47.992Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-20T11:57:32.618Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-20T11:57:32.998Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-20T12:39:22.303Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-20T12:51:48.844Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-20T13:18:13.713Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-20T14:29:58.491Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-20T14:29:58.720Z"}
+{"level":"info","message":"Server running on port 5000","timestamp":"2025-08-20T18:40:33.181Z"}
+{"level":"warn","message":"MongoDB disconnected","timestamp":"2025-08-20T18:41:03.892Z"}
+{"level":"info","message":"Server running on port 5000","timestamp":"2025-08-20T18:52:35.337Z"}
+{"level":"info","message":"MongoDB connected successfully","timestamp":"2025-08-20T18:52:36.920Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-21T02:17:45.879Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-21T02:17:45.972Z"}
+{"level":"warn","message":"MongoDB disconnected","timestamp":"2025-08-21T02:18:01.339Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-21T02:18:02.528Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-21T02:38:43.058Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-21T02:38:43.108Z"}
+{"level":"warn","message":"MongoDB disconnected","timestamp":"2025-08-21T03:15:24.324Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-21T03:15:24.338Z"}
+{"level":"warn","message":"MongoDB disconnected","timestamp":"2025-08-21T03:49:32.842Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-21T03:49:38.459Z"}
+{"level":"info","message":"Server running on port 5000","timestamp":"2025-08-21T09:57:32.663Z"}
+{"level":"info","message":"MongoDB connected successfully","timestamp":"2025-08-21T09:57:35.033Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-21T10:01:24.905Z"}
+{"level":"info","message":"Server running on port 5000","timestamp":"2025-08-21T10:40:25.167Z"}
+{"level":"info","message":"MongoDB connected successfully","timestamp":"2025-08-21T10:41:01.250Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-21T11:05:19.275Z"}
+{"level":"warn","message":"MongoDB disconnected","timestamp":"2025-08-21T11:05:19.772Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-21T11:05:20.556Z"}
+{"level":"info","message":"Server running on port 5000","timestamp":"2025-08-21T11:30:30.943Z"}
+{"level":"info","message":"MongoDB connected successfully","timestamp":"2025-08-21T11:30:33.456Z"}
+{"level":"info","message":"Server running on port 5000","timestamp":"2025-08-21T11:38:00.504Z"}
+{"level":"info","message":"MongoDB connected successfully","timestamp":"2025-08-21T11:38:03.645Z"}
+{"level":"info","message":"Server running on port 5000","timestamp":"2025-08-21T11:39:36.717Z"}
+{"level":"info","message":"MongoDB connected successfully","timestamp":"2025-08-21T11:39:38.124Z"}
+{"level":"info","message":"Server running on port 5000","timestamp":"2025-08-21T13:27:53.314Z"}
+{"level":"info","message":"MongoDB connected successfully","timestamp":"2025-08-21T13:27:57.722Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-21T16:55:07.299Z"}
+{"level":"warn","message":"MongoDB disconnected","timestamp":"2025-08-21T17:17:56.413Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-21T17:17:57.938Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-21T22:07:50.989Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-21T22:07:51.290Z"}
+{"level":"warn","message":"MongoDB disconnected","timestamp":"2025-08-21T22:35:15.638Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-21T22:35:16.140Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-21T23:37:13.746Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-21T23:37:13.787Z"}
+{"level":"warn","message":"MongoDB disconnected","timestamp":"2025-08-21T23:37:24.826Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-21T23:37:25.100Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-22T01:54:44.239Z"}
+{"level":"warn","message":"MongoDB disconnected","timestamp":"2025-08-22T01:55:47.548Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-22T01:55:48.048Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-22T02:12:08.214Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-22T02:12:08.648Z"}
+{"level":"warn","message":"MongoDB disconnected","timestamp":"2025-08-22T02:12:18.410Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-22T02:12:18.734Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-22T04:27:16.284Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-22T04:27:16.330Z"}
+{"level":"warn","message":"MongoDB disconnected","timestamp":"2025-08-22T04:46:37.246Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-22T04:46:38.697Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-22T06:14:09.095Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-22T06:14:09.096Z"}
+{"level":"warn","message":"MongoDB disconnected","timestamp":"2025-08-22T06:14:20.532Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-22T06:14:20.895Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-22T08:43:46.603Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-22T08:43:47.079Z"}
+{"level":"warn","message":"MongoDB disconnected","timestamp":"2025-08-22T08:44:03.673Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-22T08:44:03.833Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-22T09:07:58.855Z"}
+{"level":"info","message":"Server running on port 5000","timestamp":"2025-08-22T09:16:58.087Z"}
+{"level":"info","message":"MongoDB connected successfully","timestamp":"2025-08-22T09:17:02.710Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-22T09:36:49.234Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-22T09:36:49.284Z"}
+{"level":"warn","message":"MongoDB disconnected","timestamp":"2025-08-22T09:37:03.291Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-22T09:37:03.297Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-22T09:51:34.467Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-22T09:51:34.523Z"}
+{"level":"warn","message":"MongoDB disconnected","timestamp":"2025-08-22T09:51:45.307Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-22T09:51:45.536Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-22T10:16:30.956Z"}
+{"level":"warn","message":"MongoDB disconnected","timestamp":"2025-08-22T10:16:35.657Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-22T10:16:36.672Z"}
+{"level":"warn","message":"MongoDB disconnected","timestamp":"2025-08-22T12:36:17.387Z"}
+{"level":"info","message":"MongoDB reconnected","timestamp":"2025-08-22T12:36:17.409Z"}
+{"level":"info","message":"Server running on port 5000","timestamp":"2025-08-22T14:27:09.834Z"}
+{"level":"info","message":"MongoDB connected successfully","timestamp":"2025-08-22T14:27:15.489Z"}
+{"level":"info","message":"Server running on port 5000","timestamp":"2025-08-22T14:30:51.133Z"}
+{"level":"info","message":"MongoDB connected successfully","timestamp":"2025-08-22T14:30:53.562Z"}
+{"level":"info","message":"Server running on port 5000","timestamp":"2025-08-22T14:36:48.447Z"}
+{"level":"info","message":"Server running on port 5000","timestamp":"2025-08-22T14:38:33.623Z"}
+{"level":"info","message":"MongoDB connected successfully","timestamp":"2025-08-22T14:38:37.705Z"}
+{"level":"info","message":"Server running on port 5000","timestamp":"2025-08-22T14:45:11.436Z"}
+{"level":"info","message":"MongoDB connected successfully","timestamp":"2025-08-22T14:45:13.722Z"}
+{"level":"info","message":"Server running on port 5000","timestamp":"2025-08-22T14:50:50.109Z"}
+{"level":"info","message":"MongoDB connected successfully","timestamp":"2025-08-22T14:50:52.776Z"}
+{"level":"info","message":"Server running on port 5000","timestamp":"2025-08-22T14:54:13.248Z"}
+{"level":"info","message":"MongoDB connected successfully","timestamp":"2025-08-22T14:54:17.865Z"}
+{"level":"info","message":"Server running on port 5000","timestamp":"2025-08-22T15:42:57.479Z"}
+{"level":"info","message":"MongoDB connected successfully","timestamp":"2025-08-22T15:43:00.908Z"}
+{"level":"info","message":"Server running on port 5000","timestamp":"2025-08-22T15:54:06.125Z"}
+{"level":"info","message":"MongoDB connected successfully","timestamp":"2025-08-22T15:54:08.824Z"}
+{"level":"info","message":"Server running on port 5000","timestamp":"2025-08-22T15:55:01.994Z"}
+{"level":"info","message":"MongoDB connected successfully","timestamp":"2025-08-22T15:55:04.367Z"}
+{"level":"info","message":"Server running on port 5000","timestamp":"2025-08-22T15:55:44.232Z"}
+{"level":"info","message":"MongoDB connected successfully","timestamp":"2025-08-22T15:55:47.177Z"}
+{"level":"info","message":"Server running on port 5000","timestamp":"2025-08-22T15:57:17.213Z"}
+{"level":"info","message":"MongoDB connected successfully","timestamp":"2025-08-22T15:57:20.491Z"}
+{"level":"info","message":"Server running on port 5000","timestamp":"2025-08-22T15:59:10.357Z"}
+{"level":"info","message":"MongoDB connected successfully","timestamp":"2025-08-22T15:59:11.932Z"}
+{"level":"info","message":"Server running on port 5000","timestamp":"2025-08-22T15:59:36.422Z"}
+{"level":"info","message":"MongoDB connected successfully","timestamp":"2025-08-22T15:59:37.589Z"}
+{"level":"info","message":"Server running on port 5000","timestamp":"2025-08-22T16:12:15.470Z"}
+{"level":"info","message":"MongoDB connected successfully","timestamp":"2025-08-22T16:12:20.058Z"}
