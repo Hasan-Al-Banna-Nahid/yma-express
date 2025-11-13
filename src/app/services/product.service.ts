@@ -130,24 +130,61 @@ export const getAllProducts = async (
 export const getProductById = async (
   id: string
 ): Promise<IProductModel | null> => {
+  console.log("🔍 Searching for product with ID:", id);
+
+  if (!id) {
+    throw new ApiError("Product ID is required", 400);
+  }
+
   if (!mongoose.Types.ObjectId.isValid(id)) {
     throw new ApiError("Invalid product ID format", 400);
   }
 
-  const product = await Product.findById(id).populate("categories").populate({
-    path: "location",
-    select: "name type country state city fullAddress coordinates description",
-  });
+  try {
+    // First, try without population to see if product exists
+    const product = await Product.findById(id);
+    console.log("📦 Raw product found:", product);
+    console.log("isActive value:", product?.isActive);
+    console.log("isActive type:", typeof product?.isActive);
 
-  if (!product) {
-    throw new ApiError("Product not found", 404);
+    if (!product) {
+      throw new ApiError("Product not found", 404);
+    }
+
+    // Fix: Check if isActive is explicitly false, not just falsy
+    if (product.isActive === false) {
+      console.log("⚠️ Product found but isActive is explicitly false");
+      throw new ApiError("Product is not available", 404);
+    }
+
+    // If isActive is undefined, null, or true, allow access
+    console.log("✅ Product is accessible (isActive is not false)");
+
+    // Now populate the relationships
+    const populatedProduct = await Product.findById(id)
+      .populate("categories")
+      .populate({
+        path: "location",
+        select:
+          "name type country state city fullAddress coordinates description",
+      });
+
+    console.log("✅ Populated product:", populatedProduct);
+
+    if (!populatedProduct) {
+      throw new ApiError("Product not found after population", 404);
+    }
+
+    return populatedProduct;
+  } catch (error) {
+    console.error("❌ Error in getProductById:", error);
+
+    if (error instanceof ApiError) {
+      throw error;
+    }
+
+    throw new ApiError("Error fetching product", 500);
   }
-
-  if (!product.isActive) {
-    throw new ApiError("Product is not available", 404);
-  }
-
-  return product;
 };
 
 export const createProduct = async (
