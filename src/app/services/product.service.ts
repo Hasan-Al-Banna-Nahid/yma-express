@@ -18,6 +18,7 @@ export const getAllProducts = async (
     search,
     availableFrom,
     availableUntil,
+    availableOn, // NEW: Single specific date field
     sort = "-createdAt",
   } = query;
 
@@ -33,14 +34,14 @@ export const getAllProducts = async (
     }
   }
 
-  // Category filter - handle both single and multiple categories
+  // Category filter
   if (category) {
     filterObj.categories = Array.isArray(category)
       ? { $in: category }
       : category;
   }
 
-  // Difficulty filter - handle both single and multiple difficulties
+  // Difficulty filter
   if (difficulty) {
     filterObj.difficulty = Array.isArray(difficulty)
       ? { $in: difficulty }
@@ -54,7 +55,7 @@ export const getAllProducts = async (
     if (maxPrice) filterObj.price.$lte = Number(maxPrice);
   }
 
-  // Search filter (by product name, description, or summary)
+  // Search filter
   if (search) {
     filterObj.$or = [
       { name: { $regex: search, $options: "i" } },
@@ -63,7 +64,127 @@ export const getAllProducts = async (
     ];
   }
 
-  // Date availability filter
+  // NEW: Single date availability filter
+  if (availableOn) {
+    const targetDate = new Date(availableOn);
+    if (isNaN(targetDate.getTime())) {
+      throw new ApiError("Invalid availableOn date format", 400);
+    }
+
+    // Check if product is available on that specific date
+    filterObj.$and = [
+      { availableFrom: { $lte: targetDate } },
+      {
+        $or: [
+          { availableUntil: { $gte: targetDate } },
+          { availableUntil: null },
+        ],
+      },
+    ];
+
+    // Also check booking availability for that specific date
+    const aggregationPipeline: any[] = [
+      { $match: filterObj },
+      {
+        $lookup: {
+          from: "bookings",
+          let: { productId: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$product", "$$productId"] },
+                    { $eq: ["$status", "confirmed"] },
+                    {
+                      $or: [
+                        // Date falls within booking period
+                        {
+                          $and: [
+                            { $lte: ["$startDate", targetDate] },
+                            { $gte: ["$endDate", targetDate] },
+                          ],
+                        },
+                        // Or exact date match for single-day bookings
+                        { $eq: ["$bookingDate", targetDate] },
+                      ],
+                    },
+                  ],
+                },
+              },
+            },
+          ],
+          as: "activeBookings",
+        },
+      },
+      {
+        $addFields: {
+          bookedCount: { $size: "$activeBookings" },
+          isAvailable: {
+            $lt: [{ $size: "$activeBookings" }, "$stock"],
+          },
+        },
+      },
+      {
+        $match: {
+          isAvailable: true,
+        },
+      },
+    ];
+
+    // Parse sort options
+    let sortObj: any = {};
+    if (sort) {
+      const sortFields = (sort as string).split(",");
+      sortFields.forEach((field) => {
+        const sortOrder = field.startsWith("-") ? -1 : 1;
+        const fieldName = field.replace("-", "");
+        sortObj[fieldName] = sortOrder;
+      });
+    } else {
+      sortObj = { createdAt: -1 };
+    }
+
+    // Calculate pagination
+    const skip = (Number(page) - 1) * Number(limit);
+
+    // Execute aggregation with population
+    const aggregationWithPagination = [
+      ...aggregationPipeline,
+      { $sort: sortObj },
+      { $skip: skip },
+      { $limit: Number(limit) },
+      {
+        $lookup: {
+          from: "categories",
+          localField: "categories",
+          foreignField: "_id",
+          as: "categories",
+        },
+      },
+      {
+        $lookup: {
+          from: "locations",
+          localField: "location",
+          foreignField: "_id",
+          as: "location",
+        },
+      },
+      { $unwind: "$location" },
+    ];
+
+    const products = await Product.aggregate(aggregationWithPagination);
+
+    // Get total count
+    const countPipeline = [...aggregationPipeline, { $count: "total" }];
+
+    const countResult = await Product.aggregate(countPipeline);
+    const total = countResult.length > 0 ? countResult[0].total : 0;
+
+    return { products: products as IProductModel[], total };
+  }
+
+  // Original date range filter (keep existing functionality)
   if (availableFrom || availableUntil) {
     filterObj.$and = [];
 
@@ -87,7 +208,6 @@ export const getAllProducts = async (
       });
     }
 
-    // If no date conditions were added, remove the $and array
     if (filterObj.$and.length === 0) {
       delete filterObj.$and;
     }
@@ -103,13 +223,13 @@ export const getAllProducts = async (
       sortObj[fieldName] = sortOrder;
     });
   } else {
-    sortObj = { createdAt: -1 }; // Default sort by newest first
+    sortObj = { createdAt: -1 };
   }
 
   // Calculate pagination
   const skip = (Number(page) - 1) * Number(limit);
 
-  // Execute query with population
+  // Execute query with population (for non-date-specific queries)
   const products = await Product.find(filterObj)
     .populate("categories")
     .populate({
