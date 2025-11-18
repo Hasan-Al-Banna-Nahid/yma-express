@@ -41,7 +41,7 @@ export const createOrder = asyncHandler(
       "phone",
       "street",
       "city",
-      "state",
+      // "state",
       "country",
       "zipCode",
     ];

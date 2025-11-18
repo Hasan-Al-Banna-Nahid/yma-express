@@ -15,7 +15,7 @@ interface CreateOrderData {
     // Delivery Information
     street: string;
     city: string;
-    state: string;
+    // state: string;
     country: string;
     zipCode: string;
     apartment?: string;
@@ -69,7 +69,7 @@ export const createOrderFromCart = async (
       "phone",
       "street",
       "city",
-      "state",
+      // "state",
       "country",
       "zipCode",
     ];
