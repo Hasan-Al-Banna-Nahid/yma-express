@@ -1,5 +1,3 @@
-import mongoose from "mongoose";
-
 // src/interfaces/order.interface.ts
 import { Document, Types } from "mongoose";
 
@@ -49,49 +47,36 @@ export interface IShippingAddress {
   billingCompanyName?: string;
 }
 
+export interface IBankDetails {
+  bankName: string;
+  accountNumber: string;
+  accountHolder: string;
+  iban?: string;
+  swiftCode?: string;
+}
+
 export interface IOrder {
-  user: mongoose.Types.ObjectId;
+  user: Types.ObjectId;
   items: IOrderItem[];
   totalAmount: number;
   paymentMethod: "cash_on_delivery" | "online";
   status: "pending" | "confirmed" | "shipped" | "delivered" | "cancelled";
-  shippingAddress: {
-    // Personal Information
-    firstName: string;
-    lastName: string;
-    email: string;
-    phone: string;
-
-    // Delivery Information
-    street: string;
-    city: string;
-    state: string;
-    country: string;
-    zipCode: string;
-    apartment?: string;
-
-    // Additional Fields
-    companyName?: string;
-    locationAccessibility?: string;
-    deliveryTime?: string;
-    collectionTime?: string;
-    floorType?: string;
-    userType?: string;
-    keepOvernight?: boolean;
-    hireOccasion?: string;
-    notes?: string;
-
-    // Billing Address (if different)
-    differentBillingAddress?: boolean;
-    billingFirstName?: string;
-    billingLastName?: string;
-    billingStreet?: string;
-    billingCity?: string;
-    billingState?: string;
-    billingZipCode?: string;
-    billingCompanyName?: string;
-  };
+  orderNumber: string;
+  estimatedDeliveryDate: Date;
+  deliveryDate?: Date;
+  invoiceType: "regular" | "corporate";
+  bankDetails?: IBankDetails;
+  shippingAddress: IShippingAddress;
   termsAccepted: boolean;
   createdAt?: Date;
   updatedAt?: Date;
 }
+
+export type OrderStatus =
+  | "pending"
+  | "confirmed"
+  | "shipped"
+  | "delivered"
+  | "cancelled";
+export type PaymentMethod = "cash_on_delivery" | "online";
+export type InvoiceType = "regular" | "corporate";

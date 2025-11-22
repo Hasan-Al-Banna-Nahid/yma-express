@@ -1,27 +1,37 @@
-// src/routes/product.routes.ts
+// src/routes/product.route.ts
 import express from "express";
-import * as productController from "../controllers/product.controller";
+import {
+  createProduct,
+  getAllProducts,
+  getProduct,
+  updateProduct,
+  deleteProduct,
+  getProductsByState,
+  getAvailableStates,
+  updateProductStock,
+  getFeaturedProducts,
+  searchProducts,
+  getProductsByCategory,
+} from "../controllers/product.controller";
 import { protectRoute, restrictTo } from "../middlewares/auth.middleware";
-import { upload } from "../utils/cloudinary.util";
 
 const router = express.Router();
 
-// Configure multer for multiple file uploads
-const uploadProductImages = upload.fields([
-  { name: "imageCover", maxCount: 1 },
-  { name: "images", maxCount: 10 },
-]);
-
 // Public routes
-router.get("/locations/filters", productController.getAvailableLocations);
-router.get("/", productController.getProducts);
-router.get("/:id", productController.getProduct);
+router.get("/", getAllProducts);
+router.get("/states", getAvailableStates);
+router.get("/state/:state", getProductsByState);
+router.get("/featured", getFeaturedProducts);
+router.get("/search", searchProducts);
+router.get("/category/:categoryId", getProductsByCategory);
+router.get("/:id", getProduct);
 
 // Protected routes (Admin only)
 router.use(protectRoute, restrictTo("admin"));
 
-router.post("/", uploadProductImages, productController.createProduct);
-router.patch("/:id", uploadProductImages, productController.updateProduct);
-router.delete("/:id", productController.deleteProduct);
+router.post("/", createProduct);
+router.patch("/:id", updateProduct);
+router.delete("/:id", deleteProduct);
+router.patch("/:id/stock", updateProductStock);
 
 export default router;

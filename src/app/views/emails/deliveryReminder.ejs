@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Delivery Reminder - <%= order.orderNumber %></title>
+    <style>
+      /* Same styles as order confirmation */
+      @import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: "Inter", sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        padding: 40px 20px;
+      }
+
+      .email-container {
+        max-width: 600px;
+        margin: 0 auto;
+        background: white;
+        border-radius: 20px;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        overflow: hidden;
+      }
+
+      .header {
+        background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+        color: white;
+        padding: 40px;
+        text-align: center;
+      }
+
+      .company-name {
+        font-size: 2em;
+        font-weight: 700;
+        margin-bottom: 10px;
+      }
+      .reminder-title {
+        font-size: 1.5em;
+        font-weight: 600;
+        margin-bottom: 20px;
+      }
+
+      .content {
+        padding: 40px;
+      }
+      .greeting {
+        font-size: 1.2em;
+        margin-bottom: 30px;
+        color: #333;
+      }
+
+      .reminder-box {
+        background: #fff3cd;
+        border: 2px solid #ffeaa7;
+        padding: 25px;
+        border-radius: 15px;
+        margin-bottom: 30px;
+        text-align: center;
+      }
+
+      .delivery-date {
+        font-size: 1.3em;
+        font-weight: 700;
+        color: #e67e22;
+        margin: 15px 0;
+      }
+
+      .footer {
+        text-align: center;
+        padding: 30px;
+        background: #f8f9fa;
+        color: #6c757d;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="email-container">
+      <div class="header">
+        <div class="company-name">YMA Bouncy Castle</div>
+        <div class="reminder-title">Delivery Reminder! 🚚</div>
+      </div>
+
+      <div class="content">
+        <div class="greeting">
+          Hello
+          <strong
+            ><%= order.shippingAddress.firstName %> <%=
+            order.shippingAddress.lastName %></strong
+          >,
+        </div>
+
+        <p>This is a friendly reminder about your upcoming delivery:</p>
+
+        <div class="reminder-box">
+          <div style="font-size: 1.2em; margin-bottom: 15px">
+            Your order <strong>#<%= order.orderNumber %></strong> will be
+            delivered in <strong>2 days</strong>!
+          </div>
+
+          <div class="delivery-date">
+            📅 <%= deliveryDate.toLocaleDateString('en-GB', { weekday: 'long',
+            year: 'numeric', month: 'long', day: 'numeric' }) %>
+          </div>
+
+          <p>
+            Please ensure someone is available at the delivery address to
+            receive your bouncy castle.
+          </p>
+        </div>
+
+        <div
+          style="
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+          "
+        >
+          <strong>Delivery Address:</strong><br />
+          <%= order.shippingAddress.street %><br />
+          <%= order.shippingAddress.city %>, <%= order.shippingAddress.state
+          %><br />
+          <%= order.shippingAddress.zipCode %>
+        </div>
+
+        <div style="background: #e8f5e8; padding: 20px; border-radius: 10px">
+          <strong>💡 Preparation Tips:</strong>
+          <ul style="margin: 10px 0; padding-left: 20px">
+            <li>
+              Clear a flat, safe area for setup (approx. <%=
+              order.items[0].product.dimensions.length + 5 %>ft x <%=
+              order.items[0].product.dimensions.width + 5 %>ft)
+            </li>
+            <li>Ensure access to a power outlet for the blower</li>
+            <li>Remove any sharp objects from the area</li>
+            <li>Keep pets away during setup</li>
+          </ul>
+        </div>
+
+        <p style="margin-top: 25px">
+          <strong>Need to reschedule or have questions?</strong><br />
+          Contact us immediately at +44 (0) 1234 567890
+        </p>
+      </div>
+
+      <div class="footer">
+        <p>We're excited to help make your event amazing! 🎉</p>
+        <p style="margin-top: 15px; font-size: 0.9em">
+          &copy; <%= new Date().getFullYear() %> YMA Bouncy Castle
+        </p>
+      </div>
+    </div>
+  </body>
+</html>

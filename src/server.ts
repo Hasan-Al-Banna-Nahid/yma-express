@@ -4,13 +4,10 @@ import http from "http";
 import app from "./app";
 import { config } from "./app/config/config";
 import connectDB from "./app/config/db";
-import { warmupEmail } from "./app/services/email.service";
 
 const server = http.createServer(app);
 
 server.listen(config.port, async () => {
-  await warmupEmail();
-
   console.log(`Server running on port ${config.port}`);
 });
 // 4) DATABASE CONNECTION

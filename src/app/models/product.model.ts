@@ -1,121 +1,120 @@
 // src/models/product.model.ts
-import mongoose, { Document, Schema } from "mongoose";
+import mongoose, { Schema, Model } from "mongoose";
 import { IProduct } from "../interfaces/product.interface";
 
-export interface IProductModel extends IProduct, Document {}
+export type IProductModel = IProduct & mongoose.Document;
 
 const productSchema: Schema = new Schema(
   {
     name: {
       type: String,
-      required: [true, "A product must have a name"],
+      required: [true, "Product name is required"],
       trim: true,
-      maxlength: [
-        100,
-        "A product name must have less or equal than 100 characters",
-      ],
-      minlength: [
-        3,
-        "A product name must have more or equal than 3 characters",
-      ],
+      maxlength: [100, "Product name cannot exceed 100 characters"],
     },
     description: {
       type: String,
-      required: [true, "A product must have a description"],
-      trim: true,
+      required: [true, "Product description is required"],
     },
     summary: {
       type: String,
-      trim: true,
-      maxlength: [300, "Summary must have less or equal than 300 characters"],
+      maxlength: [500, "Summary cannot exceed 500 characters"],
     },
     price: {
       type: Number,
-      required: [true, "A product must have a price"],
-      min: [0, "Price must be above 0"],
+      required: [true, "Product price is required"],
+      min: [0, "Price cannot be negative"],
     },
     priceDiscount: {
       type: Number,
       validate: {
-        validator: function (this: IProductModel, value: number) {
-          return !value || value < this.price;
+        validator: function (value: number): boolean {
+          return !value || value < (this as any).price;
         },
-        message: "Discount price ({VALUE}) should be below the regular price",
+        message: "Discount price must be below regular price",
       },
     },
-    images: [String],
-    imageCover: {
+    duration: {
+      type: Number,
+      required: [true, "Duration is required"],
+      min: [1, "Duration must be at least 1 hour"],
+    },
+    maxGroupSize: {
+      type: Number,
+      required: [true, "Max group size is required"],
+      min: [1, "Group size must be at least 1"],
+    },
+    difficulty: {
       type: String,
-      required: [true, "A product must have a cover image"],
+      required: [true, "Difficulty level is required"],
+      enum: {
+        values: ["easy", "medium", "difficult"],
+        message: "Difficulty must be easy, medium, or difficult",
+      },
     },
     categories: [
       {
         type: Schema.Types.ObjectId,
         ref: "Category",
-        required: [true, "A product must belong to at least one category"],
       },
     ],
-    duration: {
-      type: Number,
-      required: [true, "A product must have a duration"],
-      min: [1, "Duration must be at least 1 hour"],
-    },
-    maxGroupSize: {
-      type: Number,
-      required: [true, "A product must have a group size"],
-      min: [1, "Group size must be at least 1"],
-    },
-    difficulty: {
+    images: [String],
+    imageCover: {
       type: String,
-      required: [true, "A product must have a difficulty"],
-      enum: {
-        values: ["easy", "medium", "difficult"],
-        message: "Difficulty is either: easy, medium, difficult",
-      },
-    },
-    // New size field
-    size: {
-      type: String,
-      trim: true,
-      maxlength: [50, "Size must have less or equal than 50 characters"],
-      validate: {
-        validator: function (value: string) {
-          // Validate size format like "10 ft(w) * 5 ft(h)" or "15x15 ft"
-          if (!value) return true; // Optional field
-          const sizeRegex =
-            /^(\d+(\.\d+)?\s*(ft|m)(\s*\([wh]\))?\s*[\*x×]\s*)*\d+(\.\d+)?\s*(ft|m)(\s*\([wh]\))?$/i;
-          return sizeRegex.test(value);
-        },
-        message: "Size format should be like: 10 ft(w) * 5 ft(h) or 15x15 ft",
-      },
+      required: [true, "Image cover is required"],
     },
     location: {
-      type: Schema.Types.ObjectId,
-      ref: "Location",
-      required: [true, "A product must have a location"],
+      country: {
+        type: String,
+        default: "England",
+        required: true,
+      },
+      state: {
+        type: String,
+        required: [true, "State is required"],
+        trim: true,
+      },
+      city: {
+        type: String,
+        trim: true,
+      },
+    },
+    dimensions: {
+      length: {
+        type: Number,
+        required: [true, "Length is required"],
+        min: [1, "Length must be at least 1 foot"],
+      },
+      width: {
+        type: Number,
+        required: [true, "Width is required"],
+        min: [1, "Width must be at least 1 foot"],
+      },
+      height: {
+        type: Number,
+        required: [true, "Height is required"],
+        min: [1, "Height must be at least 1 foot"],
+      },
     },
     availableFrom: {
       type: Date,
-      required: [true, "A product must have an available from date"],
+      required: [true, "Available from date is required"],
     },
     availableUntil: {
       type: Date,
-      required: [true, "A product must have an available until date"],
-      validate: {
-        validator: function (this: IProductModel, value: Date) {
-          return value > this.availableFrom;
-        },
-        message: "Available until date must be after available from date",
-      },
+      required: [true, "Available until date is required"],
     },
-    isActive: {
+    size: {
+      type: String,
+      trim: true,
+    },
+    active: {
       type: Boolean,
       default: true,
-      select: false,
     },
     stock: {
       type: Number,
-      required: [true, "A product must have stock quantity"],
+      required: [true, "Stock quantity is required"],
       min: [0, "Stock cannot be negative"],
       default: 0,
     },
@@ -127,21 +126,32 @@ const productSchema: Schema = new Schema(
   }
 );
 
-// Indexes
-productSchema.index({ price: 1, ratingsAverage: -1 });
-productSchema.index({ location: 1 });
-productSchema.index({ availableFrom: 1, availableUntil: 1 });
-productSchema.index({ isActive: 1 });
-productSchema.index({ difficulty: 1 });
-productSchema.index({ size: 1 }); // New index for size
-
-// Virtual populate
-productSchema.virtual("reviews", {
-  ref: "Review",
-  foreignField: "product",
-  localField: "_id",
+// Virtual for total area (length * width)
+productSchema.virtual("dimensions.area").get(function (this: IProductModel) {
+  return this.dimensions.length * this.dimensions.width;
 });
 
-const Product = mongoose.model<IProductModel>("Product", productSchema);
+// Virtual for formatted dimensions
+productSchema
+  .virtual("formattedDimensions")
+  .get(function (this: IProductModel) {
+    return `${this.dimensions.length}ft x ${this.dimensions.width}ft x ${this.dimensions.height}ft`;
+  });
+
+// Virtual for isActive (alias for active)
+productSchema.virtual("isActive").get(function (this: IProductModel) {
+  return this.active;
+});
+
+// Index for better search performance
+productSchema.index({ "location.country": 1, "location.state": 1 });
+productSchema.index({ price: 1 });
+productSchema.index({ categories: 1 });
+productSchema.index({ "dimensions.length": 1, "dimensions.width": 1 });
+
+const Product: Model<IProductModel> = mongoose.model<IProductModel>(
+  "Product",
+  productSchema
+);
 
 export default Product;

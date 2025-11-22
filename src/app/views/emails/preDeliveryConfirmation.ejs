@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Delivery Tomorrow - <%= order.orderNumber %></title>
+    <style>
+      /* Same base styles */
+      @import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: "Inter", sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        padding: 40px 20px;
+      }
+
+      .email-container {
+        max-width: 600px;
+        margin: 0 auto;
+        background: white;
+        border-radius: 20px;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        overflow: hidden;
+      }
+
+      .header {
+        background: linear-gradient(135deg, #00b894 0%, #00a085 100%);
+        color: white;
+        padding: 40px;
+        text-align: center;
+      }
+
+      .company-name {
+        font-size: 2em;
+        font-weight: 700;
+        margin-bottom: 10px;
+      }
+      .confirmation-title {
+        font-size: 1.5em;
+        font-weight: 600;
+        margin-bottom: 20px;
+      }
+
+      .content {
+        padding: 40px;
+      }
+      .greeting {
+        font-size: 1.2em;
+        margin-bottom: 30px;
+        color: #333;
+      }
+
+      .excitement-box {
+        background: #d4edda;
+        border: 2px solid #c3e6cb;
+        padding: 25px;
+        border-radius: 15px;
+        margin-bottom: 30px;
+        text-align: center;
+      }
+
+      .tomorrow-date {
+        font-size: 1.4em;
+        font-weight: 700;
+        color: #155724;
+        margin: 15px 0;
+      }
+
+      .footer {
+        text-align: center;
+        padding: 30px;
+        background: #f8f9fa;
+        color: #6c757d;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="email-container">
+      <div class="header">
+        <div class="company-name">YMA Bouncy Castle</div>
+        <div class="confirmation-title">
+          Delivery Confirmed for Tomorrow! 🎊
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="greeting">
+          Hello
+          <strong
+            ><%= order.shippingAddress.firstName %> <%=
+            order.shippingAddress.lastName %></strong
+          >,
+        </div>
+
+        <p>
+          Great news! Your bouncy castle delivery is scheduled for
+          <strong>tomorrow</strong>!
+        </p>
+
+        <div class="excitement-box">
+          <div style="font-size: 1.3em; margin-bottom: 15px">
+            🚚 <strong>Delivery Date:</strong>
+          </div>
+
+          <div class="tomorrow-date">
+            <%= deliveryDate.toLocaleDateString('en-GB', { weekday: 'long',
+            year: 'numeric', month: 'long', day: 'numeric' }) %>
+          </div>
+
+          <p style="margin-top: 15px">
+            Our delivery team will arrive between
+            <strong>8:00 AM - 12:00 PM</strong><br />
+            (unless you specified a different time)
+          </p>
+        </div>
+
+        <div
+          style="
+            background: #fff3cd;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+          "
+        >
+          <strong>📋 Final Checklist:</strong>
+          <ul style="margin: 10px 0; padding-left: 20px">
+            <li>
+              ✅ Clear, flat area ready (grass or smooth surface preferred)
+            </li>
+            <li>✅ Power outlet accessible within 50ft</li>
+            <li>✅ Someone aged 18+ available to sign for delivery</li>
+            <li>✅ Area free of sharp objects and pet waste</li>
+            <li>✅ Clear access path for our team</li>
+          </ul>
+        </div>
+
+        <div style="background: #d1ecf1; padding: 20px; border-radius: 10px">
+          <strong>📍 Delivery Address:</strong><br />
+          <%= order.shippingAddress.street %><br />
+          <% if (order.shippingAddress.apartment) { %> <%=
+          order.shippingAddress.apartment %><br />
+          <% } %> <%= order.shippingAddress.city %>, <%=
+          order.shippingAddress.state %><br />
+          <%= order.shippingAddress.zipCode %>
+        </div>
+
+        <div
+          style="
+            margin-top: 25px;
+            padding: 15px;
+            background: #e7f3ff;
+            border-radius: 10px;
+          "
+        >
+          <strong>📞 Running late or need help?</strong><br />
+          Call us NOW: <strong>+44 (0) 1234 567890</strong><br />
+          <em
+            >Please contact us at least 2 hours before delivery if you need to
+            make changes.</em
+          >
+        </div>
+      </div>
+
+      <div class="footer">
+        <p>
+          Get ready for an amazing day of bouncing fun! We can't wait to help
+          make your event special! 🎈
+        </p>
+        <p style="margin-top: 15px; font-size: 0.9em">
+          &copy; <%= new Date().getFullYear() %> YMA Bouncy Castle
+        </p>
+      </div>
+    </div>
+  </body>
+</html>

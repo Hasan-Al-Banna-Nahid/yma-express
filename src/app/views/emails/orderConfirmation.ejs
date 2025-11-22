@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Order Confirmation - <%= order.orderNumber %></title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: "Inter", sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        padding: 40px 20px;
+      }
+
+      .email-container {
+        max-width: 600px;
+        margin: 0 auto;
+        background: white;
+        border-radius: 20px;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        overflow: hidden;
+      }
+
+      .header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 40px;
+        text-align: center;
+      }
+
+      .company-name {
+        font-size: 2em;
+        font-weight: 700;
+        margin-bottom: 10px;
+      }
+
+      .order-confirmed {
+        font-size: 1.5em;
+        font-weight: 600;
+        margin-bottom: 20px;
+      }
+
+      .order-number {
+        background: rgba(255, 255, 255, 0.2);
+        padding: 10px 20px;
+        border-radius: 25px;
+        display: inline-block;
+        font-weight: 600;
+      }
+
+      .content {
+        padding: 40px;
+      }
+
+      .greeting {
+        font-size: 1.2em;
+        margin-bottom: 30px;
+        color: #333;
+      }
+
+      .order-summary {
+        background: #f8f9fa;
+        padding: 25px;
+        border-radius: 15px;
+        margin-bottom: 30px;
+      }
+
+      .summary-title {
+        color: #667eea;
+        margin-bottom: 15px;
+        font-weight: 600;
+      }
+
+      .summary-item {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 10px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid #e9ecef;
+      }
+
+      .summary-item:last-child {
+        border-bottom: none;
+        margin-bottom: 0;
+        padding-bottom: 0;
+      }
+
+      .items-section {
+        margin: 30px 0;
+      }
+
+      .items-title {
+        color: #667eea;
+        margin-bottom: 15px;
+        font-weight: 600;
+      }
+
+      .item-card {
+        background: white;
+        border: 1px solid #e9ecef;
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 15px;
+      }
+
+      .item-name {
+        font-weight: 600;
+        margin-bottom: 5px;
+      }
+
+      .item-details {
+        color: #6c757d;
+        font-size: 0.9em;
+      }
+
+      .shipping-address {
+        background: #e8f5e8;
+        padding: 25px;
+        border-radius: 15px;
+        margin-top: 30px;
+      }
+
+      .address-title {
+        color: #28a745;
+        margin-bottom: 15px;
+        font-weight: 600;
+      }
+
+      .footer {
+        text-align: center;
+        padding: 30px;
+        background: #f8f9fa;
+        color: #6c757d;
+        border-top: 1px solid #e9ecef;
+      }
+
+      .thank-you {
+        font-size: 1.1em;
+        margin-bottom: 15px;
+        color: #333;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="email-container">
+      <div class="header">
+        <div class="company-name">YMA Bouncy Castle</div>
+        <div class="order-confirmed">Order Confirmed! 🎉</div>
+        <div class="order-number">#<%= order.orderNumber %></div>
+      </div>
+
+      <div class="content">
+        <div class="greeting">
+          Hello
+          <strong
+            ><%= order.shippingAddress.firstName %> <%=
+            order.shippingAddress.lastName %></strong
+          >,
+        </div>
+
+        <p>
+          Thank you for your order! We're excited to help make your event
+          amazing. Here are your order details:
+        </p>
+
+        <div class="order-summary">
+          <div class="summary-title">Order Summary</div>
+
+          <div class="summary-item">
+            <span>Order Number:</span>
+            <span><strong><%= order.orderNumber %></strong></span>
+          </div>
+
+          <div class="summary-item">
+            <span>Order Date:</span>
+            <span
+              ><strong
+                ><%= order.createdAt.toLocaleDateString() %></strong
+              ></span
+            >
+          </div>
+
+          <div class="summary-item">
+            <span>Estimated Delivery:</span>
+            <span
+              ><strong
+                ><%= order.estimatedDeliveryDate.toLocaleDateString() %></strong
+              ></span
+            >
+          </div>
+
+          <div class="summary-item">
+            <span>Payment Method:</span>
+            <span
+              ><strong
+                ><%= order.paymentMethod.replace('_', ' ').toUpperCase()
+                %></strong
+              ></span
+            >
+          </div>
+
+          <div class="summary-item">
+            <span>Total Amount:</span>
+            <span><strong>£<%= order.totalAmount.toFixed(2) %></strong></span>
+          </div>
+        </div>
+
+        <div class="items-section">
+          <div class="items-title">Items Ordered</div>
+
+          <% order.items.forEach(item => { %>
+          <div class="item-card">
+            <div class="item-name"><%= item.name %></div>
+            <div class="item-details">
+              Quantity: <%= item.quantity %> × £<%= item.price.toFixed(2) %> <%
+              if (item.startDate && item.endDate) { %>
+              <br />Rental Period: <%= item.startDate.toLocaleDateString() %> to
+              <%= item.endDate.toLocaleDateString() %> <% } %>
+            </div>
+          </div>
+          <% }); %>
+        </div>
+
+        <div class="shipping-address">
+          <div class="address-title">Delivery Address</div>
+          <p>
+            <strong
+              ><%= order.shippingAddress.firstName %> <%=
+              order.shippingAddress.lastName %></strong
+            ><br />
+            <%= order.shippingAddress.street %><br />
+            <% if (order.shippingAddress.apartment) { %> <%=
+            order.shippingAddress.apartment %><br />
+            <% } %> <%= order.shippingAddress.city %>, <%=
+            order.shippingAddress.state %><br />
+            <%= order.shippingAddress.zipCode %><br />
+            <%= order.shippingAddress.country %><br />
+            📞 <%= order.shippingAddress.phone %>
+          </p>
+
+          <% if (order.shippingAddress.deliveryTime) { %>
+          <p>
+            <strong>Preferred Delivery Time:</strong> <%=
+            order.shippingAddress.deliveryTime %>
+          </p>
+          <% } %> <% if (order.shippingAddress.notes) { %>
+          <p>
+            <strong>Delivery Notes:</strong> <%= order.shippingAddress.notes %>
+          </p>
+          <% } %>
+        </div>
+
+        <div
+          style="
+            margin-top: 30px;
+            padding: 20px;
+            background: #fff3cd;
+            border-radius: 10px;
+          "
+        >
+          <strong>📞 Need to make changes?</strong><br />
+          Contact us at +44 (0) 1234 567890 or reply to this email if you need
+          to update your order.
+        </div>
+      </div>
+
+      <div class="footer">
+        <div class="thank-you">Thank you for choosing YMA Bouncy Castle!</div>
+        <p>
+          We're committed to making your event unforgettable. Get ready for some
+          bouncing fun! 🎈
+        </p>
+        <p style="margin-top: 20px; font-size: 0.9em">
+          &copy; <%= new Date().getFullYear() %> YMA Bouncy Castle. All rights
+          reserved.<br />
+          Contact: info@ymabouncycastle.com | +44 (0) 1234 567890
+        </p>
+      </div>
+    </div>
+  </body>
+</html>
