@@ -47,12 +47,9 @@ export interface IShippingAddress {
   billingCompanyName?: string;
 }
 
+// Simplified Bank Details - Single field
 export interface IBankDetails {
-  bankName: string;
-  accountNumber: string;
-  accountHolder: string;
-  iban?: string;
-  swiftCode?: string;
+  bankInfo: string; // Single field containing all bank details
 }
 
 export interface IOrder {
@@ -65,7 +62,7 @@ export interface IOrder {
   estimatedDeliveryDate: Date;
   deliveryDate?: Date;
   invoiceType: "regular" | "corporate";
-  bankDetails?: IBankDetails;
+  bankDetails?: IBankDetails; // Simplified bank details
   shippingAddress: IShippingAddress;
   termsAccepted: boolean;
   createdAt?: Date;

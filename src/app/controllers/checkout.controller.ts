@@ -18,7 +18,7 @@ export const createOrder = asyncHandler(
       paymentMethod = "cash_on_delivery",
       termsAccepted,
       invoiceType = "regular",
-      bankDetails,
+      bankDetails, // Now just { bankInfo: string }
     } = req.body;
 
     // Validate required fields
@@ -44,7 +44,7 @@ export const createOrder = asyncHandler(
       paymentMethod,
       termsAccepted,
       invoiceType,
-      bankDetails,
+      bankDetails, // Pass simplified bank details
     });
 
     console.log("✅ [CONTROLLER] Order created successfully");

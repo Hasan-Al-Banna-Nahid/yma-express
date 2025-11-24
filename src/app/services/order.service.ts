@@ -13,11 +13,7 @@ export interface CreateOrderData {
   termsAccepted: boolean;
   invoiceType?: "regular" | "corporate";
   bankDetails?: {
-    bankName: string;
-    accountNumber: string;
-    accountHolder: string;
-    iban?: string;
-    swiftCode?: string;
+    bankInfo: string; // Simplified to single field
   };
 }
 
@@ -42,11 +38,26 @@ export const createOrderFromCart = async (
 
     // Get user's cart with populated items
     const cart = await Cart.findOne({ user: new Types.ObjectId(userId) })
-      .populate<{ product: any }>("items.product") // Fix: Add proper populate typing
+      .populate<{ product: any }>("items.product")
       .session(session);
 
     if (!cart || cart.items.length === 0) {
       throw new ApiError("Cart is empty", 400);
+    }
+
+    // Validate corporate invoice requirements - SIMPLIFIED
+    if (orderData.invoiceType === "corporate") {
+      if (!orderData.bankDetails || !orderData.bankDetails.bankInfo) {
+        throw new ApiError(
+          "Bank details are required for corporate invoices",
+          400
+        );
+      }
+
+      // Validate that bank info is not empty
+      if (orderData.bankDetails.bankInfo.trim() === "") {
+        throw new ApiError("Bank information cannot be empty", 400);
+      }
     }
 
     // Validate stock and calculate total
@@ -54,7 +65,6 @@ export const createOrderFromCart = async (
     const orderItems = [];
 
     for (const cartItem of cart.items) {
-      // Fix: Properly type the populated product
       const productId = (cartItem.product as any)._id || cartItem.product;
       const product = await Product.findById(productId).session(session);
 
@@ -78,7 +88,7 @@ export const createOrderFromCart = async (
         product: product._id,
         quantity: cartItem.quantity,
         price: cartItem.price,
-        name: product.name, // Fix: Use product.name instead of cartItem.product.name
+        name: product.name,
         startDate: cartItem.startDate,
         endDate: cartItem.endDate,
       };
@@ -91,7 +101,7 @@ export const createOrderFromCart = async (
     const estimatedDeliveryDate = new Date();
     estimatedDeliveryDate.setDate(estimatedDeliveryDate.getDate() + 2);
 
-    // Create order
+    // Create order with simplified bank details
     const order = new Order({
       user: new Types.ObjectId(userId),
       items: orderItems,
@@ -101,7 +111,7 @@ export const createOrderFromCart = async (
       termsAccepted: orderData.termsAccepted,
       estimatedDeliveryDate,
       invoiceType: orderData.invoiceType || "regular",
-      bankDetails: orderData.bankDetails,
+      bankDetails: orderData.bankDetails, // Now just { bankInfo: string }
     });
 
     await order.save({ session });
@@ -133,6 +143,7 @@ export const createOrderFromCart = async (
   }
 };
 
+// ... rest of the methods remain the same
 export const getOrderById = async (orderId: string): Promise<IOrderModel> => {
   const order = await Order.findById(orderId)
     .populate("user", "name email phone")

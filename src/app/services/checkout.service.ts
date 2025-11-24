@@ -40,11 +40,7 @@ export interface CreateOrderData {
   termsAccepted: boolean;
   invoiceType?: "regular" | "corporate";
   bankDetails?: {
-    bankName: string;
-    accountNumber: string;
-    accountHolder: string;
-    iban?: string;
-    swiftCode?: string;
+    bankInfo: string; // Simplified to single field
   };
 }
 
@@ -72,7 +68,7 @@ export const createOrderFromCart = async (
       throw new ApiError("Cart is empty", 400);
     }
 
-    // Validate shipping address - FIXED: Use type-safe field access
+    // Validate shipping address
     const requiredAddressFields: (keyof CreateOrderData["shippingAddress"])[] =
       [
         "firstName",
@@ -98,7 +94,7 @@ export const createOrderFromCart = async (
       );
     }
 
-    // Validate billing address if different billing address is selected - FIXED: Type-safe access
+    // Validate billing address if different billing address is selected
     if (orderData.shippingAddress.differentBillingAddress) {
       const requiredBillingFields: (keyof CreateOrderData["shippingAddress"])[] =
         [
@@ -123,29 +119,18 @@ export const createOrderFromCart = async (
       }
     }
 
-    // Validate corporate invoice requirements - FIXED: Type-safe access
+    // SIMPLIFIED: Validate corporate invoice requirements
     if (orderData.invoiceType === "corporate") {
-      if (!orderData.bankDetails) {
+      if (!orderData.bankDetails || !orderData.bankDetails.bankInfo) {
         throw new ApiError(
           "Bank details are required for corporate invoices",
           400
         );
       }
 
-      const requiredBankFields: (keyof NonNullable<
-        CreateOrderData["bankDetails"]
-      >)[] = ["bankName", "accountNumber", "accountHolder"];
-
-      const missingBankFields = requiredBankFields.filter((field) => {
-        const value = orderData.bankDetails![field];
-        return value === undefined || value === null || value === "";
-      });
-
-      if (missingBankFields.length > 0) {
-        throw new ApiError(
-          `Missing bank details: ${missingBankFields.join(", ")}`,
-          400
-        );
+      // Validate that bank info is not empty
+      if (orderData.bankDetails.bankInfo.trim() === "") {
+        throw new ApiError("Bank information cannot be empty", 400);
       }
     }
 
@@ -190,7 +175,7 @@ export const createOrderFromCart = async (
     const estimatedDeliveryDate = new Date();
     estimatedDeliveryDate.setDate(estimatedDeliveryDate.getDate() + 2);
 
-    // Create order
+    // Create order with simplified bank details
     const order = new Order({
       user: new Types.ObjectId(userId),
       items: orderItems,
@@ -200,7 +185,7 @@ export const createOrderFromCart = async (
       termsAccepted: orderData.termsAccepted,
       estimatedDeliveryDate,
       invoiceType: orderData.invoiceType || "regular",
-      bankDetails: orderData.bankDetails,
+      bankDetails: orderData.bankDetails, // Now just { bankInfo: string }
     });
 
     await order.save({ session });

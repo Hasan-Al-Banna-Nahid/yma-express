@@ -1,11 +1,15 @@
 // src/models/order.model.ts
-import mongoose, { Schema, Model } from "mongoose";
-import { IOrder } from "../interfaces/order.interface";
+import mongoose, { Schema, Document } from "mongoose";
+import {
+  IOrder,
+  IOrderItem,
+  IShippingAddress,
+  IBankDetails,
+} from "../interfaces/order.interface";
 
-// Use intersection type instead of interface extension
-export type IOrderModel = IOrder & mongoose.Document;
+export interface IOrderModel extends IOrder, Document {}
 
-const orderItemSchema: Schema = new Schema({
+const orderItemSchema = new Schema<IOrderItem>({
   product: {
     type: Schema.Types.ObjectId,
     ref: "Product",
@@ -19,6 +23,7 @@ const orderItemSchema: Schema = new Schema({
   price: {
     type: Number,
     required: true,
+    min: 0,
   },
   name: {
     type: String,
@@ -32,7 +37,7 @@ const orderItemSchema: Schema = new Schema({
   },
 });
 
-const shippingAddressSchema: Schema = new Schema({
+const shippingAddressSchema = new Schema<IShippingAddress>({
   // Personal Information
   firstName: { type: String, required: true },
   lastName: { type: String, required: true },
@@ -54,12 +59,12 @@ const shippingAddressSchema: Schema = new Schema({
   collectionTime: { type: String },
   floorType: { type: String },
   userType: { type: String },
-  keepOvernight: { type: Boolean, default: false },
+  keepOvernight: { type: Boolean },
   hireOccasion: { type: String },
   notes: { type: String },
 
   // Billing Address
-  differentBillingAddress: { type: Boolean, default: false },
+  differentBillingAddress: { type: Boolean },
   billingFirstName: { type: String },
   billingLastName: { type: String },
   billingStreet: { type: String },
@@ -69,15 +74,17 @@ const shippingAddressSchema: Schema = new Schema({
   billingCompanyName: { type: String },
 });
 
-const bankDetailsSchema: Schema = new Schema({
-  bankName: { type: String, required: true },
-  accountNumber: { type: String, required: true },
-  accountHolder: { type: String, required: true },
-  iban: { type: String },
-  swiftCode: { type: String },
+// Simplified Bank Details Schema
+const bankDetailsSchema = new Schema<IBankDetails>({
+  bankInfo: {
+    type: String,
+    required: function (this: any) {
+      return this.invoiceType === "corporate";
+    },
+  },
 });
 
-const orderSchema: Schema = new Schema(
+const orderSchema = new Schema<IOrderModel>(
   {
     user: {
       type: Schema.Types.ObjectId,
@@ -88,12 +95,12 @@ const orderSchema: Schema = new Schema(
     totalAmount: {
       type: Number,
       required: true,
+      min: 0,
     },
     paymentMethod: {
       type: String,
       enum: ["cash_on_delivery", "online"],
       default: "cash_on_delivery",
-      required: true,
     },
     status: {
       type: String,
@@ -103,6 +110,7 @@ const orderSchema: Schema = new Schema(
     orderNumber: {
       type: String,
       unique: true,
+      required: true,
     },
     estimatedDeliveryDate: {
       type: Date,
@@ -121,12 +129,6 @@ const orderSchema: Schema = new Schema(
     termsAccepted: {
       type: Boolean,
       required: true,
-      validate: {
-        validator: function (value: boolean): boolean {
-          return value === true;
-        },
-        message: "You must accept the terms and conditions",
-      },
     },
   },
   {
@@ -134,39 +136,26 @@ const orderSchema: Schema = new Schema(
   }
 );
 
-// Generate order number before saving - FIXED: Remove TypeScript typing from 'this'
+// Generate order number before saving - FIXED VERSION
 orderSchema.pre("save", async function (next) {
-  // Don't use TypeScript typing for 'this' in middleware
-  if (this.isNew) {
+  if (this.isNew && !this.orderNumber) {
     const date = new Date();
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-
-    try {
-      // Find the last order number for today
-      const OrderModel = mongoose.model("Order");
-      const lastOrder = await OrderModel.findOne({
-        orderNumber: new RegExp(`^YMABC-${year}${month}${day}`),
-      }).sort({ orderNumber: -1 });
-
-      let sequence = 1;
-      if (lastOrder && lastOrder.orderNumber) {
-        const lastSeq = parseInt(lastOrder.orderNumber.split("-")[2]) || 0;
-        sequence = lastSeq + 1;
-      }
-
-      this.orderNumber = `YMABC-${year}${month}${day}-${String(
-        sequence
-      ).padStart(4, "0")}`;
-    } catch (error) {
-      return next(error as Error);
-    }
+    const timestamp = date.getTime();
+    const random = Math.floor(Math.random() * 1000);
+    this.orderNumber = `ORD-${timestamp}-${random}`;
   }
   next();
 });
 
-// FIXED: Use proper model typing
-const Order = mongoose.model<IOrderModel>("Order", orderSchema);
+// Alternative: Generate order number on validation (more reliable)
+orderSchema.pre("validate", function (next) {
+  if (this.isNew && !this.orderNumber) {
+    const date = new Date();
+    const timestamp = date.getTime();
+    const random = Math.floor(Math.random() * 1000);
+    this.orderNumber = `ORD-${timestamp}-${random}`;
+  }
+  next();
+});
 
-export default Order;
+export default mongoose.model<IOrderModel>("Order", orderSchema);
