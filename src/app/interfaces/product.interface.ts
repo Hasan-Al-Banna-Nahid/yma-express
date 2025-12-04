@@ -1,4 +1,3 @@
-// src/interfaces/product.interface.ts
 import { Types } from "mongoose";
 
 export interface IProduct {
@@ -7,44 +6,63 @@ export interface IProduct {
   description: string;
   summary?: string;
   price: number;
+  perDayPrice?: number;
+  perWeekPrice?: number;
+  deliveryAndCollection: string;
   priceDiscount?: number;
   duration: number;
   maxGroupSize: number;
   difficulty: "easy" | "medium" | "difficult";
-  categories: Types.ObjectId[];
+  categories: Types.ObjectId[]; // Changed from string[] to Types.ObjectId[]
   images: string[];
   imageCover: string;
   location: {
-    country: string;
+    country: "England";
     state: string;
     city?: string;
   };
   dimensions: {
-    length: number; // in feet
-    width: number; // in feet
-    height: number; // in feet
+    length: number;
+    width: number;
+    height: number;
   };
   availableFrom: Date;
   availableUntil: Date;
   size?: string;
   active: boolean;
   stock: number;
+  isSensitive: boolean;
+  material: string;
+  design: string;
+  ageRange: {
+    min: number;
+    max: number;
+    unit: "years" | "months";
+  };
+  safetyFeatures: string[];
+  qualityAssurance: {
+    isCertified: boolean;
+    certification?: string;
+    warrantyPeriod?: number;
+    warrantyDetails?: string;
+  };
   createdAt?: Date;
   updatedAt?: Date;
 }
-
-export type ProductDifficulty = "easy" | "medium" | "difficult";
 
 export interface CreateProductData {
   name: string;
   description: string;
   summary?: string;
   price: number;
+  perDayPrice?: number;
+  perWeekPrice?: number;
+  deliveryAndCollection: string;
   priceDiscount?: number;
   duration: number;
   maxGroupSize: number;
   difficulty: "easy" | "medium" | "difficult";
-  categories: string[];
+  categories: string[]; // Accept string IDs from request
   images: string[];
   imageCover: string;
   location: {
@@ -56,37 +74,24 @@ export interface CreateProductData {
     width: number;
     height: number;
   };
-  availableFrom: string | Date;
-  availableUntil: string | Date;
+  availableFrom: Date | string;
+  availableUntil: Date | string;
   size?: string;
   active?: boolean;
   stock: number;
-}
-
-export interface UpdateProductData {
-  name?: string;
-  description?: string;
-  summary?: string;
-  price?: number;
-  priceDiscount?: number;
-  duration?: number;
-  maxGroupSize?: number;
-  difficulty?: "easy" | "medium" | "difficult";
-  categories?: string[];
-  images?: string[];
-  imageCover?: string;
-  location?: {
-    state?: string;
-    city?: string;
+  isSensitive: boolean;
+  material: string;
+  design: string;
+  ageRange: {
+    min: number;
+    max: number;
+    unit: "years" | "months";
   };
-  dimensions?: {
-    length?: number;
-    width?: number;
-    height?: number;
+  safetyFeatures: string[];
+  qualityAssurance: {
+    isCertified: boolean;
+    certification?: string;
+    warrantyPeriod?: number;
+    warrantyDetails?: string;
   };
-  availableFrom?: string | Date;
-  availableUntil?: string | Date;
-  size?: string;
-  active?: boolean;
-  stock?: number;
 }

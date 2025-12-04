@@ -1,6 +1,6 @@
 // src/models/cart.model.ts
 import mongoose, { Document, Schema } from "mongoose";
-import { ICart, ICartItem } from "../interfaces/cart.interface";
+import { ICart, ICartItem } from "./cart.interface";
 
 export interface ICartItemModel extends ICartItem, Document {}
 export interface ICartModel extends ICart, Document {}

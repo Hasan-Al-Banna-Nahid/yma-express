@@ -1,12 +1,12 @@
 import { Router } from "express";
 import {
-    listUsers,
-    getUser,
-    updateUserRole,
-    adminUpdateUser,
-    softDeleteUser,
-    hardDeleteUser,
-} from "../controllers/admin.controller";
+  listUsers,
+  getUser,
+  updateUserRole,
+  adminUpdateUser,
+  softDeleteUser,
+  hardDeleteUser,
+} from "../controllers/admin/admin.controller";
 import { protectRoute, restrictTo } from "../middlewares/auth.middleware";
 
 const router = Router();

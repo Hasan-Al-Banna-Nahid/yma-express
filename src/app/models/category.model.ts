@@ -1,18 +1,7 @@
-// src/interfaces/category.interface.ts
+import mongoose, { Document, Schema, Types } from "mongoose";
+import { ICategory } from "../interfaces/category.interface";
 
-export interface ICategory {
-  name: string;
-  slug?: string;
-  description?: string;
-  image?: string;
-  isActive?: boolean;
-  createdAt?: Date;
-}
-
-// src/models/category.model.ts
-import mongoose, { Document, Schema } from "mongoose";
-
-export interface ICategoryModel extends ICategory, Document {}
+export interface ICategoryModel extends Omit<ICategory, "_id">, Document {}
 
 const categorySchema: Schema = new Schema(
   {
@@ -30,7 +19,12 @@ const categorySchema: Schema = new Schema(
         "A category name must have more or equal than 3 characters",
       ],
     },
-    slug: String,
+    slug: {
+      type: String,
+      unique: true,
+      lowercase: true,
+      trim: true,
+    },
     description: {
       type: String,
       trim: true,
@@ -50,7 +44,29 @@ const categorySchema: Schema = new Schema(
   }
 );
 
+// Pre-save middleware to generate slug from name
+categorySchema.pre("save", function (next) {
+  if (this.isModified("name") && !this.slug) {
+    this.slug = (this.name as string)
+      .toLowerCase()
+      .replace(/[^\w\s]/gi, "")
+      .replace(/\s+/g, "-");
+  }
+  next();
+});
+
+// Virtual for product count
+categorySchema.virtual("productCount", {
+  ref: "Product",
+  localField: "_id",
+  foreignField: "categories",
+  count: true,
+});
+
+// Indexes for better performance
 categorySchema.index({ slug: 1 });
+categorySchema.index({ name: 1 });
+categorySchema.index({ isActive: 1 });
 
 const Category = mongoose.model<ICategoryModel>("Category", categorySchema);
 

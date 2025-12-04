@@ -1,6 +1,6 @@
-import Cart, { ICartModel } from "../models/cart.model";
-import Product from "../models/product.model";
-import ApiError from "../utils/apiError";
+import Cart, { ICartModel } from "./cart.model";
+import Product from "../../models/product.model";
+import ApiError from "../../utils/apiError";
 import { Types } from "mongoose";
 
 // Unified update function that handles both single and multiple items

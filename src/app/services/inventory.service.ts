@@ -1,7 +1,7 @@
 import ApiError from "../utils/apiError";
 import Inventory from "../models/inventory.model";
 import { IInventory } from "../interfaces/inventory.interface";
-import Booking from "../models/booking.model"; // <-- add this
+import Booking from "../modules/Bookings/booking.model"; // <-- add this
 import { Types } from "mongoose";
 
 // Helper: normalize product to ObjectId (handles populated docs and strings)

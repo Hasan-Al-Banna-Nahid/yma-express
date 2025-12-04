@@ -1,9 +1,9 @@
 // src/controllers/admin/order.controller.ts
 import { Request, Response, NextFunction } from "express";
-import asyncHandler from "../../utils/asyncHandler";
-import * as orderService from "../../services/order.service";
-import ApiError from "../../utils/apiError";
-import { AuthenticatedRequest } from "../../middlewares/auth.middleware";
+import asyncHandler from "../../../utils/asyncHandler";
+import * as orderService from "../../../services/order.service";
+import ApiError from "../../../utils/apiError";
+import { AuthenticatedRequest } from "../../../middlewares/auth.middleware";
 
 export const getAllOrders = asyncHandler(
   async (req: Request, res: Response, next: NextFunction) => {

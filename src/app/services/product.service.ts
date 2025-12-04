@@ -1,39 +1,122 @@
 // src/services/product.service.ts
-import { Types } from "mongoose";
+
+import Category from "../models/category.model";
 import Product, { IProductModel } from "../models/product.model";
 import ApiError from "../utils/apiError";
-import {
-  CreateProductData,
-  UpdateProductData,
-} from "../interfaces/product.interface";
+import { Types } from "mongoose";
+import { CreateProductData } from "../interfaces/product.interface";
 
 export const createProduct = async (
   productData: CreateProductData
 ): Promise<IProductModel> => {
-  console.log("🆕 [SERVICE] Creating new product:", {
+  console.log("🆕 [SERVICE] Creating new product with categories:", {
     name: productData.name,
-    state: productData.location.state,
-    dimensions: productData.dimensions,
+    categories: productData.categories,
   });
+
+  // Validate categories exist
+  if (productData.categories && productData.categories.length > 0) {
+    // Convert string IDs to ObjectId
+    const categoryIds = productData.categories.map(
+      (id) => new Types.ObjectId(id)
+    );
+
+    // Check if all categories exist and are active
+    const categories = await Category.find({
+      _id: { $in: categoryIds },
+      isActive: true,
+    });
+
+    if (categories.length !== productData.categories.length) {
+      throw new ApiError("One or more categories are invalid or inactive", 400);
+    }
+
+    // Replace string IDs with ObjectId instances
+    productData.categories = categoryIds as any;
+  } else {
+    throw new ApiError("At least one category is required", 400);
+  }
 
   // Auto-set country to England
   const productWithLocation = {
     ...productData,
     location: {
-      country: "England", // Static value
+      country: "England",
       state: productData.location.state,
       city: productData.location.city || "",
     },
+    dateAdded: new Date(),
   };
 
   const product = await Product.create(productWithLocation);
-  await product.populate("categories", "name description");
+
+  // Populate category details
+  await product.populate({
+    path: "categories",
+    select: "name slug description image",
+    match: { isActive: true },
+  });
 
   console.log("✅ [SERVICE] Product created successfully:", product._id);
   return product;
 };
 
-// ... (keep all other existing functions the same, they will work with the new dimensions)
+export const updateProduct = async (
+  productId: string,
+  updateData: any
+): Promise<IProductModel> => {
+  console.log("🔄 [SERVICE] Updating product:", productId);
+
+  if (!Types.ObjectId.isValid(productId)) {
+    throw new ApiError("Invalid product ID", 400);
+  }
+
+  // Validate categories if being updated
+  if (updateData.categories && updateData.categories.length > 0) {
+    // Convert string IDs to ObjectId
+    const categoryIds = updateData.categories.map(
+      (id: string) => new Types.ObjectId(id)
+    );
+
+    // Check if all categories exist and are active
+    const categories = await Category.find({
+      _id: { $in: categoryIds },
+      isActive: true,
+    });
+
+    if (categories.length !== updateData.categories.length) {
+      throw new ApiError("One or more categories are invalid or inactive", 400);
+    }
+
+    // Replace string IDs with ObjectId instances
+    updateData.categories = categoryIds;
+  }
+
+  // Handle location update
+  if (updateData.location) {
+    updateData.location = {
+      country: "England",
+      state: updateData.location.state || "",
+      city: updateData.location.city || "",
+    };
+  }
+
+  const product = await Product.findByIdAndUpdate(productId, updateData, {
+    new: true,
+    runValidators: true,
+  }).populate({
+    path: "categories",
+    select: "name slug description image",
+    match: { isActive: true },
+  });
+
+  if (!product) {
+    throw new ApiError("Product not found", 404);
+  }
+
+  console.log("✅ [SERVICE] Product updated successfully");
+  return product;
+};
 
 export const getAllProducts = async (
   page: number = 1,
@@ -95,38 +178,6 @@ export const getProductById = async (
     throw new ApiError("Product not found", 404);
   }
 
-  return product;
-};
-
-export const updateProduct = async (
-  productId: string,
-  updateData: UpdateProductData
-): Promise<IProductModel> => {
-  console.log("🔄 [SERVICE] Updating product:", productId);
-
-  if (!Types.ObjectId.isValid(productId)) {
-    throw new ApiError("Invalid product ID", 400);
-  }
-
-  // If location is being updated, ensure country remains England
-  if (updateData.location) {
-    updateData.location = {
-      // country: "England", // Always keep England
-      state: updateData.location.state || "",
-      city: updateData.location.city || "",
-    };
-  }
-
-  const product = await Product.findByIdAndUpdate(productId, updateData, {
-    new: true,
-    runValidators: true,
-  }).populate("categories", "name description");
-
-  if (!product) {
-    throw new ApiError("Product not found", 404);
-  }
-
-  console.log("✅ [SERVICE] Product updated successfully");
   return product;
 };
 

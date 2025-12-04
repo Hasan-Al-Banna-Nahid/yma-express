@@ -1,10 +1,10 @@
 // src/services/booking.service.ts
 import mongoose from "mongoose";
-import ApiError from "../utils/apiError";
-import Booking, { IBookingModel } from "../models/booking.model";
-import { IBooking } from "../interfaces/booking.interface";
-import { IAddress } from "../interfaces/address.interface";
-import { normalizeIdOrThrow } from "../utils/objectId";
+import ApiError from "../../utils/apiError";
+import Booking, { IBookingModel } from "./booking.model";
+import { IBooking } from "./booking.interface";
+import { IAddress } from "../../interfaces/address.interface";
+import { normalizeIdOrThrow } from "../../utils/objectId";
 // import Inventory from "../models/inventory.model"; // optional if you track per-date items
 
 type Status = IBookingModel["status"];

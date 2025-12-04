@@ -1,6 +1,6 @@
 // src/models/booking.model.ts
 import mongoose, { Document, Schema } from "mongoose";
-import { IBooking } from "../interfaces/booking.interface";
+import { IBooking } from "./booking.interface";
 
 export interface IBookingModel extends IBooking, Document {}
 

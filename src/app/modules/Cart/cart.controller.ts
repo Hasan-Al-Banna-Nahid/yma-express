@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from "express";
-import asyncHandler from "../utils/asyncHandler";
-import * as cartService from "../services/cart.service";
-import { AuthenticatedRequest } from "../middlewares/auth.middleware";
+import asyncHandler from "../../utils/asyncHandler";
+import * as cartService from "./cart.service";
+import { AuthenticatedRequest } from "../../middlewares/auth.middleware";
 
 export const getCart = asyncHandler(
   async (req: Request, res: Response, next: NextFunction) => {

@@ -1,8 +1,8 @@
 import { Request, Response } from "express";
-import asyncHandler from "../utils/asyncHandler";
-import { ApiResponse } from "../utils/apiResponse";
-import User from "../models/user.model";
-import ApiError from "../utils/apiError";
+import asyncHandler from "../../utils/asyncHandler";
+import { ApiResponse } from "../../utils/apiResponse";
+import User from "../../models/user.model";
+import ApiError from "../../utils/apiError";
 
 // GET /admin/users?search=&page=1&limit=20&sort=-createdAt
 export const listUsers = asyncHandler(async (req: Request, res: Response) => {

@@ -5,8 +5,8 @@ import { NextFunction, Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 
-import { IUser } from "../interfaces/user.interface";
-import User from "../models/user.model";
+import { IUser } from "../../interfaces/user.interface";
+import User from "../../models/user.model";
 
 import {
   forgotPassword,
@@ -15,13 +15,13 @@ import {
   signup,
   updatePassword,
   protect as verifyAccessTokenService,
-} from "../services/auth.service";
+} from "../../services/auth.service";
 
-import ApiError from "../utils/apiError";
-import { ApiResponse } from "../utils/apiResponse";
-import asyncHandler from "../utils/asyncHandler";
-import { hashToken, issueTokens, sanitizeUser } from "../utils/auth.util";
-import { uploadToCloudinary } from "../utils/cloudinary.util";
+import ApiError from "../../utils/apiError";
+import { ApiResponse } from "../../utils/apiResponse";
+import asyncHandler from "../../utils/asyncHandler";
+import { hashToken, issueTokens, sanitizeUser } from "../../utils/auth.util";
+import { uploadToCloudinary } from "../../utils/cloudinary.util";
 
 type AuthenticatedRequest = Request & { user: IUser };
 

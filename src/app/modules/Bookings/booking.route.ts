@@ -10,10 +10,10 @@ import {
   checkAvailabilityHandler,
   updateBillingAddress,
   updateShippingAddress,
-} from "../controllers/booking.controller";
-import { protectRoute, restrictTo } from "../middlewares/auth.middleware";
-import { protect } from "../services/auth.service";
-import { validateAddressBody } from "../middlewares/validate.middleware";
+} from "./booking.controller";
+import { protectRoute, restrictTo } from "../../middlewares/auth.middleware";
+import { protect } from "../../services/auth.service";
+import { validateAddressBody } from "../../middlewares/validate.middleware";
 
 const router = express.Router();
 

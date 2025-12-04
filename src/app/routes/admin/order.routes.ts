@@ -7,7 +7,7 @@ import {
   getOrderStats,
   generateInvoice,
   searchOrders,
-} from "../../controllers/admin/order.controller";
+} from "../../controllers/admin/order/order.controller";
 import { protectRoute, restrictTo } from "../../middlewares/auth.middleware";
 
 const router = express.Router();

@@ -1,6 +1,6 @@
 // src/services/checkout.service.ts
 import mongoose, { Types } from "mongoose";
-import Cart from "../models/cart.model";
+import Cart from "../modules/Cart/cart.model";
 import Order, { IOrderModel } from "../models/order.model";
 import Product from "../models/product.model";
 import ApiError from "../utils/apiError";

@@ -4,6 +4,7 @@ import asyncHandler from "../utils/asyncHandler";
 import * as productService from "../services/product.service";
 import ApiError from "../utils/apiError";
 import { AuthenticatedRequest } from "../middlewares/auth.middleware";
+import { Types } from "mongoose";
 
 export const createProduct = asyncHandler(
   async (req: Request, res: Response, next: NextFunction) => {
@@ -12,11 +13,14 @@ export const createProduct = asyncHandler(
       description,
       summary,
       price,
+      perDayPrice,
+      perWeekPrice,
+      deliveryAndCollection,
       priceDiscount,
       duration,
       maxGroupSize,
       difficulty,
-      categories,
+      categories, // Expecting array of category IDs
       images,
       imageCover,
       location,
@@ -26,22 +30,29 @@ export const createProduct = asyncHandler(
       size,
       active = true,
       stock,
+      isSensitive,
+      material,
+      design,
+      ageRange,
+      safetyFeatures,
+      qualityAssurance,
     } = req.body;
 
-    console.log("🆕 [CONTROLLER] Creating product:", {
-      name,
-      location,
-      dimensions,
-    });
+    console.log(
+      "🆕 [CONTROLLER] Creating product with categories:",
+      categories
+    );
 
     // Validate required fields
     const requiredFields = [
       "name",
       "description",
       "price",
+      "deliveryAndCollection",
       "duration",
       "maxGroupSize",
       "difficulty",
+      "categories",
       "images",
       "imageCover",
       "location",
@@ -49,6 +60,12 @@ export const createProduct = asyncHandler(
       "availableFrom",
       "availableUntil",
       "stock",
+      "isSensitive",
+      "material",
+      "design",
+      "ageRange",
+      "safetyFeatures",
+      "qualityAssurance",
     ];
 
     const missingFields = requiredFields.filter((field) => !req.body[field]);
@@ -59,7 +76,19 @@ export const createProduct = asyncHandler(
       );
     }
 
-    // Validate location has state
+    // Validate categories is an array
+    if (!Array.isArray(categories) || categories.length === 0) {
+      throw new ApiError("Categories must be a non-empty array", 400);
+    }
+
+    // Validate each category ID format
+    for (const categoryId of categories) {
+      if (!Types.ObjectId.isValid(categoryId)) {
+        throw new ApiError(`Invalid category ID: ${categoryId}`, 400);
+      }
+    }
+
+    // Validate location
     if (!location || !location.state) {
       throw new ApiError("Location state is required", 400);
     }
@@ -77,7 +106,6 @@ export const createProduct = asyncHandler(
       );
     }
 
-    // Validate dimension values
     if (
       dimensions.length < 1 ||
       dimensions.width < 1 ||
@@ -86,16 +114,52 @@ export const createProduct = asyncHandler(
       throw new ApiError("Dimensions must be at least 1 foot", 400);
     }
 
+    // Validate age range
+    if (!ageRange || !ageRange.min || !ageRange.max || !ageRange.unit) {
+      throw new ApiError("Age range (min, max, unit) is required", 400);
+    }
+
+    if (ageRange.min < 0 || ageRange.max < 0) {
+      throw new ApiError("Age values cannot be negative", 400);
+    }
+
+    if (ageRange.max < ageRange.min) {
+      throw new ApiError("Maximum age must be greater than minimum age", 400);
+    }
+
+    if (!["years", "months"].includes(ageRange.unit)) {
+      throw new ApiError("Age unit must be 'years' or 'months'", 400);
+    }
+
+    // Validate safety features
+    if (!Array.isArray(safetyFeatures) || safetyFeatures.length === 0) {
+      throw new ApiError("At least one safety feature is required", 400);
+    }
+
+    // Validate quality assurance
+    if (
+      !qualityAssurance ||
+      typeof qualityAssurance.isCertified !== "boolean"
+    ) {
+      throw new ApiError(
+        "Quality assurance certification status is required",
+        400
+      );
+    }
+
     const product = await productService.createProduct({
       name,
       description,
       summary,
       price,
+      perDayPrice,
+      perWeekPrice,
+      deliveryAndCollection,
       priceDiscount,
       duration,
       maxGroupSize,
       difficulty,
-      categories,
+      categories, // Array of category IDs
       images,
       imageCover,
       location: {
@@ -112,6 +176,21 @@ export const createProduct = asyncHandler(
       size,
       active,
       stock,
+      isSensitive,
+      material,
+      design,
+      ageRange: {
+        min: ageRange.min,
+        max: ageRange.max,
+        unit: ageRange.unit,
+      },
+      safetyFeatures,
+      qualityAssurance: {
+        isCertified: qualityAssurance.isCertified,
+        certification: qualityAssurance.certification,
+        warrantyPeriod: qualityAssurance.warrantyPeriod,
+        warrantyDetails: qualityAssurance.warrantyDetails,
+      },
     });
 
     res.status(201).json({
@@ -195,11 +274,48 @@ export const updateProduct = asyncHandler(
 
     console.log("🔄 [CONTROLLER] Updating product:", productId);
 
+    // Validate age range if provided
+    if (updateData.ageRange) {
+      const { min, max, unit } = updateData.ageRange;
+
+      if (min !== undefined && min < 0) {
+        throw new ApiError("Minimum age cannot be negative", 400);
+      }
+
+      if (max !== undefined && max < 0) {
+        throw new ApiError("Maximum age cannot be negative", 400);
+      }
+
+      if (unit !== undefined && !["years", "months"].includes(unit)) {
+        throw new ApiError("Age unit must be 'years' or 'months'", 400);
+      }
+    }
+
+    // Validate safety features if provided
+    if (updateData.safetyFeatures !== undefined) {
+      if (!Array.isArray(updateData.safetyFeatures)) {
+        throw new ApiError("Safety features must be an array", 400);
+      }
+      if (updateData.safetyFeatures.length === 0) {
+        throw new ApiError("At least one safety feature is required", 400);
+      }
+    }
+
+    // Validate quality assurance if provided
+    if (updateData.qualityAssurance) {
+      if (
+        updateData.qualityAssurance.isCertified !== undefined &&
+        typeof updateData.qualityAssurance.isCertified !== "boolean"
+      ) {
+        throw new ApiError("Certification status must be boolean", 400);
+      }
+    }
+
     // If location is provided in update, ensure it has the right structure
     if (updateData.location) {
       updateData.location = {
         country: "England", // Always England
-        state: updateData.location.state,
+        state: updateData.location.state || "",
         city: updateData.location.city || "",
       };
     }

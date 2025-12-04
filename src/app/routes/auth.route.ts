@@ -10,7 +10,7 @@ import {
   getMe,
   updateMe,
   logout,
-} from "../controllers/auth.controller";
+} from "../controllers/auth/auth.controller";
 import { protectRoute, restrictTo } from "../middlewares/auth.middleware";
 import { upload } from "../utils/cloudinary.util";
 

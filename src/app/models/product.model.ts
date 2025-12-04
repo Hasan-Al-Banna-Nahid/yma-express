@@ -1,4 +1,3 @@
-// src/models/product.model.ts
 import mongoose, { Schema, Model } from "mongoose";
 import { IProduct } from "../interfaces/product.interface";
 
@@ -24,6 +23,19 @@ const productSchema: Schema = new Schema(
       type: Number,
       required: [true, "Product price is required"],
       min: [0, "Price cannot be negative"],
+    },
+    perDayPrice: {
+      type: Number,
+      min: [0, "Per day price cannot be negative"],
+    },
+    perWeekPrice: {
+      type: Number,
+      min: [0, "Per week price cannot be negative"],
+    },
+    deliveryAndCollection: {
+      type: String,
+      required: [true, "Delivery and collection information is required"],
+      trim: true,
     },
     priceDiscount: {
       type: Number,
@@ -118,6 +130,81 @@ const productSchema: Schema = new Schema(
       min: [0, "Stock cannot be negative"],
       default: 0,
     },
+    isSensitive: {
+      type: Boolean,
+      required: [true, "Sensitive item status is required"],
+      default: false,
+    },
+
+    // New fields
+    dateAdded: {
+      type: Date,
+      default: Date.now,
+    },
+    material: {
+      type: String,
+      required: [true, "Material information is required"],
+      trim: true,
+    },
+    design: {
+      type: String,
+      required: [true, "Design information is required"],
+      trim: true,
+    },
+    ageRange: {
+      min: {
+        type: Number,
+        required: [true, "Minimum age is required"],
+        min: [0, "Minimum age cannot be negative"],
+      },
+      max: {
+        type: Number,
+        required: [true, "Maximum age is required"],
+        validate: {
+          validator: function (this: any, value: number): boolean {
+            return value >= this.ageRange.min;
+          },
+          message: "Maximum age must be greater than or equal to minimum age",
+        },
+      },
+      unit: {
+        type: String,
+        required: [true, "Age unit is required"],
+        enum: {
+          values: ["years", "months"],
+          message: "Age unit must be years or months",
+        },
+      },
+    },
+    safetyFeatures: {
+      type: [String],
+      required: [true, "At least one safety feature is required"],
+      validate: {
+        validator: function (value: string[]): boolean {
+          return value.length > 0;
+        },
+        message: "At least one safety feature is required",
+      },
+    },
+    qualityAssurance: {
+      isCertified: {
+        type: Boolean,
+        required: [true, "Certification status is required"],
+        default: false,
+      },
+      certification: {
+        type: String,
+        trim: true,
+      },
+      warrantyPeriod: {
+        type: Number,
+        min: [0, "Warranty period cannot be negative"],
+      },
+      warrantyDetails: {
+        type: String,
+        trim: true,
+      },
+    },
   },
   {
     timestamps: true,
@@ -138,9 +225,33 @@ productSchema
     return `${this.dimensions.length}ft x ${this.dimensions.width}ft x ${this.dimensions.height}ft`;
   });
 
+// Virtual for formatted age range
+productSchema.virtual("formattedAgeRange").get(function (this: IProductModel) {
+  return `${this.ageRange.min}-${this.ageRange.max} ${this.ageRange.unit}`;
+});
+
 // Virtual for isActive (alias for active)
 productSchema.virtual("isActive").get(function (this: IProductModel) {
   return this.active;
+});
+
+// Virtual for available status
+productSchema.virtual("isAvailable").get(function (this: IProductModel) {
+  const now = new Date();
+  return (
+    this.active &&
+    this.stock > 0 &&
+    now >= this.availableFrom &&
+    now <= this.availableUntil
+  );
+});
+
+// Virtual for warranty status
+productSchema.virtual("hasWarranty").get(function (this: IProductModel) {
+  return (
+    this.qualityAssurance.warrantyPeriod &&
+    this.qualityAssurance.warrantyPeriod > 0
+  );
 });
 
 // Index for better search performance
@@ -148,6 +259,10 @@ productSchema.index({ "location.country": 1, "location.state": 1 });
 productSchema.index({ price: 1 });
 productSchema.index({ categories: 1 });
 productSchema.index({ "dimensions.length": 1, "dimensions.width": 1 });
+productSchema.index({ "ageRange.min": 1, "ageRange.max": 1 });
+productSchema.index({ material: 1 });
+productSchema.index({ isSensitive: 1 });
+productSchema.index({ "qualityAssurance.isCertified": 1 });
 
 const Product: Model<IProductModel> = mongoose.model<IProductModel>(
   "Product",

@@ -6,7 +6,7 @@ import path from "path";
 
 // Import routes
 import authRouter from "./app/routes/auth.route";
-import bookingRouter from "./app/routes/booking.route";
+import bookingRouter from "./app/modules/Bookings/booking.route";
 import inventoryRouter from "./app/routes/inventory.route";
 // import invoiceRouter from "./app/routes/invoice.route"; // Remove if not needed
 import adminRoutes from "./app/routes/admin.routes";
@@ -14,7 +14,7 @@ import { globalErrorHandler } from "./app/utils/apiError";
 import mailRoute from "./app/routes/mail.route";
 import categoryRoutes from "./app/routes/category.routes";
 import productRoutes from "./app/routes/product.route";
-import cartRoutes from "./app/routes/cart.routes";
+import cartRoutes from "./app/modules/Cart/cart.routes";
 // import locationRoutes from "./app/routes/location.routes";
 import checkoutRoutes from "./app/routes/checkout.routes";
 import orderRoutes from "./app/routes/order.routes";
