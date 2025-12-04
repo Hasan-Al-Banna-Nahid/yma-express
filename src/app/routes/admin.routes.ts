@@ -1,24 +1,59 @@
-import { Router } from "express";
+import express from "express";
+import * as adminController from "../controllers/admin/admin.controller";
+import * as authController from "../controllers/auth/auth.controller";
 import {
-  listUsers,
-  getUser,
-  updateUserRole,
-  adminUpdateUser,
-  softDeleteUser,
-  hardDeleteUser,
-} from "../controllers/admin/admin.controller";
-import { protectRoute, restrictTo } from "../middlewares/auth.middleware";
+  restrictTo,
+  canManageUser,
+} from "../middlewares/authorization.middleware";
+import { upload } from "../utils/cloudinary.util";
 
-const router = Router();
+const router = express.Router();
 
-router.use(protectRoute);
-router.use(restrictTo("admin"));
+// Protect all admin routes
+router.use(authController.protectRoute);
 
-router.get("/users", listUsers);
-router.get("/users/:id", getUser);
-router.patch("/users/:id/role", updateUserRole);
-router.patch("/users/:id", adminUpdateUser);
-router.delete("/users/:id", softDeleteUser);
-router.delete("/users/:id/hard", hardDeleteUser);
+// Get system stats - superadmin & admin only
+router.get(
+  "/stats",
+  restrictTo("superadmin", "admin"),
+  adminController.getSystemStats
+);
+
+// User management routes
+router.get(
+  "/users",
+  restrictTo("superadmin", "admin"),
+  adminController.getAllUsers
+);
+router.get(
+  "/users/:id",
+  restrictTo("superadmin", "admin"),
+  canManageUser,
+  adminController.getUserById
+);
+router.post(
+  "/users",
+  restrictTo("superadmin", "admin"),
+  upload.single("photo"),
+  adminController.createUser
+);
+router.patch(
+  "/users/:id",
+  restrictTo("superadmin", "admin"),
+  canManageUser,
+  upload.single("photo"),
+  adminController.updateUser
+);
+router.delete(
+  "/users/:id",
+  restrictTo("superadmin", "admin"),
+  canManageUser,
+  adminController.deleteUser
+);
+router.post(
+  "/users/change-role",
+  restrictTo("superadmin"),
+  adminController.changeUserRole
+);
 
 export default router;

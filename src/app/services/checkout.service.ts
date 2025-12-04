@@ -1,10 +1,11 @@
 // src/services/checkout.service.ts
 import mongoose, { Types } from "mongoose";
 import Cart from "../modules/Cart/cart.model";
-import Order, { IOrderModel } from "../models/order.model";
+import Order from "../models/order.model";
 import Product from "../models/product.model";
 import ApiError from "../utils/apiError";
 import { sendOrderConfirmationEmail } from "./email.service";
+import { IOrderModel } from "../models/checkout.model";
 
 export interface CreateOrderData {
   shippingAddress: {
@@ -186,6 +187,7 @@ export const createOrderFromCart = async (
       estimatedDeliveryDate,
       invoiceType: orderData.invoiceType || "regular",
       bankDetails: orderData.bankDetails, // Now just { bankInfo: string }
+      orderNumber: `ORD-${Date.now()}`, // <-- Add orderNumber generation
     });
 
     await order.save({ session });
@@ -207,7 +209,6 @@ export const createOrderFromCart = async (
 
     await sendOrderConfirmationEmail(populatedOrder);
 
-    console.log("✅ [SERVICE] Order created successfully:", order.orderNumber);
     return populatedOrder;
   } catch (error) {
     await session.abortTransaction();

@@ -70,6 +70,7 @@ app.use("/api/v1/checkout", checkoutRoutes);
 // Order management routes
 app.use("/api/v1/orders", orderRoutes);
 app.use("/api/v1/admin/orders", adminOrderRoutes);
+app.use("/api/v1/admin", adminRoutes); // Add this line
 
 // Health check
 app.get("/healthz", (_req, res) => res.json({ ok: true }));

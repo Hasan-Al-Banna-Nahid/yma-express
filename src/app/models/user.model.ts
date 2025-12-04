@@ -26,7 +26,7 @@ const userSchema = new Schema<IUser, IUserModel, IUserMethods>(
     photo: { type: String, default: null },
     role: {
       type: String,
-      enum: ["user", "admin"],
+      enum: ["user", "admin", "superadmin", "editor", "delivery"],
       default: "user",
       required: true,
       index: true,
