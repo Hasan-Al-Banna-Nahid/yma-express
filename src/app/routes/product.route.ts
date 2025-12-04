@@ -13,8 +13,7 @@ import {
   searchProducts,
   getProductsByCategory,
 } from "../controllers/product.controller";
-import { protectRoute, restrictTo } from "../middlewares/auth.middleware";
-
+import { restrictTo } from "../middlewares/authorization.middleware";
 const router = express.Router();
 
 // Public routes
@@ -27,11 +26,22 @@ router.get("/category/:categoryId", getProductsByCategory);
 router.get("/:id", getProduct);
 
 // Protected routes (Admin only)
-router.use(protectRoute, restrictTo("admin"));
 
-router.post("/", createProduct);
-router.patch("/:id", updateProduct);
-router.delete("/:id", deleteProduct);
-router.patch("/:id/stock", updateProductStock);
+router.post("/", restrictTo("superadmin", "admin", "editor"), createProduct);
+router.patch(
+  "/:id",
+  restrictTo("superadmin", "admin", "editor"),
+  updateProduct
+);
+router.delete(
+  "/:id",
+  restrictTo("superadmin", "admin", "editor"),
+  deleteProduct
+);
+router.patch(
+  "/:id/stock",
+  restrictTo("superadmin", "admin", "editor"),
+  updateProductStock
+);
 
 export default router;
