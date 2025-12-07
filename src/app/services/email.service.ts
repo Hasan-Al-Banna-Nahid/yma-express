@@ -1,10 +1,11 @@
 // src/services/email.service.ts
 import dotenv from "dotenv";
 import nodemailer from "nodemailer";
-// import sgMail, { MailDataRequired } from "@sendgrid/mail"; // Commented out SendGrid
 import ejs from "ejs";
 import path from "path";
 import fs from "fs";
+import { IOrder } from "../models/order.model";
+import { generateInvoiceHtml } from "./invoice.service";
 
 dotenv.config();
 
@@ -44,29 +45,14 @@ transporter.verify((error) => {
   }
 });
 
-// Commented out SendGrid configuration
-/*
-const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
-const SENDGRID_FROM_EMAIL = process.env.SENDGRID_FROM_EMAIL;
-const SENDGRID_FROM_NAME = process.env.SENDGRID_FROM_NAME || "YMABouncyCastle";
-
-if (!SENDGRID_API_KEY) {
-  throw new Error("SENDGRID_API_KEY is not set");
-}
-if (!SENDGRID_FROM_EMAIL) {
-  throw new Error("SENDGRID_FROM_EMAIL is not set");
-}
-
-sgMail.setApiKey(SENDGRID_API_KEY);
-*/
-
 // Email template types
 export type EmailTemplate =
   | "passwordReset"
   | "resetSuccess"
   | "orderConfirmation"
   | "deliveryReminder"
-  | "preDeliveryConfirmation";
+  | "preDeliveryConfirmation"
+  | "invoice";
 
 // Template resolver
 function resolveEmailTemplate(templateName: EmailTemplate): string {
@@ -141,31 +127,6 @@ export async function sendEmailHtml(options: SendEmailOptions): Promise<void> {
     });
     throw error;
   }
-
-  // Commented out SendGrid implementation
-  /*
-  try {
-    const msg: MailDataRequired = {
-      to,
-      from: {
-        email: fromEmail || SENDGRID_FROM_EMAIL,
-        name: fromName || SENDGRID_FROM_NAME,
-      },
-      subject,
-      html,
-    };
-
-    await sgMail.send(msg);
-    console.log("[sendEmailHtml] Email sent successfully:", { to, subject });
-  } catch (error: any) {
-    console.error("[sendEmailHtml] SendGrid error:", {
-      message: error?.message,
-      status: error?.code,
-      response: error?.response?.body,
-    });
-    throw error;
-  }
-  */
 }
 
 // High-level template email sender
@@ -303,29 +264,35 @@ export async function sendResetSuccessEmail(
   });
 }
 
-// Order email functions
-export async function sendOrderConfirmationEmail(order: any): Promise<void> {
+// Order email functions with IOrder type
+export async function sendOrderConfirmationEmail(order: IOrder): Promise<void> {
   try {
+    // Generate invoice HTML
+    const invoiceHtml = await generateInvoiceHtml(order);
+
+    // Render order confirmation template with invoice embedded
     const html = await renderTemplate("orderConfirmation", {
       order,
       brand: EMAIL_FROM_NAME,
       year: new Date().getFullYear(),
       brandColor: "#7C3AED",
+      invoiceHtml: invoiceHtml, // Pass invoice HTML to template
     });
 
     await sendEmailHtml({
       to: order.shippingAddress.email,
-      subject: `Order Confirmed - ${order.orderNumber}`,
+      subject: `🎉 Order Confirmed - ${order.orderNumber}`,
       html,
     });
 
     console.log(`✅ Order confirmation email sent for ${order.orderNumber}`);
   } catch (error) {
     console.error(`❌ Failed to send order confirmation email:`, error);
+    throw error;
   }
 }
 
-export async function sendDeliveryReminderEmail(order: any): Promise<void> {
+export async function sendDeliveryReminderEmail(order: IOrder): Promise<void> {
   try {
     const html = await renderTemplate("deliveryReminder", {
       order,
@@ -337,18 +304,19 @@ export async function sendDeliveryReminderEmail(order: any): Promise<void> {
 
     await sendEmailHtml({
       to: order.shippingAddress.email,
-      subject: `Delivery Reminder - Your Order #${order.orderNumber} Arrives Soon`,
+      subject: `🚚 Delivery Reminder - Your Order #${order.orderNumber} Arrives Soon`,
       html,
     });
 
     console.log(`✅ Delivery reminder email sent for ${order.orderNumber}`);
   } catch (error) {
     console.error(`❌ Failed to send delivery reminder email:`, error);
+    throw error;
   }
 }
 
 export async function sendPreDeliveryConfirmationEmail(
-  order: any
+  order: IOrder
 ): Promise<void> {
   try {
     const html = await renderTemplate("preDeliveryConfirmation", {
@@ -361,7 +329,7 @@ export async function sendPreDeliveryConfirmationEmail(
 
     await sendEmailHtml({
       to: order.shippingAddress.email,
-      subject: `Delivery Confirmation - Your Order #${order.orderNumber} Arrives Tomorrow`,
+      subject: `📦 Delivery Confirmed - Your Order #${order.orderNumber} Arrives Tomorrow`,
       html,
     });
 
@@ -370,23 +338,215 @@ export async function sendPreDeliveryConfirmationEmail(
     );
   } catch (error) {
     console.error(`❌ Failed to send pre-delivery confirmation email:`, error);
+    throw error;
   }
 }
 
 export async function sendInvoiceEmail(
-  order: any,
+  order: IOrder,
   invoiceHtml: string
 ): Promise<void> {
   try {
+    // Render the invoice email template
+    const html = await renderTemplate("invoice", {
+      order,
+      invoiceHtml,
+      brand: EMAIL_FROM_NAME,
+      year: new Date().getFullYear(),
+      brandColor: "#7C3AED",
+    });
+
     await sendEmailHtml({
       to: order.shippingAddress.email,
-      subject: `Invoice - ${order.orderNumber}`,
-      html: invoiceHtml,
+      subject: `📄 Invoice - ${order.orderNumber}`,
+      html,
     });
 
     console.log(`✅ Invoice email sent for ${order.orderNumber}`);
   } catch (error) {
     console.error(`❌ Failed to send invoice email:`, error);
+    throw error;
+  }
+}
+
+// Send email with invoice attachment (alternative method)
+export async function sendOrderWithInvoiceAttachment(
+  order: IOrder
+): Promise<void> {
+  try {
+    // Generate invoice HTML
+    const invoiceHtml = await generateInvoiceHtml(order);
+
+    // Create a combined email with invoice embedded
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .order-confirmation { background: #f9f9f9; padding: 20px; border-radius: 10px; margin-bottom: 30px; }
+          .invoice-section { border-top: 2px solid #7C3AED; padding-top: 20px; margin-top: 30px; }
+        </style>
+      </head>
+      <body>
+        <div class="order-confirmation">
+          <h2>🎉 Your Order Has Been Confirmed!</h2>
+          <p>Thank you for your order <strong>#${
+            order.orderNumber
+          }</strong>.</p>
+          <p>Estimated Delivery: ${order.estimatedDeliveryDate.toLocaleDateString()}</p>
+        </div>
+        
+        <div class="invoice-section">
+          <h3>📄 Invoice</h3>
+          ${invoiceHtml}
+        </div>
+        
+        <div style="margin-top: 30px; padding: 20px; background: #e8f5e8; border-radius: 5px;">
+          <p><strong>Need Help?</strong></p>
+          <p>Contact us at ${EMAIL_FROM} or call +44 (0) 1234 567890</p>
+        </div>
+      </body>
+      </html>
+    `;
+
+    await sendEmailHtml({
+      to: order.shippingAddress.email,
+      subject: `🎉 Order Confirmed with Invoice - ${order.orderNumber}`,
+      html,
+    });
+
+    console.log(`✅ Order with invoice sent for ${order.orderNumber}`);
+  } catch (error) {
+    console.error(`❌ Failed to send order with invoice:`, error);
+    throw error;
+  }
+}
+
+// Admin notification email
+export async function sendAdminOrderNotification(
+  order: IOrder,
+  adminEmail: string
+): Promise<void> {
+  try {
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; }
+          .alert { background: #ffebee; padding: 20px; border-radius: 5px; }
+          .order-details { background: #f5f5f5; padding: 15px; margin: 15px 0; }
+        </style>
+      </head>
+      <body>
+        <div class="alert">
+          <h2>🚨 New Order Received</h2>
+          <p>A new order has been placed and requires attention.</p>
+        </div>
+        
+        <div class="order-details">
+          <h3>Order Details</h3>
+          <p><strong>Order Number:</strong> ${order.orderNumber}</p>
+          <p><strong>Customer:</strong> ${order.shippingAddress.firstName} ${
+      order.shippingAddress.lastName
+    }</p>
+          <p><strong>Email:</strong> ${order.shippingAddress.email}</p>
+          <p><strong>Phone:</strong> ${order.shippingAddress.phone}</p>
+          <p><strong>Total Amount:</strong> £${order.totalAmount.toFixed(2)}</p>
+          <p><strong>Status:</strong> ${order.status}</p>
+          <p><strong>Delivery Date:</strong> ${order.estimatedDeliveryDate.toLocaleDateString()}</p>
+        </div>
+        
+        <p>Please log in to the admin panel to process this order.</p>
+      </body>
+      </html>
+    `;
+
+    await sendEmailHtml({
+      to: adminEmail,
+      subject: `🚨 New Order - ${order.orderNumber}`,
+      html,
+    });
+
+    console.log(`✅ Admin notification sent for order ${order.orderNumber}`);
+  } catch (error) {
+    console.error(`❌ Failed to send admin notification:`, error);
+    throw error;
+  }
+}
+
+// Order status update email
+export async function sendOrderStatusUpdateEmail(
+  order: IOrder,
+  previousStatus: string
+): Promise<void> {
+  try {
+    const statusMessages: Record<string, string> = {
+      confirmed: "has been confirmed and is being processed",
+      shipped: "has been shipped and is on its way",
+      delivered: "has been delivered successfully",
+      cancelled: "has been cancelled",
+    };
+
+    const statusEmoji: Record<string, string> = {
+      confirmed: "✅",
+      shipped: "🚚",
+      delivered: "🎉",
+      cancelled: "❌",
+    };
+
+    const message = statusMessages[order.status] || "status has been updated";
+    const emoji = statusEmoji[order.status] || "📝";
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; }
+          .status-update { background: #e3f2fd; padding: 20px; border-radius: 10px; }
+          .order-info { background: white; padding: 15px; border-radius: 5px; margin: 15px 0; }
+        </style>
+      </head>
+      <body>
+        <div class="status-update">
+          <h2>${emoji} Order Status Updated</h2>
+          <p>Your order <strong>#${order.orderNumber}</strong> ${message}.</p>
+        </div>
+        
+        <div class="order-info">
+          <p><strong>Previous Status:</strong> ${previousStatus}</p>
+          <p><strong>New Status:</strong> ${order.status}</p>
+          <p><strong>Order Date:</strong> ${order.createdAt.toLocaleDateString()}</p>
+          <p><strong>Estimated Delivery:</strong> ${order.estimatedDeliveryDate.toLocaleDateString()}</p>
+          ${
+            order.deliveryDate
+              ? `<p><strong>Actual Delivery:</strong> ${order.deliveryDate.toLocaleDateString()}</p>`
+              : ""
+          }
+          ${
+            order.adminNotes
+              ? `<p><strong>Admin Notes:</strong> ${order.adminNotes}</p>`
+              : ""
+          }
+        </div>
+        
+        <p>If you have any questions, please contact us at ${EMAIL_FROM}</p>
+      </body>
+      </html>
+    `;
+
+    await sendEmailHtml({
+      to: order.shippingAddress.email,
+      subject: `${emoji} Order Status Update - ${order.orderNumber}`,
+      html,
+    });
+
+    console.log(`✅ Status update email sent for ${order.orderNumber}`);
+  } catch (error) {
+    console.error(`❌ Failed to send status update email:`, error);
+    throw error;
   }
 }
 
@@ -399,5 +559,20 @@ export async function testEmailConnection(): Promise<boolean> {
   } catch (error) {
     console.error("❌ Email connection test failed:", error);
     return false;
+  }
+}
+
+// Send bulk delivery reminders
+export async function sendBulkDeliveryReminders(
+  orders: IOrder[]
+): Promise<void> {
+  try {
+    for (const order of orders) {
+      await sendDeliveryReminderEmail(order);
+    }
+    console.log(`✅ Sent delivery reminders for ${orders.length} orders`);
+  } catch (error) {
+    console.error(`❌ Failed to send bulk delivery reminders:`, error);
+    throw error;
   }
 }

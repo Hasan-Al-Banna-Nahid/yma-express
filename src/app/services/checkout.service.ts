@@ -1,11 +1,9 @@
-// src/services/checkout.service.ts
 import mongoose, { Types } from "mongoose";
 import Cart from "../modules/Cart/cart.model";
-import Order from "../models/order.model";
+import Order, { IOrder } from "../models/order.model"; // Import IOrder
 import Product from "../models/product.model";
 import ApiError from "../utils/apiError";
 import { sendOrderConfirmationEmail } from "./email.service";
-import { IOrderModel } from "../models/checkout.model";
 
 export interface CreateOrderData {
   shippingAddress: {
@@ -41,24 +39,20 @@ export interface CreateOrderData {
   termsAccepted: boolean;
   invoiceType?: "regular" | "corporate";
   bankDetails?: {
-    bankInfo: string; // Simplified to single field
+    bankInfo: string;
   };
 }
 
 export const createOrderFromCart = async (
   userId: string,
   orderData: CreateOrderData
-): Promise<IOrderModel> => {
+): Promise<IOrder> => {
+  // Change return type to IOrder instead of typeof Order
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
-    console.log("🛒 [SERVICE] Starting order creation for user:", userId);
-    console.log("📍 Shipping Address:", {
-      country: orderData.shippingAddress.country,
-      state: orderData.shippingAddress.state,
-      city: orderData.shippingAddress.city,
-    });
+    console.log("🛒 [CHECKOUT SERVICE] Creating order for user:", userId);
 
     // Get user's cart with populated items
     const cart = await Cart.findOne({ user: new Types.ObjectId(userId) })
@@ -120,7 +114,7 @@ export const createOrderFromCart = async (
       }
     }
 
-    // SIMPLIFIED: Validate corporate invoice requirements
+    // Validate corporate invoice requirements
     if (orderData.invoiceType === "corporate") {
       if (!orderData.bankDetails || !orderData.bankDetails.bankInfo) {
         throw new ApiError(
@@ -129,7 +123,6 @@ export const createOrderFromCart = async (
         );
       }
 
-      // Validate that bank info is not empty
       if (orderData.bankDetails.bankInfo.trim() === "") {
         throw new ApiError("Bank information cannot be empty", 400);
       }
@@ -176,7 +169,7 @@ export const createOrderFromCart = async (
     const estimatedDeliveryDate = new Date();
     estimatedDeliveryDate.setDate(estimatedDeliveryDate.getDate() + 2);
 
-    // Create order with simplified bank details
+    // Create order
     const order = new Order({
       user: new Types.ObjectId(userId),
       items: orderItems,
@@ -186,8 +179,7 @@ export const createOrderFromCart = async (
       termsAccepted: orderData.termsAccepted,
       estimatedDeliveryDate,
       invoiceType: orderData.invoiceType || "regular",
-      bankDetails: orderData.bankDetails, // Now just { bankInfo: string }
-      orderNumber: `ORD-${Date.now()}`, // <-- Add orderNumber generation
+      bankDetails: orderData.bankDetails,
     });
 
     await order.save({ session });
@@ -204,34 +196,17 @@ export const createOrderFromCart = async (
     // Send order confirmation email
     const populatedOrder = await order.populate([
       { path: "user", select: "name email" },
-      { path: "items.product" },
+      { path: "items.product", select: "name imageCover price" },
     ]);
 
     await sendOrderConfirmationEmail(populatedOrder);
 
+    console.log("✅ [CHECKOUT SERVICE] Order created:", order.orderNumber);
     return populatedOrder;
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
-    console.error("❌ [SERVICE] Order creation failed:", error);
+    console.error("❌ [CHECKOUT SERVICE] Order creation failed:", error);
     throw error;
   }
-};
-
-export const getOrderById = async (orderId: string): Promise<IOrderModel> => {
-  const order = await Order.findById(orderId)
-    .populate("user", "name email phone")
-    .populate("items.product");
-
-  if (!order) {
-    throw new ApiError("Order not found", 404);
-  }
-
-  return order;
-};
-
-export const getUserOrders = async (userId: string): Promise<IOrderModel[]> => {
-  return await Order.find({ user: new Types.ObjectId(userId) })
-    .populate("items.product")
-    .sort({ createdAt: -1 });
 };

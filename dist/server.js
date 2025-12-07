@@ -9,10 +9,8 @@ const http_1 = __importDefault(require("http"));
 const app_1 = __importDefault(require("./app"));
 const config_1 = require("./app/config/config");
 const db_1 = __importDefault(require("./app/config/db"));
-const email_service_1 = require("./app/services/email.service");
 const server = http_1.default.createServer(app_1.default);
 server.listen(config_1.config.port, async () => {
-    await (0, email_service_1.warmupEmail)();
     console.log(`Server running on port ${config_1.config.port}`);
 });
 // 4) DATABASE CONNECTION

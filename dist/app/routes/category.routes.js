@@ -39,16 +39,16 @@ Object.defineProperty(exports, "__esModule", { value: true });
 // src/routes/category.routes.ts
 const express_1 = __importDefault(require("express"));
 const categoryController = __importStar(require("../controllers/category.controller"));
-const auth_middleware_1 = require("../middlewares/auth.middleware");
+const authorization_middleware_1 = require("../middlewares/authorization.middleware");
 const cloudinary_util_1 = require("../utils/cloudinary.util");
 const router = express_1.default.Router();
 router
     .route("/")
     .get(categoryController.getCategories)
-    .post(auth_middleware_1.protectRoute, (0, auth_middleware_1.restrictTo)("admin"), cloudinary_util_1.upload.single("image"), categoryController.createCategory);
+    .post((0, authorization_middleware_1.restrictTo)("admin", "superadmin", "editor"), cloudinary_util_1.upload.single("image"), categoryController.createCategory);
 router
     .route("/:id")
     .get(categoryController.getCategory)
-    .patch(auth_middleware_1.protectRoute, (0, auth_middleware_1.restrictTo)("admin"), cloudinary_util_1.upload.single("image"), categoryController.updateCategory)
-    .delete(auth_middleware_1.protectRoute, (0, auth_middleware_1.restrictTo)("admin"), categoryController.deleteCategory);
+    .patch((0, authorization_middleware_1.restrictTo)("admin", "superadmin", "editor"), cloudinary_util_1.upload.single("image"), categoryController.updateCategory)
+    .delete((0, authorization_middleware_1.restrictTo)("admin", "superadmin", "editor"), categoryController.deleteCategory);
 exports.default = router;

@@ -3,391 +3,172 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Invoice - <%= order.orderNumber %></title>
+    <title>Order Confirmed - <%= order.orderNumber %></title>
     <style>
       @import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");
-
       * {
         margin: 0;
         padding: 0;
         box-sizing: border-box;
       }
-
       body {
         font-family: "Inter", sans-serif;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        min-height: 100vh;
-        padding: 40px 20px;
+        background: #f5f5f5;
+        padding: 20px;
       }
-
-      .invoice-container {
-        max-width: 800px;
+      .email-container {
+        max-width: 700px;
         margin: 0 auto;
         background: white;
-        border-radius: 20px;
-        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1),
-          0 0 0 1px rgba(255, 255, 255, 0.1), 0 0 50px rgba(103, 126, 234, 0.3);
+        border-radius: 15px;
         overflow: hidden;
-        position: relative;
+        box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
       }
-
-      .invoice-container::before {
-        content: "";
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 4px;
-        background: linear-gradient(90deg, #667eea, #764ba2, #f093fb, #f5576c);
-      }
-
       .header {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
         padding: 40px;
         text-align: center;
-        position: relative;
-        overflow: hidden;
       }
-
-      .header::before {
-        content: "";
-        position: absolute;
-        top: -50%;
-        left: -50%;
-        width: 200%;
-        height: 200%;
-        background: radial-gradient(
-          circle,
-          rgba(255, 255, 255, 0.1) 1%,
-          transparent 1%
-        );
-        background-size: 50px 50px;
-        animation: float 20s linear infinite;
-      }
-
-      @keyframes float {
-        0% {
-          transform: translate(0, 0) rotate(0deg);
-        }
-        100% {
-          transform: translate(-50px, -50px) rotate(360deg);
-        }
-      }
-
       .company-name {
-        font-size: 2.5em;
+        font-size: 28px;
         font-weight: 700;
         margin-bottom: 10px;
-        text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
       }
-
-      .invoice-title {
-        font-size: 1.2em;
-        opacity: 0.9;
-        font-weight: 300;
+      .confirmation-text {
+        font-size: 20px;
+        margin-bottom: 20px;
       }
-
+      .order-number {
+        background: rgba(255, 255, 255, 0.2);
+        padding: 10px 20px;
+        border-radius: 25px;
+        display: inline-block;
+        font-weight: 600;
+      }
       .content {
         padding: 40px;
       }
-
-      .invoice-info {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 30px;
-        margin-bottom: 40px;
+      .greeting {
+        font-size: 18px;
+        margin-bottom: 30px;
+        color: #333;
       }
-
-      .info-card {
-        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+      .order-summary {
+        background: #f8f9fa;
         padding: 25px;
-        border-radius: 15px;
-        border-left: 4px solid #667eea;
+        border-radius: 10px;
+        margin-bottom: 30px;
       }
-
-      .info-card h3 {
-        color: #667eea;
-        margin-bottom: 15px;
-        font-size: 1.1em;
-        font-weight: 600;
-      }
-
-      .info-item {
-        margin-bottom: 8px;
+      .summary-item {
         display: flex;
         justify-content: space-between;
-      }
-
-      .info-label {
-        font-weight: 500;
-        color: #6c757d;
-      }
-
-      .info-value {
-        font-weight: 600;
-        color: #495057;
-      }
-
-      .items-table {
-        width: 100%;
-        border-collapse: collapse;
-        margin: 30px 0;
-        background: white;
-        border-radius: 15px;
-        overflow: hidden;
-        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
-      }
-
-      .items-table th {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 15px;
-        text-align: left;
-        font-weight: 600;
-      }
-
-      .items-table td {
-        padding: 15px;
+        margin-bottom: 10px;
+        padding-bottom: 10px;
         border-bottom: 1px solid #e9ecef;
       }
-
-      .items-table tr:last-child td {
+      .summary-item:last-child {
         border-bottom: none;
       }
-
-      .items-table tr:hover {
-        background: #f8f9fa;
+      .invoice-section {
+        margin-top: 40px;
+        padding-top: 30px;
+        border-top: 2px solid #7c3aed;
       }
-
-      .total-section {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 25px;
-        border-radius: 15px;
-        text-align: right;
-        margin-top: 30px;
+      .invoice-title {
+        color: #7c3aed;
+        margin-bottom: 20px;
+        font-size: 20px;
       }
-
-      .total-amount {
-        font-size: 2em;
-        font-weight: 700;
-        margin-top: 10px;
-        text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
-      }
-
-      .bank-details {
-        background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
-        border: 2px dashed #f39c12;
-        padding: 25px;
-        border-radius: 15px;
-        margin-top: 30px;
-      }
-
-      .bank-details h3 {
-        color: #e67e22;
-        margin-bottom: 15px;
-        font-weight: 600;
-      }
-
       .footer {
         text-align: center;
         padding: 30px;
         background: #f8f9fa;
-        color: #6c757d;
-        border-top: 1px solid #e9ecef;
-      }
-
-      .status-badge {
-        display: inline-block;
-        padding: 8px 16px;
-        border-radius: 20px;
-        font-weight: 600;
-        font-size: 0.9em;
-        text-transform: uppercase;
-      }
-
-      .status-pending {
-        background: #fff3cd;
-        color: #856404;
-      }
-      .status-confirmed {
-        background: #d1ecf1;
-        color: #0c5460;
-      }
-      .status-shipped {
-        background: #d1edff;
-        color: #004085;
-      }
-      .status-delivered {
-        background: #d4edda;
-        color: #155724;
-      }
-
-      .glow-text {
-        background: linear-gradient(135deg, #667eea, #764ba2, #f093fb);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-      }
-
-      @media (max-width: 768px) {
-        .invoice-info {
-          grid-template-columns: 1fr;
-        }
-
-        .content {
-          padding: 20px;
-        }
-
-        .header {
-          padding: 30px 20px;
-        }
+        color: #666;
       }
     </style>
   </head>
   <body>
-    <div class="invoice-container">
+    <div class="email-container">
       <div class="header">
-        <h1 class="company-name">YMA Bouncy Castle</h1>
-        <p class="invoice-title">INVOICE</p>
+        <div class="company-name">YMA Bouncy Castle</div>
+        <div class="confirmation-text">🎉 Order Confirmed!</div>
+        <div class="order-number">#<%= order.orderNumber %></div>
       </div>
 
       <div class="content">
-        <div class="invoice-info">
-          <div class="info-card">
-            <h3>Order Information</h3>
-            <div class="info-item">
-              <span class="info-label">Order Number:</span>
-              <span class="info-value"><%= order.orderNumber %></span>
-            </div>
-            <div class="info-item">
-              <span class="info-label">Order Date:</span>
-              <span class="info-value"
-                ><%= order.createdAt.toLocaleDateString() %></span
-              >
-            </div>
-            <div class="info-item">
-              <span class="info-label">Status:</span>
-              <span class="info-value">
-                <span class="status-badge status-<%= order.status %>">
-                  <%= order.status %>
-                </span>
-              </span>
-            </div>
-            <div class="info-item">
-              <span class="info-label">Payment Method:</span>
-              <span class="info-value"
+        <div class="greeting">
+          Hello
+          <strong
+            ><%= order.shippingAddress.firstName %> <%=
+            order.shippingAddress.lastName %></strong
+          >,
+        </div>
+
+        <p>
+          Thank you for your order! We're excited to help make your event
+          amazing.
+        </p>
+
+        <div class="order-summary">
+          <div style="color: #7c3aed; font-weight: 600; margin-bottom: 15px">
+            Order Summary
+          </div>
+          <div class="summary-item">
+            <span>Order Date:</span>
+            <span
+              ><strong
+                ><%= order.createdAt.toLocaleDateString() %></strong
+              ></span
+            >
+          </div>
+          <div class="summary-item">
+            <span>Estimated Delivery:</span>
+            <span
+              ><strong
+                ><%= order.estimatedDeliveryDate.toLocaleDateString() %></strong
+              ></span
+            >
+          </div>
+          <div class="summary-item">
+            <span>Payment Method:</span>
+            <span
+              ><strong
                 ><%= order.paymentMethod.replace('_', ' ').toUpperCase()
-                %></span
-              >
-            </div>
+                %></strong
+              ></span
+            >
           </div>
-
-          <div class="info-card">
-            <h3>Customer Information</h3>
-            <div class="info-item">
-              <span class="info-label">Name:</span>
-              <span class="info-value"
-                ><%= order.shippingAddress.firstName %> <%=
-                order.shippingAddress.lastName %></span
-              >
-            </div>
-            <div class="info-item">
-              <span class="info-label">Email:</span>
-              <span class="info-value"><%= order.shippingAddress.email %></span>
-            </div>
-            <div class="info-item">
-              <span class="info-label">Phone:</span>
-              <span class="info-value"><%= order.shippingAddress.phone %></span>
-            </div>
-            <div class="info-item">
-              <span class="info-label">Delivery Date:</span>
-              <span class="info-value"
-                ><%= order.estimatedDeliveryDate.toLocaleDateString() %></span
-              >
-            </div>
+          <div class="summary-item">
+            <span>Total Amount:</span>
+            <span><strong>£<%= order.totalAmount.toFixed(2) %></strong></span>
           </div>
         </div>
 
-        <table class="items-table">
-          <thead>
-            <tr>
-              <th>Product</th>
-              <th>Quantity</th>
-              <th>Unit Price</th>
-              <th>Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            <% order.items.forEach(item => { %>
-            <tr>
-              <td>
-                <strong><%= item.name %></strong>
-                <% if (item.startDate && item.endDate) { %>
-                <br />
-                <small style="color: #6c757d">
-                  Rental: <%= item.startDate.toLocaleDateString() %> to <%=
-                  item.endDate.toLocaleDateString() %>
-                </small>
-                <% } %>
-              </td>
-              <td><%= item.quantity %></td>
-              <td>$<%= item.price.toFixed(2) %></td>
-              <td>$<%= (item.quantity * item.price).toFixed(2) %></td>
-            </tr>
-            <% }); %>
-          </tbody>
-        </table>
-
-        <% if (order.invoiceType === 'corporate' && order.bankDetails) { %>
-        <div class="bank-details">
-          <h3>💰 Bank Transfer Details</h3>
-          <div class="info-item">
-            <span class="info-label">Bank Name:</span>
-            <span class="info-value"><%= order.bankDetails.bankName %></span>
-          </div>
-          <div class="info-item">
-            <span class="info-label">Account Holder:</span>
-            <span class="info-value"
-              ><%= order.bankDetails.accountHolder %></span
-            >
-          </div>
-          <div class="info-item">
-            <span class="info-label">Account Number:</span>
-            <span class="info-value"
-              ><%= order.bankDetails.accountNumber %></span
-            >
-          </div>
-          <% if (order.bankDetails.iban) { %>
-          <div class="info-item">
-            <span class="info-label">IBAN:</span>
-            <span class="info-value"><%= order.bankDetails.iban %></span>
-          </div>
-          <% } %> <% if (order.bankDetails.swiftCode) { %>
-          <div class="info-item">
-            <span class="info-label">SWIFT Code:</span>
-            <span class="info-value"><%= order.bankDetails.swiftCode %></span>
-          </div>
-          <% } %>
+        <div class="invoice-section">
+          <div class="invoice-title">📄 Invoice</div>
+          <!-- Invoice content will be injected here -->
+          <%= invoiceHtml %>
         </div>
-        <% } %>
 
-        <div class="total-section">
-          <h3>TOTAL AMOUNT</h3>
-          <div class="total-amount">$<%= order.totalAmount.toFixed(2) %></div>
-          <p style="opacity: 0.9; margin-top: 10px">
-            <%= order.paymentMethod === 'cash_on_delivery' ? 'Payable on
-            delivery' : 'Payment processed' %>
-          </p>
+        <div
+          style="
+            margin-top: 30px;
+            padding: 20px;
+            background: #fff3cd;
+            border-radius: 10px;
+          "
+        >
+          <strong>📞 Need Help?</strong><br />
+          Contact us at info@ymabouncycastle.com or call +44 (0) 1234 567890
         </div>
       </div>
 
       <div class="footer">
-        <p>Thank you for choosing YMA Bouncy Castle! 🎉</p>
-        <p>If you have any questions, contact us at info@ymabouncycastle.com</p>
-        <p style="margin-top: 15px; font-size: 0.9em">
-          &copy; <%= year %> YMA Bouncy Castle. All rights reserved.
+        <div>Thank you for choosing YMA Bouncy Castle!</div>
+        <p style="margin-top: 15px; font-size: 14px">
+          &copy; <%= new Date().getFullYear() %> YMA Bouncy Castle. All rights
+          reserved.
         </p>
       </div>
     </div>

@@ -3,27 +3,32 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+// src/app.ts
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
 const cookie_parser_1 = __importDefault(require("cookie-parser"));
 const path_1 = __importDefault(require("path"));
+// Import routes
 const auth_route_1 = __importDefault(require("./app/routes/auth.route"));
-const booking_route_1 = __importDefault(require("./app/routes/booking.route"));
+const booking_route_1 = __importDefault(require("./app/modules/Bookings/booking.route"));
 const inventory_route_1 = __importDefault(require("./app/routes/inventory.route"));
-const invoice_route_1 = __importDefault(require("./app/routes/invoice.route"));
+// import invoiceRouter from "./app/routes/invoice.route"; // Remove if not needed
 const admin_routes_1 = __importDefault(require("./app/routes/admin.routes"));
 const apiError_1 = require("./app/utils/apiError");
 const mail_route_1 = __importDefault(require("./app/routes/mail.route"));
 const category_routes_1 = __importDefault(require("./app/routes/category.routes"));
 const product_route_1 = __importDefault(require("./app/routes/product.route"));
-const cart_routes_1 = __importDefault(require("./app/routes/cart.routes"));
-const location_routes_1 = __importDefault(require("./app/routes/location.routes"));
+const cart_routes_1 = __importDefault(require("./app/modules/Cart/cart.routes"));
+// import locationRoutes from "./app/routes/location.routes";
+const checkout_routes_1 = __importDefault(require("./app/routes/checkout.routes"));
+const user_order_routes_1 = __importDefault(require("./app/routes/user.order.routes"));
 const app = (0, express_1.default)();
 const allowedOrigins = [
     "http://localhost:3000",
     "https://yma-bouncy-castle-frontend-rlrg.vercel.app",
     "http://localhost:5000",
     "https://yma-eight.vercel.app",
+    "https://yma-frontend.vercel.app",
 ];
 app.use((0, cors_1.default)({
     origin: (origin, callback) => {
@@ -43,17 +48,23 @@ app.use(express_1.default.text());
 app.use((0, cookie_parser_1.default)());
 app.set("view engine", "ejs");
 app.set("views", path_1.default.join(process.cwd(), "src", "app", "views"));
+// Auth routes
 app.use("/auth", auth_route_1.default);
 app.use("/api/v1/auth", auth_route_1.default);
+// API routes
 app.use("/api/v1/bookings", booking_route_1.default);
 app.use("/api/v1/inventory", inventory_route_1.default);
-app.use("/api/v1/invoices", invoice_route_1.default);
+// app.use("/api/v1/invoices", invoiceRouter); // Remove if not needed
 app.use("/api/v1/admin", admin_routes_1.default);
 app.use("/api/v1/mail", mail_route_1.default);
-app.use("/api/v1/locations", location_routes_1.default); // Add this line
+// app.use("/api/v1/locations", locationRoutes);
 app.use("/api/v1/categories", category_routes_1.default);
 app.use("/api/v1/products", product_route_1.default);
 app.use("/api/v1/cart", cart_routes_1.default);
+app.use("/api/v1/checkout", checkout_routes_1.default);
+app.use("/api/v1/orders", user_order_routes_1.default); // User order routes
+// Order management routes
+app.use("/api/v1/admin", admin_routes_1.default); // Add this line
 // Health check
 app.get("/healthz", (_req, res) => res.json({ ok: true }));
 // 404 handler

@@ -6,9 +6,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.sendMailController = void 0;
 const asyncHandler_1 = __importDefault(require("../utils/asyncHandler"));
 const apiError_1 = __importDefault(require("../utils/apiError"));
-const apiResponse_1 = require("../utils/apiResponse");
 const email_service_1 = require("../services/email.service");
-exports.sendMailController = (0, asyncHandler_1.default)(async (req, res) => {
+exports.sendMailController = (0, asyncHandler_1.default)(async (req, res, next) => {
     const { name, email, to, subject, message, fromEmail, fromName } = req.body;
     if (!subject || !message) {
         throw new apiError_1.default("subject and message are required", 400);
@@ -35,8 +34,11 @@ exports.sendMailController = (0, asyncHandler_1.default)(async (req, res) => {
         message: message.trim(),
         senderName: name?.trim(),
         senderEmail: email?.trim(),
-        fromEmail: fromEmail?.trim(), // optional override (must be verified)
+        fromEmail: fromEmail?.trim(), // optional override
         fromName: fromName?.trim(),
     });
-    return (0, apiResponse_1.ApiResponse)(res, 200, "Message sent");
+    res.status(200).json({
+        status: "success",
+        message: "Message sent successfully",
+    });
 });

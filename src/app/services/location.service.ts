@@ -2,9 +2,9 @@
 import ejs from "ejs";
 import path from "path";
 import fs from "fs";
-import { IOrderModel } from "../models/order.model";
+import Order, { IOrder } from "../models/order.model";
 
-export async function generateInvoiceHtml(order: IOrderModel): Promise<string> {
+export async function generateInvoiceHtml(order: IOrder): Promise<string> {
   const templatePath = path.resolve(
     process.cwd(),
     "src",
@@ -34,7 +34,7 @@ export async function generateInvoiceHtml(order: IOrderModel): Promise<string> {
 }
 
 export async function generateAdminInvoiceHtml(
-  order: IOrderModel
+  order: IOrder
 ): Promise<string> {
   const templatePath = path.resolve(
     process.cwd(),

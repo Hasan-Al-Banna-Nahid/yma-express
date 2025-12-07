@@ -6,7 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.releaseExpiredCartItems = exports.checkInventoryAvailability = exports.getBookedInventory = exports.getAvailableInventory = exports.deleteInventoryItem = exports.updateInventoryItem = exports.getInventoryItems = exports.getInventoryItem = exports.createInventoryItem = void 0;
 const apiError_1 = __importDefault(require("../utils/apiError"));
 const inventory_model_1 = __importDefault(require("../models/inventory.model"));
-const booking_model_1 = __importDefault(require("../models/booking.model")); // <-- add this
+const booking_model_1 = __importDefault(require("../modules/Bookings/booking.model")); // <-- add this
 const mongoose_1 = require("mongoose");
 // Helper: normalize product to ObjectId (handles populated docs and strings)
 const toObjectId = (val) => {

@@ -1,5 +1,4 @@
 "use strict";
-// src/interfaces/category.interface.ts
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
     if (k2 === undefined) k2 = k;
     var desc = Object.getOwnPropertyDescriptor(m, k);
@@ -34,7 +33,6 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-// src/models/category.model.ts
 const mongoose_1 = __importStar(require("mongoose"));
 const categorySchema = new mongoose_1.Schema({
     name: {
@@ -51,7 +49,12 @@ const categorySchema = new mongoose_1.Schema({
             "A category name must have more or equal than 3 characters",
         ],
     },
-    slug: String,
+    slug: {
+        type: String,
+        unique: true,
+        lowercase: true,
+        trim: true,
+    },
     description: {
         type: String,
         trim: true,
@@ -68,6 +71,26 @@ const categorySchema = new mongoose_1.Schema({
     toJSON: { virtuals: true },
     toObject: { virtuals: true },
 });
+// Pre-save middleware to generate slug from name
+categorySchema.pre("save", function (next) {
+    if (this.isModified("name") && !this.slug) {
+        this.slug = this.name
+            .toLowerCase()
+            .replace(/[^\w\s]/gi, "")
+            .replace(/\s+/g, "-");
+    }
+    next();
+});
+// Virtual for product count
+categorySchema.virtual("productCount", {
+    ref: "Product",
+    localField: "_id",
+    foreignField: "categories",
+    count: true,
+});
+// Indexes for better performance
 categorySchema.index({ slug: 1 });
+categorySchema.index({ name: 1 });
+categorySchema.index({ isActive: 1 });
 const Category = mongoose_1.default.model("Category", categorySchema);
 exports.default = Category;

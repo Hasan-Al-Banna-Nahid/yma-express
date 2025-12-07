@@ -12,6 +12,11 @@ const checkUsers = async () => {
     await mongoose.connect(mongoUri);
 
     const db = mongoose.connection.db;
+    if (!db) {
+      console.error("Error: MongoDB database connection not established.");
+      await mongoose.disconnect();
+      process.exit(1);
+    }
     const usersCollection = db.collection("users");
 
     // Find ALL users with this email (there might be duplicates)

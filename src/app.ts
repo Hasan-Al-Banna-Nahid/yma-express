@@ -17,8 +17,7 @@ import productRoutes from "./app/routes/product.route";
 import cartRoutes from "./app/modules/Cart/cart.routes";
 // import locationRoutes from "./app/routes/location.routes";
 import checkoutRoutes from "./app/routes/checkout.routes";
-import orderRoutes from "./app/routes/order.routes";
-import adminOrderRoutes from "./app/routes/admin/order.routes";
+import userOrderRoutes from "./app/routes/user.order.routes";
 
 const app = express();
 
@@ -66,10 +65,9 @@ app.use("/api/v1/categories", categoryRoutes);
 app.use("/api/v1/products", productRoutes);
 app.use("/api/v1/cart", cartRoutes);
 app.use("/api/v1/checkout", checkoutRoutes);
+app.use("/api/v1/orders", userOrderRoutes); // User order routes
 
 // Order management routes
-app.use("/api/v1/orders", orderRoutes);
-app.use("/api/v1/admin/orders", adminOrderRoutes);
 app.use("/api/v1/admin", adminRoutes); // Add this line
 
 // Health check

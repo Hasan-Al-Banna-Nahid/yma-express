@@ -1,5 +1,5 @@
-// src/interfaces/order.interface.ts
-import { Document, Types } from "mongoose";
+import mongoose from "mongoose";
+import { Types } from "mongoose";
 
 export interface IOrderItem {
   product: Types.ObjectId;
@@ -11,20 +11,15 @@ export interface IOrderItem {
 }
 
 export interface IShippingAddress {
-  // Personal Information
   firstName: string;
   lastName: string;
   email: string;
   phone: string;
-
-  // Location Information
-  country: string;
-  state: string;
-  city: string;
   street: string;
+  city: string;
+  state: string;
+  country: string;
   zipCode: string;
-
-  // Additional Fields
   apartment?: string;
   companyName?: string;
   locationAccessibility?: string;
@@ -35,8 +30,6 @@ export interface IShippingAddress {
   keepOvernight?: boolean;
   hireOccasion?: string;
   notes?: string;
-
-  // Billing Address (if different)
   differentBillingAddress?: boolean;
   billingFirstName?: string;
   billingLastName?: string;
@@ -47,24 +40,22 @@ export interface IShippingAddress {
   billingCompanyName?: string;
 }
 
-// Simplified Bank Details - Single field
-export interface IBankDetails {
-  bankInfo: string; // Single field containing all bank details
-}
-
 export interface IOrder {
-  user: Types.ObjectId;
+  user: mongoose.Types.ObjectId;
   items: IOrderItem[];
   totalAmount: number;
   paymentMethod: "cash_on_delivery" | "online";
   status: "pending" | "confirmed" | "shipped" | "delivered" | "cancelled";
   orderNumber: string;
-  estimatedDeliveryDate: Date;
+  estimatedDeliveryDate?: Date;
   deliveryDate?: Date;
-  invoiceType: "regular" | "corporate";
-  bankDetails?: IBankDetails; // Simplified bank details
+  invoiceType?: "regular" | "corporate";
+  bankDetails?: {
+    bankInfo: string;
+  };
   shippingAddress: IShippingAddress;
   termsAccepted: boolean;
+  adminNotes?: string;
   createdAt?: Date;
   updatedAt?: Date;
 }

@@ -1,0 +1,2158 @@
+{
+  "info": {
+    "_postman_id": "YOUR_UNIQUE_ID",
+    "name": "YMA Backend API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Admin Routes",
+      "item": [
+        {
+          "name": "GET /stats",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/stats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "stats"
+              ]
+            },
+            "description": "Endpoint for GET /stats"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /users",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "users"
+              ]
+            },
+            "description": "Endpoint for GET /users"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /users/:id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/{{id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "users",
+                "{{id}}"
+              ]
+            },
+            "description": "Endpoint for GET /users/:id"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /users",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "users"
+              ]
+            },
+            "description": "Endpoint for POST /users",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"value\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "PATCH /users/:id",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/{{id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "users",
+                "{{id}}"
+              ]
+            },
+            "description": "Endpoint for PATCH /users/:id",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"value\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /users/:id",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/{{id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "users",
+                "{{id}}"
+              ]
+            },
+            "description": "Endpoint for DELETE /users/:id"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /users/change-role",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/change-role",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "users",
+                "change-role"
+              ]
+            },
+            "description": "Endpoint for POST /users/change-role",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"value\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Auth Routes",
+      "item": [
+        {
+          "name": "POST /register",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "register"
+              ]
+            },
+            "description": "Endpoint for POST /register",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"value\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "login"
+              ]
+            },
+            "description": "Endpoint for POST /login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"value\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "logout"
+              ]
+            },
+            "description": "Endpoint for POST /logout",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"value\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /refresh-token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/refresh-token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "refresh-token"
+              ]
+            },
+            "description": "Endpoint for POST /refresh-token",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"value\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /forgot-password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/forgot-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "forgot-password"
+              ]
+            },
+            "description": "Endpoint for POST /forgot-password",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"value\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /reset-password/:token",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/reset-password/{{token}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "reset-password",
+                "{{token}}"
+              ]
+            },
+            "description": "Endpoint for GET /reset-password/:token"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /reset-password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/reset-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "reset-password"
+              ]
+            },
+            "description": "Endpoint for POST /reset-password",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"value\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "PATCH /update-password",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/update-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "update-password"
+              ]
+            },
+            "description": "Endpoint for PATCH /update-password",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"value\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /me",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "me"
+              ]
+            },
+            "description": "Endpoint for GET /me"
+          },
+          "response": []
+        },
+        {
+          "name": "PATCH /update-me",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/update-me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "update-me"
+              ]
+            },
+            "description": "Endpoint for PATCH /update-me",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"value\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Checkout Routes",
+      "item": [
+        {
+          "name": "POST /",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                ""
+              ]
+            },
+            "description": "Endpoint for POST /",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"value\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Inventory Routes",
+      "item": [
+        {
+          "name": "POST /",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                ""
+              ]
+            },
+            "description": "Endpoint for POST /",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"value\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                ""
+              ]
+            },
+            "description": "Endpoint for GET /"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /available",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/available",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "available"
+              ]
+            },
+            "description": "Endpoint for GET /available"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /booked",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/booked",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "booked"
+              ]
+            },
+            "description": "Endpoint for GET /booked"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /check-availability",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/check-availability",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "check-availability"
+              ]
+            },
+            "description": "Endpoint for GET /check-availability"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /release-expired",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/release-expired",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "release-expired"
+              ]
+            },
+            "description": "Endpoint for GET /release-expired"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /:id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/{{id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "{{id}}"
+              ]
+            },
+            "description": "Endpoint for GET /:id"
+          },
+          "response": []
+        },
+        {
+          "name": "PATCH /:id",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/{{id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "{{id}}"
+              ]
+            },
+            "description": "Endpoint for PATCH /:id",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"value\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /:id",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/{{id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "{{id}}"
+              ]
+            },
+            "description": "Endpoint for DELETE /:id"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Invoice Routes",
+      "item": [
+        {
+          "name": "POST /",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                ""
+              ]
+            },
+            "description": "Endpoint for POST /",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"value\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                ""
+              ]
+            },
+            "description": "Endpoint for GET /"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /booking/:bookingId",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/booking/{{bookingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "booking",
+                "{{bookingId}}"
+              ]
+            },
+            "description": "Endpoint for GET /booking/:bookingId"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /generate/:bookingId",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/generate/{{bookingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "generate",
+                "{{bookingId}}"
+              ]
+            },
+            "description": "Endpoint for POST /generate/:bookingId",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"value\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /generate-custom",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/generate-custom",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "generate-custom"
+              ]
+            },
+            "description": "Endpoint for POST /generate-custom",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"value\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /:id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/{{id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "{{id}}"
+              ]
+            },
+            "description": "Endpoint for GET /:id"
+          },
+          "response": []
+        },
+        {
+          "name": "PATCH /:id",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/{{id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "{{id}}"
+              ]
+            },
+            "description": "Endpoint for PATCH /:id",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"value\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /:id",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/{{id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "{{id}}"
+              ]
+            },
+            "description": "Endpoint for DELETE /:id"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Mail Routes",
+      "item": [
+        {
+          "name": "POST /send",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/send",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "send"
+              ]
+            },
+            "description": "Endpoint for POST /send",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"value\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Product Routes",
+      "item": [
+        {
+          "name": "GET /",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                ""
+              ]
+            },
+            "description": "Endpoint for GET /"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /states",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/states",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "states"
+              ]
+            },
+            "description": "Endpoint for GET /states"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /state/:state",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/state/{{state}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "state",
+                "{{state}}"
+              ]
+            },
+            "description": "Endpoint for GET /state/:state"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /featured",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/featured",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "featured"
+              ]
+            },
+            "description": "Endpoint for GET /featured"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /search",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/search",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "search"
+              ]
+            },
+            "description": "Endpoint for GET /search"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /category/:categoryId",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/category/{{categoryId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "category",
+                "{{categoryId}}"
+              ]
+            },
+            "description": "Endpoint for GET /category/:categoryId"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /:id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/{{id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "{{id}}"
+              ]
+            },
+            "description": "Endpoint for GET /:id"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                ""
+              ]
+            },
+            "description": "Endpoint for POST /",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"value\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "PATCH /:id",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/{{id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "{{id}}"
+              ]
+            },
+            "description": "Endpoint for PATCH /:id",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"value\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /:id",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/{{id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "{{id}}"
+              ]
+            },
+            "description": "Endpoint for DELETE /:id"
+          },
+          "response": []
+        },
+        {
+          "name": "PATCH /:id/stock",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/{{id}}/stock",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "{{id}}",
+                "stock"
+              ]
+            },
+            "description": "Endpoint for PATCH /:id/stock",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"value\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "User.Order Routes",
+      "item": [
+        {
+          "name": "GET /my-orders",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/my-orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "my-orders"
+              ]
+            },
+            "description": "Endpoint for GET /my-orders"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /:id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/{{id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "{{id}}"
+              ]
+            },
+            "description": "Endpoint for GET /:id"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Booking Routes",
+      "item": [
+        {
+          "name": "POST /",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                ""
+              ]
+            },
+            "description": "Endpoint for POST /",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"value\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                ""
+              ]
+            },
+            "description": "Endpoint for GET /"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /date-range",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/date-range",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "date-range"
+              ]
+            },
+            "description": "Endpoint for GET /date-range"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /product/:productId",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/product/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "product",
+                "{{productId}}"
+              ]
+            },
+            "description": "Endpoint for GET /product/:productId"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /check-availability",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/check-availability",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "check-availability"
+              ]
+            },
+            "description": "Endpoint for GET /check-availability"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /:id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/{{id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "{{id}}"
+              ]
+            },
+            "description": "Endpoint for GET /:id"
+          },
+          "response": []
+        },
+        {
+          "name": "PATCH /:id",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/{{id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "{{id}}"
+              ]
+            },
+            "description": "Endpoint for PATCH /:id",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"value\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /:id",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/{{id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "{{id}}"
+              ]
+            },
+            "description": "Endpoint for DELETE /:id"
+          },
+          "response": []
+        },
+        {
+          "name": "PATCH /:id/shipping-address",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/{{id}}/shipping-address",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "{{id}}",
+                "shipping-address"
+              ]
+            },
+            "description": "Endpoint for PATCH /:id/shipping-address",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"value\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "PATCH /:id/billing-address",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/{{id}}/billing-address",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "{{id}}",
+                "billing-address"
+              ]
+            },
+            "description": "Endpoint for PATCH /:id/billing-address",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"value\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Cart Routes",
+      "item": [
+        {
+          "name": "PATCH /items",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/items",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "items"
+              ]
+            },
+            "description": "Endpoint for PATCH /items",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"value\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /items/:productId",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/items/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "",
+                "items",
+                "{{productId}}"
+              ]
+            },
+            "description": "Endpoint for DELETE /items/:productId"
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "authToken",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}

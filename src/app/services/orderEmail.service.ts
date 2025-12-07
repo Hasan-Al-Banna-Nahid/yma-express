@@ -1,5 +1,5 @@
 // src/services/orderEmail.service.ts
-import { IOrderModel } from "../models/order.model";
+import Order, { IOrder } from "../models/order.model";
 import {
   sendOrderConfirmationEmail,
   sendDeliveryReminderEmail,
@@ -16,9 +16,7 @@ export {
 };
 
 // Additional order email logic can be added here
-export const getOrdersForDeliveryReminders = async (): Promise<
-  IOrderModel[]
-> => {
+export const getOrdersForDeliveryReminders = async (): Promise<IOrder[]> => {
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
 

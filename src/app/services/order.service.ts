@@ -1,153 +1,93 @@
 // src/services/order.service.ts
-import mongoose, { Types } from "mongoose";
-import Cart from "../modules/Cart/cart.model";
-import Order, { IOrderModel } from "../models/order.model";
-import Product from "../models/product.model";
+import Order, { IOrder } from "../models/order.model";
 import ApiError from "../utils/apiError";
+import mongoose from "mongoose";
 import { generateInvoiceHtml } from "./invoice.service";
-import { sendOrderConfirmationEmail, sendInvoiceEmail } from "./email.service";
-
-export interface CreateOrderData {
-  shippingAddress: any;
-  paymentMethod: "cash_on_delivery" | "online";
-  termsAccepted: boolean;
-  invoiceType?: "regular" | "corporate";
-  bankDetails?: {
-    bankInfo: string; // Simplified to single field
-  };
-}
+import {
+  sendOrderConfirmationEmail,
+  sendInvoiceEmail,
+  sendDeliveryReminderEmail,
+  sendPreDeliveryConfirmationEmail,
+} from "./email.service";
 
 export interface OrderStats {
   totalOrders: number;
   pendingOrders: number;
   confirmedOrders: number;
+  shippedOrders: number;
   deliveredOrders: number;
+  cancelledOrders: number;
   totalRevenue: number;
   monthlyRevenue: number;
 }
 
-export const createOrderFromCart = async (
-  userId: string,
+export interface CreateOrderData {
+  user: mongoose.Types.ObjectId;
+  items: Array<{
+    product: mongoose.Types.ObjectId;
+    name: string;
+    quantity: number;
+    price: number;
+    startDate?: Date;
+    endDate?: Date;
+  }>;
+  shippingAddress: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone: string;
+    street: string;
+    apartment?: string;
+    city: string;
+    state: string;
+    zipCode: string;
+    country: string;
+    deliveryTime?: string;
+    notes?: string;
+  };
+  paymentMethod: "cash_on_delivery" | "bank_transfer" | "credit_card";
+  totalAmount: number;
+  estimatedDeliveryDate: Date;
+}
+
+export const createOrder = async (
   orderData: CreateOrderData
-): Promise<IOrderModel> => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
+): Promise<IOrder> => {
   try {
-    console.log("🛒 [SERVICE] Starting order creation for user:", userId);
+    // Generate order number
+    const prefix = "YMA";
+    const timestamp = Date.now().toString().slice(-6);
+    const random = Math.floor(Math.random() * 1000)
+      .toString()
+      .padStart(3, "0");
+    const orderNumber = `${prefix}-${timestamp}-${random}`;
 
-    // Get user's cart with populated items
-    const cart = await Cart.findOne({ user: new Types.ObjectId(userId) })
-      .populate<{ product: any }>("items.product")
-      .session(session);
-
-    if (!cart || cart.items.length === 0) {
-      throw new ApiError("Cart is empty", 400);
-    }
-
-    // Validate corporate invoice requirements - SIMPLIFIED
-    if (orderData.invoiceType === "corporate") {
-      if (!orderData.bankDetails || !orderData.bankDetails.bankInfo) {
-        throw new ApiError(
-          "Bank details are required for corporate invoices",
-          400
-        );
-      }
-
-      // Validate that bank info is not empty
-      if (orderData.bankDetails.bankInfo.trim() === "") {
-        throw new ApiError("Bank information cannot be empty", 400);
-      }
-    }
-
-    // Validate stock and calculate total
-    let totalAmount = 0;
-    const orderItems = [];
-
-    for (const cartItem of cart.items) {
-      const productId = (cartItem.product as any)._id || cartItem.product;
-      const product = await Product.findById(productId).session(session);
-
-      if (!product) {
-        throw new ApiError(`Product not found`, 404);
-      }
-
-      if (product.stock < cartItem.quantity) {
-        throw new ApiError(
-          `Insufficient stock for ${product.name}. Available: ${product.stock}, Requested: ${cartItem.quantity}`,
-          400
-        );
-      }
-
-      // Update product stock
-      product.stock -= cartItem.quantity;
-      await product.save({ session });
-
-      // Create order item
-      const orderItem = {
-        product: product._id,
-        quantity: cartItem.quantity,
-        price: cartItem.price,
-        name: product.name,
-        startDate: cartItem.startDate,
-        endDate: cartItem.endDate,
-      };
-
-      orderItems.push(orderItem);
-      totalAmount += cartItem.quantity * cartItem.price;
-    }
-
-    // Calculate estimated delivery date (2 days from now)
-    const estimatedDeliveryDate = new Date();
-    estimatedDeliveryDate.setDate(estimatedDeliveryDate.getDate() + 2);
-
-    // Create order with simplified bank details
-    const order = new Order({
-      user: new Types.ObjectId(userId),
-      items: orderItems,
-      totalAmount,
-      paymentMethod: orderData.paymentMethod,
-      shippingAddress: orderData.shippingAddress,
-      termsAccepted: orderData.termsAccepted,
-      estimatedDeliveryDate,
-      invoiceType: orderData.invoiceType || "regular",
-      bankDetails: orderData.bankDetails, // Now just { bankInfo: string }
+    const order = await Order.create({
+      ...orderData,
+      orderNumber,
+      status: "pending",
     });
 
-    await order.save({ session });
-
-    // Clear cart
-    cart.items = [];
-    cart.totalPrice = 0;
-    cart.totalItems = 0;
-    await cart.save({ session });
-
-    await session.commitTransaction();
-    session.endSession();
-
-    // Send order confirmation email
-    const populatedOrder = await order.populate([
-      { path: "user", select: "name email" },
-      { path: "items.product" },
-    ]);
-
-    await sendOrderConfirmationEmail(populatedOrder);
-
-    console.log("✅ [SERVICE] Order created successfully:", order.orderNumber);
+    const populatedOrder = await Order.findById(order._id)
+      .populate("user", "name email phone")
+      .populate("items.product", "name imageCover price");
+    if (!populatedOrder) {
+        throw new ApiError("Failed to retrieve populated order", 500);
+    }
     return populatedOrder;
-  } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
-    console.error("❌ [SERVICE] Order creation failed:", error);
-    throw error;
+  } catch (error: any) {
+    throw new ApiError("Failed to create order", 500);
   }
 };
 
-// ... rest of the methods remain the same
-export const getOrderById = async (orderId: string): Promise<IOrderModel> => {
+export const getOrderById = async (orderId: string): Promise<IOrder> => {
+  if (!mongoose.Types.ObjectId.isValid(orderId)) {
+    throw new ApiError("Invalid order ID", 400);
+  }
+
   const order = await Order.findById(orderId)
     .populate("user", "name email phone")
-    .populate("items.product");
+    .populate("items.product", "name imageCover price");
 
   if (!order) {
     throw new ApiError("Order not found", 404);
@@ -156,19 +96,14 @@ export const getOrderById = async (orderId: string): Promise<IOrderModel> => {
   return order;
 };
 
-export const getUserOrders = async (userId: string): Promise<IOrderModel[]> => {
-  return await Order.find({ user: new Types.ObjectId(userId) })
-    .populate("items.product")
-    .sort({ createdAt: -1 });
-};
-
 export const getAllOrders = async (
   page: number = 1,
   limit: number = 10,
   status?: string,
   startDate?: string,
-  endDate?: string
-): Promise<{ orders: IOrderModel[]; total: number; pages: number }> => {
+  endDate?: string,
+  search?: string
+): Promise<{ orders: IOrder[]; total: number; pages: number }> => {
   const skip = (page - 1) * limit;
 
   const filter: any = {};
@@ -180,9 +115,19 @@ export const getAllOrders = async (
     if (endDate) filter.createdAt.$lte = new Date(endDate);
   }
 
+  if (search) {
+    filter.$or = [
+      { orderNumber: { $regex: search, $options: "i" } },
+      { "shippingAddress.firstName": { $regex: search, $options: "i" } },
+      { "shippingAddress.lastName": { $regex: search, $options: "i" } },
+      { "shippingAddress.email": { $regex: search, $options: "i" } },
+      { "shippingAddress.phone": { $regex: search, $options: "i" } },
+    ];
+  }
+
   const orders = await Order.find(filter)
     .populate("user", "name email phone")
-    .populate("items.product")
+    .populate("items.product", "name imageCover price")
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(limit);
@@ -196,14 +141,48 @@ export const getAllOrders = async (
   };
 };
 
+export const updateOrder = async (
+  orderId: string,
+  updateData: Partial<IOrder>
+): Promise<IOrder> => {
+  if (!mongoose.Types.ObjectId.isValid(orderId)) {
+    throw new ApiError("Invalid order ID", 400);
+  }
+
+  const order = await Order.findById(orderId);
+  if (!order) {
+    throw new ApiError("Order not found", 404);
+  }
+
+  // Don't allow updating order number
+  if (updateData.orderNumber) {
+    delete updateData.orderNumber;
+  }
+
+  Object.assign(order, updateData);
+  await order.save();
+
+  const populatedOrder = await Order.findById(order._id)
+    .populate("user", "name email phone")
+    .populate("items.product", "name imageCover price");
+  if (!populatedOrder) {
+      throw new ApiError("Failed to retrieve populated order after update", 500);
+  }
+  return populatedOrder;
+};
+
 export const updateOrderStatus = async (
   orderId: string,
   status: "pending" | "confirmed" | "shipped" | "delivered" | "cancelled",
   adminNotes?: string
-): Promise<IOrderModel> => {
+): Promise<IOrder> => {
+  if (!mongoose.Types.ObjectId.isValid(orderId)) {
+    throw new ApiError("Invalid order ID", 400);
+  }
+
   const order = await Order.findById(orderId)
     .populate("user", "name email")
-    .populate("items.product");
+    .populate("items.product", "name imageCover price");
 
   if (!order) {
     throw new ApiError("Order not found", 404);
@@ -217,13 +196,14 @@ export const updateOrderStatus = async (
   }
 
   if (adminNotes) {
-    (order as any).adminNotes = adminNotes;
+    order.adminNotes = adminNotes;
   }
 
   await order.save();
 
-  // Send status update email if order is confirmed
+  // Send emails based on status change
   if (status === "confirmed" && previousStatus !== "confirmed") {
+    // Send order confirmation email with invoice attached
     await sendOrderConfirmationEmail(order);
 
     // Generate and send invoice
@@ -234,11 +214,43 @@ export const updateOrderStatus = async (
   return order;
 };
 
+export const deleteOrder = async (orderId: string): Promise<void> => {
+  if (!mongoose.Types.ObjectId.isValid(orderId)) {
+    throw new ApiError("Invalid order ID", 400);
+  }
+
+  const order = await Order.findById(orderId);
+  if (!order) {
+    throw new ApiError("Order not found", 404);
+  }
+
+  // Only allow deleting pending or cancelled orders
+  if (!["pending", "cancelled"].includes(order.status)) {
+    throw new ApiError(
+      "Cannot delete orders that are confirmed, shipped, or delivered",
+      400
+    );
+  }
+
+  await order.deleteOne();
+};
+
 export const getOrderStats = async (): Promise<OrderStats> => {
-  const totalOrders = await Order.countDocuments();
-  const pendingOrders = await Order.countDocuments({ status: "pending" });
-  const confirmedOrders = await Order.countDocuments({ status: "confirmed" });
-  const deliveredOrders = await Order.countDocuments({ status: "delivered" });
+  const [
+    totalOrders,
+    pendingOrders,
+    confirmedOrders,
+    shippedOrders,
+    deliveredOrders,
+    cancelledOrders,
+  ] = await Promise.all([
+    Order.countDocuments(),
+    Order.countDocuments({ status: "pending" }),
+    Order.countDocuments({ status: "confirmed" }),
+    Order.countDocuments({ status: "shipped" }),
+    Order.countDocuments({ status: "delivered" }),
+    Order.countDocuments({ status: "cancelled" }),
+  ]);
 
   const revenueResult = await Order.aggregate([
     { $match: { status: { $in: ["confirmed", "shipped", "delivered"] } } },
@@ -261,31 +273,38 @@ export const getOrderStats = async (): Promise<OrderStats> => {
     totalOrders,
     pendingOrders,
     confirmedOrders,
+    shippedOrders,
     deliveredOrders,
+    cancelledOrders,
     totalRevenue: revenueResult[0]?.total || 0,
     monthlyRevenue: monthlyRevenueResult[0]?.total || 0,
   };
 };
 
-export const generateOrderInvoice = async (
-  orderId: string
-): Promise<string> => {
-  const order = await Order.findById(orderId)
-    .populate("user", "name email phone")
-    .populate("items.product");
+export const getOrdersForDeliveryReminders = async (): Promise<IOrder[]> => {
+  const today = new Date();
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
 
-  if (!order) {
-    throw new ApiError("Order not found", 404);
-  }
+  const dayAfterTomorrow = new Date(today);
+  dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 2);
 
-  return await generateInvoiceHtml(order);
+  return await Order.find({
+    status: { $in: ["confirmed", "shipped"] },
+    estimatedDeliveryDate: {
+      $gte: tomorrow,
+      $lt: dayAfterTomorrow,
+    },
+  })
+    .populate("user", "name email")
+    .populate("items.product", "name imageCover price");
 };
 
 export const searchOrders = async (
   query: string,
   page: number = 1,
   limit: number = 10
-): Promise<{ orders: IOrderModel[]; total: number; pages: number }> => {
+): Promise<{ orders: IOrder[]; total: number; pages: number }> => {
   const skip = (page - 1) * limit;
 
   const searchFilter = {
@@ -300,7 +319,7 @@ export const searchOrders = async (
 
   const orders = await Order.find(searchFilter)
     .populate("user", "name email phone")
-    .populate("items.product")
+    .populate("items.product", "name imageCover price")
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(limit);
@@ -312,4 +331,14 @@ export const searchOrders = async (
     total,
     pages: Math.ceil(total / limit),
   };
+};
+
+export const getOrdersByUserId = async (userId: string): Promise<IOrder[]> => {
+  if (!mongoose.Types.ObjectId.isValid(userId)) {
+    throw new ApiError("Invalid user ID", 400);
+  }
+
+  return await Order.find({ user: new mongoose.Types.ObjectId(userId) })
+    .populate("items.product", "name imageCover price")
+    .sort({ createdAt: -1 });
 };

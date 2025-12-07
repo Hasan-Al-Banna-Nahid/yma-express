@@ -33,36 +33,39 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-// src/models/product.model.ts
 const mongoose_1 = __importStar(require("mongoose"));
 const productSchema = new mongoose_1.Schema({
     name: {
         type: String,
-        required: [true, "A product must have a name"],
+        required: [true, "Product name is required"],
         trim: true,
-        maxlength: [
-            100,
-            "A product name must have less or equal than 100 characters",
-        ],
-        minlength: [
-            10,
-            "A product name must have more or equal than 10 characters",
-        ],
+        maxlength: [100, "Product name cannot exceed 100 characters"],
     },
-    slug: String,
     description: {
         type: String,
-        required: [true, "A product must have a description"],
-        trim: true,
+        required: [true, "Product description is required"],
     },
     summary: {
         type: String,
-        trim: true,
+        maxlength: [500, "Summary cannot exceed 500 characters"],
     },
     price: {
         type: Number,
-        required: [true, "A product must have a price"],
-        min: [0, "Price must be above 0"],
+        required: [true, "Product price is required"],
+        min: [0, "Price cannot be negative"],
+    },
+    perDayPrice: {
+        type: Number,
+        min: [0, "Per day price cannot be negative"],
+    },
+    perWeekPrice: {
+        type: Number,
+        min: [0, "Per week price cannot be negative"],
+    },
+    deliveryAndCollection: {
+        type: String,
+        required: [true, "Delivery and collection information is required"],
+        trim: true,
     },
     priceDiscount: {
         type: Number,
@@ -70,13 +73,26 @@ const productSchema = new mongoose_1.Schema({
             validator: function (value) {
                 return !value || value < this.price;
             },
-            message: "Discount price ({VALUE}) should be below the regular price",
+            message: "Discount price must be below regular price",
         },
     },
-    images: [String],
-    imageCover: {
+    duration: {
+        type: Number,
+        required: [true, "Duration is required"],
+        min: [1, "Duration must be at least 1 hour"],
+    },
+    maxGroupSize: {
+        type: Number,
+        required: [true, "Max group size is required"],
+        min: [1, "Group size must be at least 1"],
+    },
+    difficulty: {
         type: String,
-        required: [true, "A product must have a cover image"],
+        required: [true, "Difficulty level is required"],
+        enum: {
+            values: ["easy", "medium", "difficult"],
+            message: "Difficulty must be easy, medium, or difficult",
+        },
     },
     categories: [
         {
@@ -84,79 +100,184 @@ const productSchema = new mongoose_1.Schema({
             ref: "Category",
         },
     ],
-    ratingsAverage: {
-        type: Number,
-        default: 4.5,
-        min: [1, "Rating must be above 1.0"],
-        max: [5, "Rating must be below 5.0"],
-        set: (val) => Math.round(val * 10) / 10,
-    },
-    ratingsQuantity: {
-        type: Number,
-        default: 0,
-    },
-    duration: {
-        type: Number,
-        required: [true, "A product must have a duration"],
-    },
-    maxGroupSize: {
-        type: Number,
-        required: [true, "A product must have a group size"],
-    },
-    difficulty: {
+    images: [String],
+    imageCover: {
         type: String,
-        required: [true, "A product must have a difficulty"],
-        enum: {
-            values: ["easy", "medium", "difficult"],
-            message: "Difficulty is either: easy, medium, difficult",
+        required: [true, "Image cover is required"],
+    },
+    location: {
+        country: {
+            type: String,
+            default: "England",
+            required: true,
+        },
+        state: {
+            type: String,
+            required: [true, "State is required"],
+            trim: true,
+        },
+        city: {
+            type: String,
+            trim: true,
         },
     },
-    // Reference to Location model
-    location: {
-        type: mongoose_1.Schema.Types.ObjectId,
-        ref: "Location",
-        required: [true, "A product must have a location"],
+    dimensions: {
+        length: {
+            type: Number,
+            required: [true, "Length is required"],
+            min: [1, "Length must be at least 1 foot"],
+        },
+        width: {
+            type: Number,
+            required: [true, "Width is required"],
+            min: [1, "Width must be at least 1 foot"],
+        },
+        height: {
+            type: Number,
+            required: [true, "Height is required"],
+            min: [1, "Height must be at least 1 foot"],
+        },
     },
-    // Date availability
     availableFrom: {
         type: Date,
-        required: [true, "A product must have an available from date"],
+        required: [true, "Available from date is required"],
     },
     availableUntil: {
         type: Date,
-        required: [true, "A product must have an available until date"],
-        validate: {
-            validator: function (value) {
-                return value > this.availableFrom;
-            },
-            message: "Available until date must be after available from date",
-        },
+        required: [true, "Available until date is required"],
     },
-    isActive: {
+    size: {
+        type: String,
+        trim: true,
+    },
+    active: {
         type: Boolean,
         default: true,
-        select: false,
     },
-    createdAt: {
+    stock: {
+        type: Number,
+        required: [true, "Stock quantity is required"],
+        min: [0, "Stock cannot be negative"],
+        default: 0,
+    },
+    isSensitive: {
+        type: Boolean,
+        required: [true, "Sensitive item status is required"],
+        default: false,
+    },
+    // New fields
+    dateAdded: {
         type: Date,
-        default: Date.now(),
-        select: false,
+        default: Date.now,
+    },
+    material: {
+        type: String,
+        required: [true, "Material information is required"],
+        trim: true,
+    },
+    design: {
+        type: String,
+        required: [true, "Design information is required"],
+        trim: true,
+    },
+    ageRange: {
+        min: {
+            type: Number,
+            required: [true, "Minimum age is required"],
+            min: [0, "Minimum age cannot be negative"],
+        },
+        max: {
+            type: Number,
+            required: [true, "Maximum age is required"],
+            validate: {
+                validator: function (value) {
+                    return value >= this.ageRange.min;
+                },
+                message: "Maximum age must be greater than or equal to minimum age",
+            },
+        },
+        unit: {
+            type: String,
+            required: [true, "Age unit is required"],
+            enum: {
+                values: ["years", "months"],
+                message: "Age unit must be years or months",
+            },
+        },
+    },
+    safetyFeatures: {
+        type: [String],
+        required: [true, "At least one safety feature is required"],
+        validate: {
+            validator: function (value) {
+                return value.length > 0;
+            },
+            message: "At least one safety feature is required",
+        },
+    },
+    qualityAssurance: {
+        isCertified: {
+            type: Boolean,
+            required: [true, "Certification status is required"],
+            default: false,
+        },
+        certification: {
+            type: String,
+            trim: true,
+        },
+        warrantyPeriod: {
+            type: Number,
+            min: [0, "Warranty period cannot be negative"],
+        },
+        warrantyDetails: {
+            type: String,
+            trim: true,
+        },
     },
 }, {
+    timestamps: true,
     toJSON: { virtuals: true },
     toObject: { virtuals: true },
 });
-// Indexes for better query performance
-productSchema.index({ price: 1, ratingsAverage: -1 });
-productSchema.index({ slug: 1 });
-productSchema.index({ location: 1 });
-productSchema.index({ availableFrom: 1, availableUntil: 1 });
-productSchema.index({ isActive: 1 });
-// Virtual populate
-productSchema.virtual("reviews", {
-    ref: "Review",
-    foreignField: "product",
-    localField: "_id",
+// Virtual for total area (length * width)
+productSchema.virtual("dimensions.area").get(function () {
+    return this.dimensions.length * this.dimensions.width;
 });
+// Virtual for formatted dimensions
+productSchema
+    .virtual("formattedDimensions")
+    .get(function () {
+    return `${this.dimensions.length}ft x ${this.dimensions.width}ft x ${this.dimensions.height}ft`;
+});
+// Virtual for formatted age range
+productSchema.virtual("formattedAgeRange").get(function () {
+    return `${this.ageRange.min}-${this.ageRange.max} ${this.ageRange.unit}`;
+});
+// Virtual for isActive (alias for active)
+productSchema.virtual("isActive").get(function () {
+    return this.active;
+});
+// Virtual for available status
+productSchema.virtual("isAvailable").get(function () {
+    const now = new Date();
+    return (this.active &&
+        this.stock > 0 &&
+        now >= this.availableFrom &&
+        now <= this.availableUntil);
+});
+// Virtual for warranty status
+productSchema.virtual("hasWarranty").get(function () {
+    return (this.qualityAssurance.warrantyPeriod &&
+        this.qualityAssurance.warrantyPeriod > 0);
+});
+// Index for better search performance
+productSchema.index({ "location.country": 1, "location.state": 1 });
+productSchema.index({ price: 1 });
+productSchema.index({ categories: 1 });
+productSchema.index({ "dimensions.length": 1, "dimensions.width": 1 });
+productSchema.index({ "ageRange.min": 1, "ageRange.max": 1 });
+productSchema.index({ material: 1 });
+productSchema.index({ isSensitive: 1 });
+productSchema.index({ "qualityAssurance.isCertified": 1 });
 const Product = mongoose_1.default.model("Product", productSchema);
 exports.default = Product;

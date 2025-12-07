@@ -1,7 +1,7 @@
 // src/interfaces/booking.interface.ts
 import mongoose from "mongoose";
-import { IUser } from "./user.interface";
-import { IAddress } from "./address.interface";
+import { IUser } from "../../interfaces/user.interface";
+import { IAddress } from "../../interfaces/address.interface";
 
 // Allow `user` to be either an ObjectId or a populated IUser doc
 export interface IBooking {

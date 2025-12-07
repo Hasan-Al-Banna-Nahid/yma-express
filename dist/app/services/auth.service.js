@@ -67,24 +67,43 @@ const login = async (email, password) => {
 };
 exports.login = login;
 // --- FORGOT PASSWORD ---
+// In auth.service.ts - forgotPassword function
 const forgotPassword = async (email) => {
     const user = await user_model_1.default.findOne({ email });
     if (!user) {
-        throw new apiError_1.default("There is no user with that email address.", 404);
+        // Don't reveal that email doesn't exist (security)
+        console.log(`Password reset requested for non-existent email: ${email}`);
+        return; // Silent success for security
     }
     const resetToken = user.createPasswordResetToken();
     await user.save({ validateBeforeSave: false });
     const resetURL = `${process.env.BASE_URL}/auth/reset-password/${resetToken}`;
     try {
         await (0, email_service_1.sendPasswordResetEmail)(user.email, user.name || "there", resetURL);
+        console.log(`Password reset email sent to: ${user.email}`);
         return resetToken;
     }
     catch (err) {
-        console.error("Email send error:", err.message); // Log for debugging
+        console.error("🔴 SendGrid Email Error Details:", {
+            message: err.message,
+            code: err.code,
+            response: err.response?.body,
+            stack: err.stack,
+        });
+        // Reset the token since email failed
         user.passwordResetToken = undefined;
         user.passwordResetExpires = undefined;
         await user.save({ validateBeforeSave: false });
-        throw new apiError_1.default("There was an error sending the email. Try again later!", 500);
+        // More specific error messages
+        if (err.code === 401 || err.response?.statusCode === 401) {
+            throw new apiError_1.default("Email service configuration error. Please contact support.", 500);
+        }
+        else if (err.code === 403) {
+            throw new apiError_1.default("Email sending permission denied. Please contact support.", 500);
+        }
+        else {
+            throw new apiError_1.default("There was an error sending the email. Try again later!", 500);
+        }
     }
 };
 exports.forgotPassword = forgotPassword;
