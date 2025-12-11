@@ -47,9 +47,8 @@ const productSchema: Schema = new Schema(
       },
     },
     duration: {
-      type: Number,
+      type: String,
       required: [true, "Duration is required"],
-      min: [1, "Duration must be at least 1 hour"],
     },
     maxGroupSize: {
       type: Number,
@@ -135,8 +134,6 @@ const productSchema: Schema = new Schema(
       required: [true, "Sensitive item status is required"],
       default: false,
     },
-
-    // New fields
     dateAdded: {
       type: Date,
       default: Date.now,
@@ -197,8 +194,8 @@ const productSchema: Schema = new Schema(
         trim: true,
       },
       warrantyPeriod: {
-        type: Number,
-        min: [0, "Warranty period cannot be negative"],
+        type: String,
+        trim: true,
       },
       warrantyDetails: {
         type: String,
@@ -213,29 +210,24 @@ const productSchema: Schema = new Schema(
   }
 );
 
-// Virtual for total area (length * width)
 productSchema.virtual("dimensions.area").get(function (this: IProductModel) {
   return this.dimensions.length * this.dimensions.width;
 });
 
-// Virtual for formatted dimensions
 productSchema
   .virtual("formattedDimensions")
   .get(function (this: IProductModel) {
     return `${this.dimensions.length}ft x ${this.dimensions.width}ft x ${this.dimensions.height}ft`;
   });
 
-// Virtual for formatted age range
 productSchema.virtual("formattedAgeRange").get(function (this: IProductModel) {
   return `${this.ageRange.min}-${this.ageRange.max} ${this.ageRange.unit}`;
 });
 
-// Virtual for isActive (alias for active)
 productSchema.virtual("isActive").get(function (this: IProductModel) {
   return this.active;
 });
 
-// Virtual for available status
 productSchema.virtual("isAvailable").get(function (this: IProductModel) {
   const now = new Date();
   return (
@@ -246,15 +238,13 @@ productSchema.virtual("isAvailable").get(function (this: IProductModel) {
   );
 });
 
-// Virtual for warranty status
 productSchema.virtual("hasWarranty").get(function (this: IProductModel) {
   return (
     this.qualityAssurance.warrantyPeriod &&
-    this.qualityAssurance.warrantyPeriod > 0
+    this.qualityAssurance.warrantyPeriod.length > 0
   );
 });
 
-// Index for better search performance
 productSchema.index({ "location.country": 1, "location.state": 1 });
 productSchema.index({ price: 1 });
 productSchema.index({ categories: 1 });

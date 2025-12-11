@@ -1,10 +1,31 @@
-// src/controllers/product.controller.ts
 import { Request, Response, NextFunction } from "express";
 import asyncHandler from "../../utils/asyncHandler";
 import * as productService from "./product.service";
 import ApiError from "../../utils/apiError";
-import { AuthenticatedRequest } from "../../middlewares/auth.middleware";
 import { Types } from "mongoose";
+
+const validateRequiredFields = (
+  body: any,
+  requiredFields: string[]
+): string[] => {
+  const missing: string[] = [];
+
+  requiredFields.forEach((field) => {
+    const value = body[field];
+
+    if (value === undefined) {
+      missing.push(field);
+    } else if (typeof value === "string" && value.trim() === "") {
+      missing.push(field);
+    } else if (Array.isArray(value) && value.length === 0) {
+      missing.push(field);
+    } else if (value === null) {
+      missing.push(field);
+    }
+  });
+
+  return missing;
+};
 
 export const createProduct = asyncHandler(
   async (req: Request, res: Response, next: NextFunction) => {
@@ -20,7 +41,7 @@ export const createProduct = asyncHandler(
       duration,
       maxGroupSize,
       difficulty,
-      categories, // Expecting array of category IDs
+      categories,
       images,
       imageCover,
       location,
@@ -38,12 +59,6 @@ export const createProduct = asyncHandler(
       qualityAssurance,
     } = req.body;
 
-    console.log(
-      "🆕 [CONTROLLER] Creating product with categories:",
-      categories
-    );
-
-    // Validate required fields
     const requiredFields = [
       "name",
       "description",
@@ -60,7 +75,6 @@ export const createProduct = asyncHandler(
       "availableFrom",
       "availableUntil",
       "stock",
-      "isSensitive",
       "material",
       "design",
       "ageRange",
@@ -68,7 +82,11 @@ export const createProduct = asyncHandler(
       "qualityAssurance",
     ];
 
-    const missingFields = requiredFields.filter((field) => !req.body[field]);
+    if (isSensitive === undefined) {
+      throw new ApiError("isSensitive field is required", 400);
+    }
+
+    const missingFields = validateRequiredFields(req.body, requiredFields);
     if (missingFields.length > 0) {
       throw new ApiError(
         `Missing required fields: ${missingFields.join(", ")}`,
@@ -76,24 +94,20 @@ export const createProduct = asyncHandler(
       );
     }
 
-    // Validate categories is an array
     if (!Array.isArray(categories) || categories.length === 0) {
       throw new ApiError("Categories must be a non-empty array", 400);
     }
 
-    // Validate each category ID format
     for (const categoryId of categories) {
       if (!Types.ObjectId.isValid(categoryId)) {
         throw new ApiError(`Invalid category ID: ${categoryId}`, 400);
       }
     }
 
-    // Validate location
     if (!location || !location.state) {
       throw new ApiError("Location state is required", 400);
     }
 
-    // Validate dimensions
     if (
       !dimensions ||
       !dimensions.length ||
@@ -114,7 +128,6 @@ export const createProduct = asyncHandler(
       throw new ApiError("Dimensions must be at least 1 foot", 400);
     }
 
-    // Validate age range
     if (!ageRange || !ageRange.min || !ageRange.max || !ageRange.unit) {
       throw new ApiError("Age range (min, max, unit) is required", 400);
     }
@@ -131,12 +144,10 @@ export const createProduct = asyncHandler(
       throw new ApiError("Age unit must be 'years' or 'months'", 400);
     }
 
-    // Validate safety features
     if (!Array.isArray(safetyFeatures) || safetyFeatures.length === 0) {
       throw new ApiError("At least one safety feature is required", 400);
     }
 
-    // Validate quality assurance
     if (
       !qualityAssurance ||
       typeof qualityAssurance.isCertified !== "boolean"
@@ -159,7 +170,7 @@ export const createProduct = asyncHandler(
       duration,
       maxGroupSize,
       difficulty,
-      categories, // Array of category IDs
+      categories,
       images,
       imageCover,
       location: {
@@ -176,7 +187,7 @@ export const createProduct = asyncHandler(
       size,
       active,
       stock,
-      isSensitive,
+      isSensitive: isSensitive || false,
       material,
       design,
       ageRange: {
@@ -216,15 +227,6 @@ export const getAllProducts = asyncHandler(
       ? parseFloat(req.query.maxPrice as string)
       : undefined;
 
-    console.log("📋 [CONTROLLER] Getting all products:", {
-      page,
-      limit,
-      state,
-      category,
-      minPrice,
-      maxPrice,
-    });
-
     const result = await productService.getAllProducts(
       page,
       limit,
@@ -253,9 +255,6 @@ export const getAllProducts = asyncHandler(
 export const getProduct = asyncHandler(
   async (req: Request, res: Response, next: NextFunction) => {
     const productId = req.params.id;
-
-    console.log("🔍 [CONTROLLER] Getting product:", productId);
-
     const product = await productService.getProductById(productId);
 
     res.status(200).json({
@@ -272,9 +271,6 @@ export const updateProduct = asyncHandler(
     const productId = req.params.id;
     const updateData = req.body;
 
-    console.log("🔄 [CONTROLLER] Updating product:", productId);
-
-    // Validate age range if provided
     if (updateData.ageRange) {
       const { min, max, unit } = updateData.ageRange;
 
@@ -291,7 +287,6 @@ export const updateProduct = asyncHandler(
       }
     }
 
-    // Validate safety features if provided
     if (updateData.safetyFeatures !== undefined) {
       if (!Array.isArray(updateData.safetyFeatures)) {
         throw new ApiError("Safety features must be an array", 400);
@@ -301,7 +296,6 @@ export const updateProduct = asyncHandler(
       }
     }
 
-    // Validate quality assurance if provided
     if (updateData.qualityAssurance) {
       if (
         updateData.qualityAssurance.isCertified !== undefined &&
@@ -311,10 +305,9 @@ export const updateProduct = asyncHandler(
       }
     }
 
-    // If location is provided in update, ensure it has the right structure
     if (updateData.location) {
       updateData.location = {
-        country: "England", // Always England
+        country: "England",
         state: updateData.location.state || "",
         city: updateData.location.city || "",
       };
@@ -335,9 +328,6 @@ export const updateProduct = asyncHandler(
 export const deleteProduct = asyncHandler(
   async (req: Request, res: Response, next: NextFunction) => {
     const productId = req.params.id;
-
-    console.log("🗑️ [CONTROLLER] Deleting product:", productId);
-
     await productService.deleteProduct(productId);
 
     res.status(200).json({
@@ -350,9 +340,6 @@ export const deleteProduct = asyncHandler(
 export const getProductsByState = asyncHandler(
   async (req: Request, res: Response, next: NextFunction) => {
     const state = req.params.state;
-
-    console.log("🗺️ [CONTROLLER] Getting products by state:", state);
-
     const products = await productService.getProductsByState(state);
 
     res.status(200).json({
@@ -367,8 +354,6 @@ export const getProductsByState = asyncHandler(
 
 export const getAvailableStates = asyncHandler(
   async (req: Request, res: Response, next: NextFunction) => {
-    console.log("🌍 [CONTROLLER] Getting available states");
-
     const states = await productService.getAvailableStates();
 
     res.status(200).json({
@@ -386,11 +371,6 @@ export const updateProductStock = asyncHandler(
     const productId = req.params.id;
     const { stock } = req.body;
 
-    console.log("📦 [CONTROLLER] Updating product stock:", {
-      productId,
-      stock,
-    });
-
     if (stock === undefined || stock < 0) {
       throw new ApiError("Valid stock quantity is required", 400);
     }
@@ -407,13 +387,9 @@ export const updateProductStock = asyncHandler(
   }
 );
 
-// NEW: Get featured products
 export const getFeaturedProducts = asyncHandler(
   async (req: Request, res: Response, next: NextFunction) => {
     const limit = parseInt(req.query.limit as string) || 8;
-
-    console.log("⭐ [CONTROLLER] Getting featured products");
-
     const products = await productService.getFeaturedProducts(limit);
 
     res.status(200).json({
@@ -426,14 +402,11 @@ export const getFeaturedProducts = asyncHandler(
   }
 );
 
-// NEW: Search products
 export const searchProducts = asyncHandler(
   async (req: Request, res: Response, next: NextFunction) => {
     const query = req.query.q as string;
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
-
-    console.log("🔍 [CONTROLLER] Searching products:", { query, page, limit });
 
     if (!query || query.trim().length < 2) {
       throw new ApiError(
@@ -464,18 +437,11 @@ export const searchProducts = asyncHandler(
   }
 );
 
-// NEW: Get products by category
 export const getProductsByCategory = asyncHandler(
   async (req: Request, res: Response, next: NextFunction) => {
     const categoryId = req.params.categoryId;
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
-
-    console.log("📁 [CONTROLLER] Getting products by category:", {
-      categoryId,
-      page,
-      limit,
-    });
 
     const result = await productService.getProductsByCategory(
       categoryId,

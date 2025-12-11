@@ -1,5 +1,3 @@
-// src/services/product.service.ts
-
 import Category from "../Category/category.model";
 import Product, { IProductModel } from "./product.model";
 import ApiError from "../../utils/apiError";
@@ -9,19 +7,10 @@ import { CreateProductData } from "./product.interface";
 export const createProduct = async (
   productData: CreateProductData
 ): Promise<IProductModel> => {
-  console.log("🆕 [SERVICE] Creating new product with categories:", {
-    name: productData.name,
-    categories: productData.categories,
-  });
-
-  // Validate categories exist
   if (productData.categories && productData.categories.length > 0) {
-    // Convert string IDs to ObjectId
     const categoryIds = productData.categories.map(
       (id) => new Types.ObjectId(id)
     );
-
-    // Check if all categories exist and are active
     const categories = await Category.find({
       _id: { $in: categoryIds },
       isActive: true,
@@ -31,13 +20,11 @@ export const createProduct = async (
       throw new ApiError("One or more categories are invalid or inactive", 400);
     }
 
-    // Replace string IDs with ObjectId instances
     productData.categories = categoryIds as any;
   } else {
     throw new ApiError("At least one category is required", 400);
   }
 
-  // Auto-set country to England
   const productWithLocation = {
     ...productData,
     location: {
@@ -50,14 +37,12 @@ export const createProduct = async (
 
   const product = await Product.create(productWithLocation);
 
-  // Populate category details
   await product.populate({
     path: "categories",
     select: "name slug description image",
     match: { isActive: true },
   });
 
-  console.log("✅ [SERVICE] Product created successfully:", product._id);
   return product;
 };
 
@@ -65,20 +50,14 @@ export const updateProduct = async (
   productId: string,
   updateData: any
 ): Promise<IProductModel> => {
-  console.log("🔄 [SERVICE] Updating product:", productId);
-
   if (!Types.ObjectId.isValid(productId)) {
     throw new ApiError("Invalid product ID", 400);
   }
 
-  // Validate categories if being updated
   if (updateData.categories && updateData.categories.length > 0) {
-    // Convert string IDs to ObjectId
     const categoryIds = updateData.categories.map(
       (id: string) => new Types.ObjectId(id)
     );
-
-    // Check if all categories exist and are active
     const categories = await Category.find({
       _id: { $in: categoryIds },
       isActive: true,
@@ -88,11 +67,9 @@ export const updateProduct = async (
       throw new ApiError("One or more categories are invalid or inactive", 400);
     }
 
-    // Replace string IDs with ObjectId instances
     updateData.categories = categoryIds;
   }
 
-  // Handle location update
   if (updateData.location) {
     updateData.location = {
       country: "England",
@@ -114,7 +91,6 @@ export const updateProduct = async (
     throw new ApiError("Product not found", 404);
   }
 
-  console.log("✅ [SERVICE] Product updated successfully");
   return product;
 };
 
@@ -127,20 +103,16 @@ export const getAllProducts = async (
   maxPrice?: number
 ): Promise<{ products: IProductModel[]; total: number; pages: number }> => {
   const skip = (page - 1) * limit;
-
   const filter: any = { active: true };
 
-  // Filter by state
   if (state) {
     filter["location.state"] = { $regex: state, $options: "i" };
   }
 
-  // Filter by category
   if (category && Types.ObjectId.isValid(category)) {
     filter.categories = new Types.ObjectId(category);
   }
 
-  // Filter by price range
   if (minPrice !== undefined || maxPrice !== undefined) {
     filter.price = {};
     if (minPrice !== undefined) filter.price.$gte = minPrice;
@@ -182,8 +154,6 @@ export const getProductById = async (
 };
 
 export const deleteProduct = async (productId: string): Promise<void> => {
-  console.log("🗑️ [SERVICE] Deleting product:", productId);
-
   if (!Types.ObjectId.isValid(productId)) {
     throw new ApiError("Invalid product ID", 400);
   }
@@ -197,15 +167,11 @@ export const deleteProduct = async (productId: string): Promise<void> => {
   if (!product) {
     throw new ApiError("Product not found", 404);
   }
-
-  console.log("✅ [SERVICE] Product deleted successfully");
 };
 
 export const getProductsByState = async (
   state: string
 ): Promise<IProductModel[]> => {
-  console.log("🗺️ [SERVICE] Getting products by state:", state);
-
   const products = await Product.find({
     "location.state": { $regex: state, $options: "i" },
     active: true,
@@ -223,8 +189,6 @@ export const updateProductStock = async (
   productId: string,
   newStock: number
 ): Promise<IProductModel> => {
-  console.log("📦 [SERVICE] Updating product stock:", { productId, newStock });
-
   if (!Types.ObjectId.isValid(productId)) {
     throw new ApiError("Invalid product ID", 400);
   }
@@ -243,16 +207,12 @@ export const updateProductStock = async (
     throw new ApiError("Product not found", 404);
   }
 
-  console.log("✅ [SERVICE] Product stock updated successfully");
   return product;
 };
 
-// NEW: Get featured products
 export const getFeaturedProducts = async (
   limit: number = 8
 ): Promise<IProductModel[]> => {
-  console.log("⭐ [SERVICE] Getting featured products");
-
   const products = await Product.find({
     active: true,
     stock: { $gt: 0 },
@@ -264,14 +224,12 @@ export const getFeaturedProducts = async (
   return products;
 };
 
-// NEW: Search products
 export const searchProducts = async (
   query: string,
   page: number = 1,
   limit: number = 10
 ): Promise<{ products: IProductModel[]; total: number; pages: number }> => {
   const skip = (page - 1) * limit;
-
   const searchFilter = {
     active: true,
     $or: [
@@ -298,7 +256,6 @@ export const searchProducts = async (
   };
 };
 
-// NEW: Get products by category
 export const getProductsByCategory = async (
   categoryId: string,
   page: number = 1,

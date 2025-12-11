@@ -10,10 +10,10 @@ export interface IProduct {
   perWeekPrice?: number;
   deliveryAndCollection: string;
   priceDiscount?: number;
-  duration: number;
+  duration: string;
   maxGroupSize: number;
   difficulty: "easy" | "medium" | "difficult";
-  categories: Types.ObjectId[]; // Changed from string[] to Types.ObjectId[]
+  categories: Types.ObjectId[];
   images: string[];
   imageCover: string;
   location: {
@@ -43,7 +43,7 @@ export interface IProduct {
   qualityAssurance: {
     isCertified: boolean;
     certification?: string;
-    warrantyPeriod?: number;
+    warrantyPeriod?: string;
     warrantyDetails?: string;
   };
   createdAt?: Date;
@@ -59,10 +59,10 @@ export interface CreateProductData {
   perWeekPrice?: number;
   deliveryAndCollection: string;
   priceDiscount?: number;
-  duration: number;
+  duration: string;
   maxGroupSize: number;
   difficulty: "easy" | "medium" | "difficult";
-  categories: string[]; // Accept string IDs from request
+  categories: string[];
   images: string[];
   imageCover: string;
   location: {
@@ -91,7 +91,7 @@ export interface CreateProductData {
   qualityAssurance: {
     isCertified: boolean;
     certification?: string;
-    warrantyPeriod?: number;
+    warrantyPeriod?: string;
     warrantyDetails?: string;
   };
 }
