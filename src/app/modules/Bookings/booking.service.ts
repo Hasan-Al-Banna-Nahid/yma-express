@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 import ApiError from "../../utils/apiError";
 import Booking, { IBookingModel } from "./booking.model";
 import { IBooking } from "./booking.interface";
-import { IAddress } from "../../interfaces/address.interface";
+import { IAddress } from "../UserOrder/address.interface";
 import { normalizeIdOrThrow } from "../../utils/objectId";
 // import Inventory from "../models/inventory.model"; // optional if you track per-date items
 

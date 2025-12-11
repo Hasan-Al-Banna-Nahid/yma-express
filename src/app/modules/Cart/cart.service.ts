@@ -1,5 +1,5 @@
 import Cart, { ICartModel } from "./cart.model";
-import Product from "../../models/product.model";
+import Product from "../Product/product.model";
 import ApiError from "../../utils/apiError";
 import { Types } from "mongoose";
 

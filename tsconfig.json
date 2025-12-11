@@ -12,7 +12,11 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     // "noEmit": true,
-    "allowSyntheticDefaultImports": true
+    "allowSyntheticDefaultImports": true,
+    "baseUrl": ".",
+    "paths": {
+      "@app/*": ["./src/app/*"]
+    }
   },
   "typeRoots": ["./src/app/types", "./node_modules/@types"],
 

@@ -1,6 +1,6 @@
 // src/utils/objectId.ts
 import mongoose, { Types } from "mongoose";
-import ApiError from "../utils/apiError";
+import ApiError from "./apiError";
 
 function diag(label: string, v: string) {
   if (process.env.DEBUG_ID === "1") {

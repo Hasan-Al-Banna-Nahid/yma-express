@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import ApiError from "../utils/apiError";
-import { IUser } from "../interfaces/user.interface";
+import { IUser } from "../modules/Auth/user.interface";
 import mongoose from "mongoose";
 
 type AuthenticatedRequest = Request & { user: IUser };

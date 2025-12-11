@@ -2,8 +2,8 @@
 import { Request, Response, NextFunction } from "express";
 import mongoose, { Types } from "mongoose";
 import ApiError from "../../utils/apiError";
-import { IUser } from "../../interfaces/user.interface";
-import { IAddress } from "../../interfaces/address.interface";
+import { IUser } from "../Auth/user.interface";
+import { IAddress } from "../UserOrder/address.interface";
 import Booking from "./booking.model";
 import { BookingService } from "./booking.service";
 import { toObjectId, normalizeIdOrThrow } from "../../utils/objectId";

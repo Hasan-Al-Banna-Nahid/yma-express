@@ -2,8 +2,8 @@ import dotenv from "dotenv";
 dotenv.config();
 import http from "http";
 import app from "./app";
-import { config } from "./app/config/config";
-import connectDB from "./app/config/db";
+import { config } from "../src/app/config/config";
+import connectDB from "../src/app/config/db";
 
 const server = http.createServer(app);
 

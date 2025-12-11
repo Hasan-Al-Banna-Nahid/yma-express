@@ -4,7 +4,7 @@ dotenv.config();
 import jwt, { type Secret, type SignOptions } from "jsonwebtoken";
 import crypto from "crypto";
 import { HydratedDocument } from "mongoose";
-import { IUser } from "../interfaces/user.interface";
+import { IUser } from "../modules/Auth/user.interface";
 
 // ----- Env + types -----
 const ACCESS_SECRET_ENV = process.env.JWT_SECRET!;

@@ -5,19 +5,19 @@ import cookieParser from "cookie-parser";
 import path from "path";
 
 // Import routes
-import authRouter from "./app/routes/auth.route";
+import authRouter from "../src/app/modules/Auth/auth.route";
 import bookingRouter from "./app/modules/Bookings/booking.route";
-import inventoryRouter from "./app/routes/inventory.route";
+import inventoryRouter from "./app/modules/Inventory/inventory.route";
 // import invoiceRouter from "./app/routes/invoice.route"; // Remove if not needed
-import adminRoutes from "./app/routes/admin.routes";
-import { globalErrorHandler } from "./app/utils/apiError";
-import mailRoute from "./app/routes/mail.route";
-import categoryRoutes from "./app/routes/category.routes";
-import productRoutes from "./app/routes/product.route";
+import adminRoutes from "./app/modules/Admin/admin.routes";
+import { globalErrorHandler } from "../src/app/utils/apiError";
+import mailRoute from "./app/modules/Mail/mail.route";
+import categoryRoutes from "./app/modules/Category/category.routes";
+import productRoutes from "./app/modules/Product/product.route";
 import cartRoutes from "./app/modules/Cart/cart.routes";
 // import locationRoutes from "./app/routes/location.routes";
-import checkoutRoutes from "./app/routes/checkout.routes";
-import userOrderRoutes from "./app/routes/user.order.routes";
+import checkoutRoutes from "./app/modules/Checkout/checkout.routes";
+import userOrderRoutes from "./app/modules/UserOrder/user.order.routes";
 
 const app = express();
 
@@ -37,7 +37,7 @@ app.use(
       return callback(new Error("Not allowed by CORS"));
     },
     credentials: true,
-    methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS", "PUT"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );

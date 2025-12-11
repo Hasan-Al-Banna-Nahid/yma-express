@@ -2,8 +2,8 @@
 import { Request, Response, NextFunction } from "express";
 import asyncHandler from "../utils/asyncHandler";
 import ApiError from "../utils/apiError";
-import { IUser } from "../interfaces/user.interface";
-import { protect as verifyAccessToken } from "../services/auth.service";
+import { IUser } from "../modules/Auth/user.interface";
+import { protect as verifyAccessToken } from "../modules/Auth/auth.service";
 import jwt from "jsonwebtoken";
 
 export type AuthenticatedRequest = Request & { user: IUser };
