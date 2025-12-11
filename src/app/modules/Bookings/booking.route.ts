@@ -11,15 +11,18 @@ import {
   updateBillingAddress,
   updateShippingAddress,
 } from "./booking.controller";
-import { protectRoute, restrictTo } from "../../middlewares/auth.middleware";
-import { protect } from "../Auth/auth.service";
+import {
+  protect,
+  restrictTo,
+} from "../../middlewares/authorization.middleware";
+
 import { validateAddressBody } from "../../middlewares/validate.middleware";
 
 const router = express.Router();
 
 // Protect all routes after this middleware
-router.use(protectRoute);
 
+router.use(protect);
 router.post("/", createBookingHandler);
 router.get("/", getBookingsHandler);
 router.get("/date-range", getBookingsByDateRangeHandler);
@@ -30,7 +33,7 @@ router.patch("/:id", updateBookingHandler);
 router.delete("/:id", deleteBookingHandler);
 router.patch(
   "/:id/shipping-address",
-  protectRoute,
+
   validateAddressBody, // optional but recommended
   updateShippingAddress
 );
@@ -38,7 +41,7 @@ router.patch(
 // PATCH /api/bookings/:id/billing-address
 router.patch(
   "/:id/billing-address",
-  protectRoute,
+
   validateAddressBody, // optional but recommended
   updateBillingAddress
 );

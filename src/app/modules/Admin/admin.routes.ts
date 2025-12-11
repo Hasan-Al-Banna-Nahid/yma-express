@@ -4,6 +4,7 @@ import * as authController from "../Auth/auth.controller";
 import {
   restrictTo,
   canManageUser,
+  protect,
 } from "../../middlewares/authorization.middleware";
 import { upload } from "../../utils/cloudinary.util";
 
@@ -11,7 +12,7 @@ const router = express.Router();
 
 // Protect all admin routes
 router.use(authController.protectRoute);
-
+router.use(protect);
 // Get system stats - superadmin & admin only
 router.get(
   "/stats",

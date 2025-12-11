@@ -13,9 +13,10 @@ import {
 } from "./auth.controller";
 import { protectRoute, restrictTo } from "../../middlewares/auth.middleware";
 import { upload } from "../../utils/cloudinary.util";
+import { protect } from "../../middlewares/authorization.middleware";
 
 const router = express.Router();
-
+router.use(protect);
 // Public routes
 router.post("/register", upload.single("photo"), register);
 router.post("/login", loginUser);
