@@ -16,7 +16,7 @@ import { upload } from "../../utils/cloudinary.util";
 import { protect } from "../../middlewares/authorization.middleware";
 
 const router = express.Router();
-router.use(protect);
+
 // Public routes
 router.post("/register", upload.single("photo"), register);
 router.post("/login", loginUser);
@@ -39,7 +39,7 @@ router.get("/me", getMe);
 router.patch("/update-me", upload.single("photo"), updateMe);
 
 // Admin only routes
-router.use(restrictTo("admin"));
+
 // (add admin-only routes here)
 
 export default router;
