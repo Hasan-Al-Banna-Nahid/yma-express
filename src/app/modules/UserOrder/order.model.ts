@@ -93,7 +93,7 @@ const orderSchema = new Schema<IOrder>(
       default: "pending",
     },
     totalAmount: { type: Number, required: true, min: 0 },
-    estimatedDeliveryDate: { type: Date, required: true },
+    estimatedDeliveryDate: { type: Date },
     adminNotes: { type: String },
     deliveryDate: { type: Date },
   },

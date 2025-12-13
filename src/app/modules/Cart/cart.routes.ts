@@ -1,25 +1,27 @@
 import express from "express";
-import * as cartController from "./cart.controller";
-import { protectRoute } from "../../middlewares/auth.middleware";
+import {
+  getCart,
+  addToCart,
+  updateCartItems,
+  removeFromCart,
+  clearCart,
+  getCartSummary,
+} from "./cart.controller";
+import { protect } from "../../middlewares/authorization.middleware";
 
 const router = express.Router();
 
 // All cart routes require authentication
-router.use(protectRoute);
+router.use(protect);
 
-// GET /api/v1/cart - Get user's cart
-// POST /api/v1/cart - Add item to cart (single or multiple)
-// DELETE /api/v1/cart - Clear entire cart
 router
   .route("/")
-  .get(cartController.getCart)
-  .post(cartController.addToCart)
-  .delete(cartController.clearCart);
+  .get(getCart) // GET /api/cart - Get cart
+  .post(addToCart) // POST /api/cart - Add item(s) to cart
+  .put(updateCartItems) // PUT /api/cart - Update cart items
+  .delete(clearCart); // DELETE /api/cart - Clear cart
 
-// PATCH /api/v1/cart/items - Update single OR multiple cart items
-router.patch("/items", cartController.updateCartItems);
-
-// DELETE /api/v1/cart/items/:productId - Remove specific item from cart
-router.delete("/items/:productId", cartController.removeFromCart);
+router.get("/summary", getCartSummary); // GET /api/cart/summary - Get cart summary
+router.delete("/:productId", removeFromCart); // DELETE /api/cart/:productId - Remove specific item
 
 export default router;

@@ -1,6 +1,4 @@
 import mongoose from "mongoose";
-
-// src/interfaces/order.interface.ts
 import { Document, Types } from "mongoose";
 
 export interface IOrderItem {
@@ -92,6 +90,8 @@ export interface IOrder {
     billingCompanyName?: string;
   };
   termsAccepted: boolean;
+  invoiceType?: "regular" | "corporate";
+  bankDetails?: string;
   createdAt?: Date;
   updatedAt?: Date;
 }

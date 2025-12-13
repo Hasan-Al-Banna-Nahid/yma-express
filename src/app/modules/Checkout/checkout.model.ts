@@ -23,6 +23,12 @@ const orderItemSchema: Schema = new Schema({
     type: String,
     required: true,
   },
+  startDate: {
+    type: Date,
+  },
+  endDate: {
+    type: Date,
+  },
 });
 
 const orderSchema: Schema = new Schema(
@@ -58,7 +64,7 @@ const orderSchema: Schema = new Schema(
       // Delivery Information
       street: { type: String, required: true },
       city: { type: String, required: true },
-      // state: { type: String, required: true },
+      state: { type: String, required: true },
       country: { type: String, required: true },
       zipCode: { type: String, required: true },
       apartment: { type: String },
@@ -93,6 +99,15 @@ const orderSchema: Schema = new Schema(
         },
         message: "You must accept the terms and conditions",
       },
+    },
+    invoiceType: {
+      type: String,
+      enum: ["regular", "corporate"],
+      default: "regular",
+    },
+    bankDetails: {
+      type: String,
+      default: "",
     },
   },
   {

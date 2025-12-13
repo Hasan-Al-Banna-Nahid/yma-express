@@ -1,7 +1,7 @@
 import mongoose, { Types } from "mongoose";
 import Cart from "../Cart/cart.model";
-import Order, { IOrder } from "../UserOrder/order.model"; // Import IOrder
-import Product from "../Product/product.model";
+import Order, { IOrder } from "../UserOrder/order.model";
+import Product, { IProductModel } from "../Product/product.model";
 import ApiError from "../../utils/apiError";
 import { sendOrderConfirmationEmail } from "../Email/email.service";
 
@@ -38,30 +38,28 @@ export interface CreateOrderData {
   paymentMethod: "cash_on_delivery" | "online";
   termsAccepted: boolean;
   invoiceType?: "regular" | "corporate";
-  bankDetails?: {
-    bankInfo: string;
-  };
+  bankDetails?: string;
 }
 
 export const createOrderFromCart = async (
   userId: string,
   orderData: CreateOrderData
 ): Promise<IOrder> => {
-  // Change return type to IOrder instead of typeof Order
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
   try {
     console.log("🛒 [CHECKOUT SERVICE] Creating order for user:", userId);
 
-    // Get user's cart with populated items
-    const cart = await Cart.findOne({ user: new Types.ObjectId(userId) })
-      .populate<{ product: any }>("items.product")
-      .session(session);
+    // Get user's cart
+    const cart = await Cart.findOne({ user: new Types.ObjectId(userId) });
 
-    if (!cart || cart.items.length === 0) {
+    if (!cart) {
+      throw new ApiError("Cart not found", 404);
+    }
+
+    if (!cart.items || cart.items.length === 0) {
       throw new ApiError("Cart is empty", 400);
     }
+
+    console.log(`🛒 Cart has ${cart.items.length} items`);
 
     // Validate shipping address
     const requiredAddressFields: (keyof CreateOrderData["shippingAddress"])[] =
@@ -116,15 +114,11 @@ export const createOrderFromCart = async (
 
     // Validate corporate invoice requirements
     if (orderData.invoiceType === "corporate") {
-      if (!orderData.bankDetails || !orderData.bankDetails.bankInfo) {
+      if (!orderData.bankDetails || orderData.bankDetails.trim() === "") {
         throw new ApiError(
           "Bank details are required for corporate invoices",
           400
         );
-      }
-
-      if (orderData.bankDetails.bankInfo.trim() === "") {
-        throw new ApiError("Bank information cannot be empty", 400);
       }
     }
 
@@ -133,12 +127,48 @@ export const createOrderFromCart = async (
     const orderItems = [];
 
     for (const cartItem of cart.items) {
-      const productId = (cartItem.product as any)._id || cartItem.product;
-      const product = await Product.findById(productId).session(session);
+      console.log("🛒 Processing cart item:", cartItem);
+
+      // Get the product ID with proper type handling
+      let productId: Types.ObjectId | null = null;
+
+      if (typeof cartItem.product === "string") {
+        productId = new Types.ObjectId(cartItem.product);
+      } else if (cartItem.product instanceof Types.ObjectId) {
+        productId = cartItem.product;
+      } else if (cartItem.product && typeof cartItem.product === "object") {
+        // Type assertion to handle the 'never' type
+        const productObj = cartItem.product as any;
+        if (productObj._id) {
+          productId =
+            productObj._id instanceof Types.ObjectId
+              ? productObj._id
+              : new Types.ObjectId(productObj._id);
+        }
+      }
+
+      // Skip if no valid product ID found
+      if (!productId) {
+        console.warn(
+          "⚠️ Skipping cart item with null/invalid product:",
+          cartItem
+        );
+        continue;
+      }
+
+      console.log(`🛒 Product ID extracted: ${productId}`);
+
+      // Find the product by ID
+      const product: IProductModel | null = await Product.findById(productId);
 
       if (!product) {
-        throw new ApiError(`Product not found`, 404);
+        console.error(`❌ Product not found for ID: ${productId}`);
+        throw new ApiError(`Product not found (ID: ${productId})`, 404);
       }
+
+      console.log(
+        `✅ Found product: ${product.name}, Stock: ${product.stock}, Requested: ${cartItem.quantity}`
+      );
 
       if (product.stock < cartItem.quantity) {
         throw new ApiError(
@@ -148,12 +178,20 @@ export const createOrderFromCart = async (
       }
 
       // Update product stock
-      product.stock -= cartItem.quantity;
-      await product.save({ session });
+      await Product.findByIdAndUpdate(productId, {
+        $inc: { stock: -cartItem.quantity },
+        $set: { updatedAt: new Date() },
+      });
+
+      console.log(
+        `✅ Updated stock for ${product.name}, New stock: ${
+          product.stock - cartItem.quantity
+        }`
+      );
 
       // Create order item
       const orderItem = {
-        product: product._id,
+        product: productId,
         quantity: cartItem.quantity,
         price: cartItem.price,
         name: product.name,
@@ -163,7 +201,20 @@ export const createOrderFromCart = async (
 
       orderItems.push(orderItem);
       totalAmount += cartItem.quantity * cartItem.price;
+
+      console.log(
+        `💰 Item subtotal: ${cartItem.quantity} x ${cartItem.price} = ${
+          cartItem.quantity * cartItem.price
+        }`
+      );
     }
+
+    // Check if we have any valid order items after processing
+    if (orderItems.length === 0) {
+      throw new ApiError("No valid items in cart to create order", 400);
+    }
+
+    console.log(`💰 Total amount: ${totalAmount}`);
 
     // Calculate estimated delivery date (2 days from now)
     const estimatedDeliveryDate = new Date();
@@ -179,33 +230,45 @@ export const createOrderFromCart = async (
       termsAccepted: orderData.termsAccepted,
       estimatedDeliveryDate,
       invoiceType: orderData.invoiceType || "regular",
-      bankDetails: orderData.bankDetails,
+      bankDetails: orderData.bankDetails || "",
     });
 
-    await order.save({ session });
+    await order.save();
+    console.log(`✅ Order created with ID: ${order._id}`);
 
     // Clear cart
     cart.items = [];
     cart.totalPrice = 0;
     cart.totalItems = 0;
-    await cart.save({ session });
+    await cart.save();
+    console.log(`✅ Cart cleared for user: ${userId}`);
 
-    await session.commitTransaction();
-    session.endSession();
+    // Try to send email (but don't fail the order if email fails)
+    try {
+      const populatedOrder = await Order.findById(order._id).populate([
+        { path: "user", select: "name email" },
+        { path: "items.product", select: "name imageCover price" },
+      ]);
 
-    // Send order confirmation email
-    const populatedOrder = await order.populate([
+      if (populatedOrder) {
+        await sendOrderConfirmationEmail(populatedOrder);
+        console.log(`✅ Order confirmation email sent for order: ${order._id}`);
+      }
+    } catch (emailError) {
+      console.error("⚠️ Failed to send order confirmation email:", emailError);
+      // Don't throw - order was created successfully
+    }
+
+    console.log("✅ [CHECKOUT SERVICE] Order creation completed successfully");
+
+    // Return the populated order
+    const finalOrder = await Order.findById(order._id).populate([
       { path: "user", select: "name email" },
       { path: "items.product", select: "name imageCover price" },
     ]);
 
-    await sendOrderConfirmationEmail(populatedOrder);
-
-    console.log("✅ [CHECKOUT SERVICE] Order created:", order.orderNumber);
-    return populatedOrder;
+    return finalOrder || order;
   } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
     console.error("❌ [CHECKOUT SERVICE] Order creation failed:", error);
     throw error;
   }
