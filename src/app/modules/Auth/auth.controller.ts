@@ -93,28 +93,60 @@ export const loginUser = asyncHandler(async (req: Request, res: Response) => {
 });
 
 // ---------------- public: refresh ----------------
-export const refreshToken = asyncHandler(
+
+// ---------------- public: refresh token ----------------
+export const refreshTokenHandler = asyncHandler(
   async (req: Request, res: Response) => {
+    // Get refresh token from cookie or body
     const token =
-      ((req as any).cookies?.refreshToken as string | undefined) ||
+      (req.cookies?.refreshToken as string | undefined) ||
       req.body?.refreshToken;
+
     if (!token) throw new ApiError("Refresh token required", 401);
 
-    const payload = jwt.verify(token, process.env.JWT_REFRESH_SECRET!) as any;
+    // Verify JWT structure first
+    let payload: any;
+    try {
+      payload = jwt.verify(token, process.env.JWT_REFRESH_SECRET!) as any;
+    } catch (err) {
+      throw new ApiError("Invalid or expired refresh token", 401);
+    }
+
+    // Find user with hashed token
     const user = await User.findById(payload.id).select(
       "+refreshTokenHash +refreshTokenExpiresAt"
     );
-    if (!user) throw new ApiError("Invalid refresh token", 401);
+    if (!user) throw new ApiError("User not found", 401);
 
+    // Validate token hash & expiry
     const matches = user.refreshTokenHash === hashToken(token);
     const notExpired =
       !user.refreshTokenExpiresAt || user.refreshTokenExpiresAt > new Date();
-    if (!matches || !notExpired)
-      throw new ApiError("Invalid/expired refresh token", 401);
 
+    if (!matches || !notExpired)
+      throw new ApiError("Invalid or expired refresh token", 401);
+
+    // Issue new tokens (rotation)
     const rotated = await issueTokens(user);
-    setAuthCookies(res, rotated.accessToken, rotated.refreshToken);
-    ApiResponse(res, 200, "Token refreshed", {
+
+    // Set cookies
+    res.cookie("accessToken", rotated.accessToken, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "none",
+      path: "/",
+      maxAge: 60 * 60 * 1000, // 1h
+    });
+    res.cookie("refreshToken", rotated.refreshToken, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "none",
+      path: "/",
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30d
+    });
+
+    // Return response
+    ApiResponse(res, 200, "Token refreshed successfully", {
       user: sanitizeUser(user),
       tokens: rotated,
     });

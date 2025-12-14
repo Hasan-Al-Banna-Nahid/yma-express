@@ -2,7 +2,7 @@ import express from "express";
 import {
   register,
   loginUser,
-  refreshToken,
+  refreshTokenHandler,
   forgotPasswordHandler,
   resetPasswordHandler,
   updatePasswordHandler,
@@ -21,7 +21,7 @@ const router = express.Router();
 router.post("/register", upload.single("photo"), register);
 router.post("/login", loginUser);
 router.post("/logout", logout);
-router.post("/refresh-token", refreshToken);
+router.post("/refresh-token", refreshTokenHandler);
 router.post("/forgot-password", forgotPasswordHandler);
 
 // Reset password routes:
