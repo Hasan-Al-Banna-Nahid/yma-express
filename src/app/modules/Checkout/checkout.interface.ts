@@ -1,5 +1,5 @@
-import mongoose from "mongoose";
-import { Document, Types } from "mongoose";
+// checkout.interface.ts
+import { Types } from "mongoose";
 
 export interface IOrderItem {
   product: Types.ObjectId;
@@ -11,21 +11,18 @@ export interface IOrderItem {
 }
 
 export interface IShippingAddress {
-  // Personal Information
   firstName: string;
   lastName: string;
   email: string;
   phone: string;
 
-  // Location Information
   country: string;
   state: string;
   city: string;
   street: string;
   zipCode: string;
-
-  // Additional Fields
   apartment?: string;
+
   companyName?: string;
   locationAccessibility?: string;
   deliveryTime?: string;
@@ -36,7 +33,6 @@ export interface IShippingAddress {
   hireOccasion?: string;
   notes?: string;
 
-  // Billing Address (if different)
   differentBillingAddress?: boolean;
   billingFirstName?: string;
   billingLastName?: string;
@@ -44,53 +40,17 @@ export interface IShippingAddress {
   billingCity?: string;
   billingState?: string;
   billingZipCode?: string;
-  billingCompanyName?: string;
 }
 
 export interface IOrder {
-  user: mongoose.Types.ObjectId;
+  user: Types.ObjectId;
   items: IOrderItem[];
   totalAmount: number;
   paymentMethod: "cash_on_delivery" | "online";
   status: "pending" | "confirmed" | "shipped" | "delivered" | "cancelled";
-  shippingAddress: {
-    // Personal Information
-    firstName: string;
-    lastName: string;
-    email: string;
-    phone: string;
-
-    // Delivery Information
-    street: string;
-    city: string;
-    state: string;
-    country: string;
-    zipCode: string;
-    apartment?: string;
-
-    // Additional Fields
-    companyName?: string;
-    locationAccessibility?: string;
-    deliveryTime?: string;
-    collectionTime?: string;
-    floorType?: string;
-    userType?: string;
-    keepOvernight?: boolean;
-    hireOccasion?: string;
-    notes?: string;
-
-    // Billing Address (if different)
-    differentBillingAddress?: boolean;
-    billingFirstName?: string;
-    billingLastName?: string;
-    billingStreet?: string;
-    billingCity?: string;
-    billingState?: string;
-    billingZipCode?: string;
-    billingCompanyName?: string;
-  };
+  shippingAddress: IShippingAddress;
   termsAccepted: boolean;
-  invoiceType?: "regular" | "corporate";
+  invoiceType: "regular" | "corporate";
   bankDetails?: string;
   createdAt?: Date;
   updatedAt?: Date;

@@ -3,34 +3,29 @@ import asyncHandler from "../../utils/asyncHandler";
 import * as checkoutService from "./checkout.service";
 import { AuthenticatedRequest } from "../../middlewares/auth.middleware";
 import ApiError from "../../utils/apiError";
+import { createOrderFromCart } from "./checkout.service";
 
-export const createOrder = asyncHandler(async (req: Request, res: Response) => {
-  const userId = (req as AuthenticatedRequest).user._id.toString();
-
-  console.log("🛒 [CHECKOUT] Creating order for user:", userId);
+// checkout.controller.ts
+export const createOrder = asyncHandler(async (req, res) => {
+  const userId = (req as AuthenticatedRequest).user._id;
 
   const {
     shippingAddress,
-    paymentMethod = "cash_on_delivery",
+    paymentMethod,
     termsAccepted,
-    invoiceType = "regular",
+    invoiceType,
     bankDetails,
   } = req.body;
 
-  // Validate required fields
   if (!shippingAddress) {
     throw new ApiError("Shipping address is required", 400);
   }
 
-  if (termsAccepted === undefined) {
-    throw new ApiError("You must accept the terms and conditions", 400);
-  }
-
   if (!termsAccepted) {
-    throw new ApiError("You must accept the terms and conditions", 400);
+    throw new ApiError("You must accept terms & conditions", 400);
   }
 
-  const order = await checkoutService.createOrderFromCart(userId, {
+  const order = await createOrderFromCart(userId, {
     shippingAddress,
     paymentMethod,
     termsAccepted,
@@ -39,10 +34,8 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
   });
 
   res.status(201).json({
-    status: "success",
-    message: "Order created successfully",
-    data: {
-      order,
-    },
+    success: true,
+    message: "Order placed successfully",
+    order,
   });
 });
