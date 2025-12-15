@@ -10,18 +10,25 @@ type AuthenticatedRequest = Request & { user?: IUser };
 // ---------------------------------------------
 // PROTECT → Requires Bearer Token
 // ---------------------------------------------
+
 export const protect = async (
   req: Request,
   _res: Response,
   next: NextFunction
 ) => {
   try {
-    let token;
+    let token: string | undefined;
 
-    // 1. Get bearer token
+    // 1️⃣ Priority: httpOnly cookie
+    if ((req as any).cookies?.accessToken) {
+      token = (req as any).cookies.accessToken;
+    }
+
+    // 2️⃣ Fallback: Authorization header (Bearer)
     if (
+      !token &&
       req.headers.authorization &&
-      req.headers.authorization.startsWith("Bearer")
+      req.headers.authorization.startsWith("Bearer ")
     ) {
       token = req.headers.authorization.split(" ")[1];
     }
@@ -30,22 +37,22 @@ export const protect = async (
       return next(new ApiError("You are not logged in", 401));
     }
 
-    // 2. Verify token
+    // 3️⃣ Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as {
       id: string;
     };
 
-    // 3. Check user exists
+    // 4️⃣ Check user exists
     const user = await User.findById(decoded.id);
     if (!user) {
       return next(new ApiError("User no longer exists", 401));
     }
 
-    // 4. Attach user to req
+    // 5️⃣ Attach user to request
     (req as AuthenticatedRequest).user = user;
 
     next();
-  } catch (err) {
+  } catch (error) {
     next(new ApiError("Invalid or expired token", 401));
   }
 };
