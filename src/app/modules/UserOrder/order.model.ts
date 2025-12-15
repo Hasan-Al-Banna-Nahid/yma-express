@@ -57,7 +57,6 @@ const shippingAddressSchema = new Schema<IShippingAddress>({
   street: { type: String, required: true },
   apartment: { type: String },
   city: { type: String, required: true },
-  state: { type: String, required: true },
   zipCode: { type: String, required: true },
   country: { type: String, default: "United Kingdom" },
   deliveryTime: { type: String },
