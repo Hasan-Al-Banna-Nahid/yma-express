@@ -38,7 +38,7 @@ export interface IShippingAddress {
   billingLastName?: string;
   billingStreet?: string;
   billingCity?: string;
-  billingState?: string;
+  // billingState?: string;
   billingZipCode?: string;
 }
 

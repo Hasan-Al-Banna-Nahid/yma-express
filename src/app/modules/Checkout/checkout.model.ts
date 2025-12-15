@@ -60,7 +60,7 @@ const orderSchema = new Schema(
       billingLastName: String,
       billingStreet: String,
       billingCity: String,
-      billingState: String,
+      // billingState: String,
       billingZipCode: String,
     },
 

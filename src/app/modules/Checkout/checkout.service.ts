@@ -31,7 +31,7 @@ export interface CreateOrderData {
     billingLastName?: string;
     billingStreet?: string;
     billingCity?: string;
-    billingState?: string;
+    // billingState?: string;
     billingZipCode?: string;
     billingCompanyName?: string;
   };
