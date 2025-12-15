@@ -9,7 +9,6 @@ import { upload } from "../../utils/cloudinary.util";
 
 const router = express.Router();
 
-router.use(protect);
 router
   .route("/")
   .get(categoryController.getCategories)
