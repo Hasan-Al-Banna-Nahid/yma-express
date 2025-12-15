@@ -1,11 +1,15 @@
 // src/routes/category.routes.ts
 import express from "express";
 import * as categoryController from "./category.controller";
-import { restrictTo } from "../../middlewares/authorization.middleware";
+import {
+  protect,
+  restrictTo,
+} from "../../middlewares/authorization.middleware";
 import { upload } from "../../utils/cloudinary.util";
 
 const router = express.Router();
 
+router.use(protect);
 router
   .route("/")
   .get(categoryController.getCategories)

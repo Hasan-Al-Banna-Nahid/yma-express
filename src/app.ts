@@ -18,13 +18,14 @@ import cartRoutes from "./app/modules/Cart/cart.routes";
 // import locationRoutes from "./app/routes/location.routes";
 import checkoutRoutes from "./app/modules/Checkout/checkout.routes";
 import userOrderRoutes from "./app/modules/UserOrder/user.order.routes";
+import locationRoutes from "./app/modules/Location/location.routes";
 
 const app = express();
 
 const allowedOrigins = [
   "http://localhost:3000",
   "https://yma-bouncy-castle-frontend-rlrg.vercel.app",
-  "http://localhost:5000",
+  "http://localhost:7000",
   "https://yma-eight.vercel.app",
   "https://yma-frontend.vercel.app",
 ];
@@ -60,7 +61,7 @@ app.use("/api/v1/inventory", inventoryRouter);
 // app.use("/api/v1/invoices", invoiceRouter); // Remove if not needed
 app.use("/api/v1/admin", adminRoutes);
 app.use("/api/v1/mail", mailRoute);
-// app.use("/api/v1/locations", locationRoutes);
+app.use("/api/v1/locations", locationRoutes);
 app.use("/api/v1/categories", categoryRoutes);
 app.use("/api/v1/products", productRoutes);
 app.use("/api/v1/cart", cartRoutes);

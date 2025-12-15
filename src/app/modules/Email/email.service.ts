@@ -9,7 +9,7 @@ import { generateInvoiceHtml } from "../Invoice/invoice.service";
 
 dotenv.config();
 
-// Environment variables with proper validation
+// Environment variables
 const EMAIL_HOST = process.env.EMAIL_HOST;
 const EMAIL_PORT = parseInt(process.env.EMAIL_PORT || "587");
 const EMAIL_USER = process.env.EMAIL_USER;
@@ -17,35 +17,28 @@ const EMAIL_PASS = process.env.EMAIL_PASS;
 const EMAIL_FROM = process.env.EMAIL_FROM || "noreply@ymabouncycastle.com";
 const EMAIL_FROM_NAME = process.env.EMAIL_FROM_NAME || "YMABouncyCastle";
 
-// Validate required environment variables
 if (!EMAIL_HOST || !EMAIL_USER || !EMAIL_PASS) {
   console.warn("⚠️ Email environment variables are not fully configured");
-  console.warn(
-    "EMAIL_HOST, EMAIL_USER, and EMAIL_PASS are required for Nodemailer"
-  );
 }
 
-// Create Nodemailer transporter
+// Nodemailer transporter
 const transporter = nodemailer.createTransport({
   host: EMAIL_HOST,
   port: EMAIL_PORT,
-  secure: EMAIL_PORT === 465, // true for 465, false for other ports
+  secure: EMAIL_PORT === 465,
   auth: {
     user: EMAIL_USER,
     pass: EMAIL_PASS,
   },
 });
 
-// Verify transporter connection
 transporter.verify((error) => {
-  if (error) {
+  if (error)
     console.error("❌ Nodemailer transporter verification failed:", error);
-  } else {
-    console.log("✅ Nodemailer transporter is ready to send emails");
-  }
+  else console.log("✅ Nodemailer transporter ready");
 });
 
-// Email template types
+// Email templates
 export type EmailTemplate =
   | "passwordReset"
   | "resetSuccess"
@@ -54,12 +47,29 @@ export type EmailTemplate =
   | "preDeliveryConfirmation"
   | "invoice";
 
-// Template resolver
+// Resolve template path (fix for src/dist and auth/emails folders)
 function resolveEmailTemplate(templateName: EmailTemplate): string {
   const candidates = [
     path.resolve(
       process.cwd(),
       "src",
+      "app",
+      "views",
+      "emails",
+      `${templateName}.ejs`
+    ),
+    path.resolve(
+      process.cwd(),
+      "src",
+      "app",
+      "views",
+      "auth",
+      `${templateName}.ejs`
+    ),
+    path.resolve(
+      process.cwd(),
+      "dist",
+      "app",
       "views",
       "emails",
       `${templateName}.ejs`
@@ -67,17 +77,17 @@ function resolveEmailTemplate(templateName: EmailTemplate): string {
     path.resolve(
       process.cwd(),
       "dist",
+      "app",
       "views",
-      "emails",
+      "auth",
       `${templateName}.ejs`
     ),
     path.resolve(__dirname, "..", "views", "emails", `${templateName}.ejs`),
+    path.resolve(__dirname, "..", "views", "auth", `${templateName}.ejs`),
   ];
 
   for (const templatePath of candidates) {
-    if (fs.existsSync(templatePath)) {
-      return templatePath;
-    }
+    if (fs.existsSync(templatePath)) return templatePath;
   }
 
   throw new Error(`Email template not found: ${templateName}.ejs`);
@@ -92,36 +102,36 @@ async function renderTemplate(
   return await ejs.renderFile(filePath, templateVars, { async: true });
 }
 
-// Core email sender with Nodemailer
+// Core send email
 export interface SendEmailOptions {
   to: string;
   subject: string;
   html: string;
   fromEmail?: string;
   fromName?: string;
-  text?: string; // Plain text version
+  text?: string;
 }
 
 export async function sendEmailHtml(options: SendEmailOptions): Promise<void> {
   const { to, subject, html, fromEmail, fromName, text } = options;
 
-  try {
-    const mailOptions = {
-      from: `"${fromName || EMAIL_FROM_NAME}" <${fromEmail || EMAIL_FROM}>`,
-      to,
-      subject,
-      html,
-      text: text || html.replace(/<[^>]*>/g, ""), // Basic HTML to text conversion
-    };
+  const mailOptions = {
+    from: `"${fromName || EMAIL_FROM_NAME}" <${fromEmail || EMAIL_FROM}>`,
+    to,
+    subject,
+    html,
+    text: text || html.replace(/<[^>]*>/g, ""),
+  };
 
+  try {
     const info = await transporter.sendMail(mailOptions);
-    console.log("[sendEmailHtml] Email sent successfully:", {
+    console.log("[sendEmailHtml] Email sent:", {
       to,
       subject,
       messageId: info.messageId,
     });
   } catch (error: any) {
-    console.error("[sendEmailHtml] Nodemailer error:", {
+    console.error("[sendEmailHtml] Error:", {
       message: error?.message,
       code: error?.code,
     });
@@ -129,7 +139,7 @@ export async function sendEmailHtml(options: SendEmailOptions): Promise<void> {
   }
 }
 
-// High-level template email sender
+// Templated email
 export interface TemplatedEmailOptions {
   to: string;
   subject: string;
@@ -142,21 +152,11 @@ export interface TemplatedEmailOptions {
 export async function sendTemplatedEmail(
   options: TemplatedEmailOptions
 ): Promise<void> {
-  const { to, subject, templateName, templateVars, fromEmail, fromName } =
-    options;
-
-  const html = await renderTemplate(templateName, templateVars);
-
-  await sendEmailHtml({
-    to,
-    subject,
-    html,
-    fromEmail,
-    fromName,
-  });
+  const html = await renderTemplate(options.templateName, options.templateVars);
+  await sendEmailHtml({ ...options, html });
 }
 
-// Plain text email sender
+// Plain email
 export interface PlainEmailOptions {
   to: string;
   subject: string;
@@ -168,57 +168,41 @@ export interface PlainEmailOptions {
 }
 
 export async function sendPlainMail(options: PlainEmailOptions): Promise<void> {
-  const { to, subject, message, senderName, senderEmail, fromEmail, fromName } =
-    options;
-
   const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-        .header { background: #7C3AED; color: white; padding: 20px; text-align: center; }
-        .content { padding: 20px; background: #f9f9f9; }
-        .footer { padding: 20px; text-align: center; color: #666; font-size: 12px; }
-        .sender-info { margin-top: 20px; padding: 15px; background: #f0f0f0; border-radius: 5px; }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <div class="header">
-          <h1>${EMAIL_FROM_NAME}</h1>
-        </div>
-        <div class="content">
-          ${message.replace(/\n/g, "<br>")}
-        </div>
-        ${
-          senderName || senderEmail
-            ? `
+  <!DOCTYPE html>
+  <html>
+  <head>
+    <meta charset="utf-8">
+    <style>
+      body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+      .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+      .header { background: #7C3AED; color: white; padding: 20px; text-align: center; }
+      .content { padding: 20px; background: #f9f9f9; }
+      .footer { padding: 20px; text-align: center; color: #666; font-size: 12px; }
+      .sender-info { margin-top: 20px; padding: 15px; background: #f0f0f0; border-radius: 5px; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header"><h1>${EMAIL_FROM_NAME}</h1></div>
+      <div class="content">${options.message.replace(/\n/g, "<br>")}</div>
+      ${
+        options.senderName || options.senderEmail
+          ? `
         <div class="sender-info">
           <strong>Sender Information:</strong><br>
-          ${senderName ? `Name: ${senderName}<br>` : ""}
-          ${senderEmail ? `Email: ${senderEmail}` : ""}
-        </div>
-        `
-            : ""
-        }
-        <div class="footer">
-          <p>&copy; ${new Date().getFullYear()} ${EMAIL_FROM_NAME}. All rights reserved.</p>
-        </div>
-      </div>
-    </body>
-    </html>
+          ${options.senderName ? `Name: ${options.senderName}<br>` : ""}
+          ${options.senderEmail ? `Email: ${options.senderEmail}` : ""}
+        </div>`
+          : ""
+      }
+      <div class="footer">&copy; ${new Date().getFullYear()} ${EMAIL_FROM_NAME}. All rights reserved.</div>
+    </div>
+  </body>
+  </html>
   `;
 
-  await sendEmailHtml({
-    to,
-    subject,
-    html,
-    fromEmail,
-    fromName,
-  });
+  await sendEmailHtml({ ...options, html });
 }
 
 // Auth email helpers
@@ -226,7 +210,7 @@ export async function sendPasswordResetEmail(
   to: string,
   name: string,
   resetURL: string
-): Promise<void> {
+) {
   await sendTemplatedEmail({
     to,
     subject: "Reset your YMA Bouncy Castle password (valid 10 minutes)",
@@ -236,17 +220,14 @@ export async function sendPasswordResetEmail(
       name,
       resetURL,
       preheader:
-        "Tap the button to reset your YMA Bouncy Castle password. Link expires in 10 minutes.",
+        "Tap the button to reset your password. Link expires in 10 minutes.",
       year: new Date().getFullYear(),
       brandColor: "#7C3AED",
     },
   });
 }
 
-export async function sendResetSuccessEmail(
-  to: string,
-  name: string
-): Promise<void> {
+export async function sendResetSuccessEmail(to: string, name: string) {
   await sendTemplatedEmail({
     to,
     subject: "Your YMA Bouncy Castle password was changed",
@@ -259,24 +240,21 @@ export async function sendResetSuccessEmail(
       year: new Date().getFullYear(),
       brandColor: "#7C3AED",
       securityNote:
-        "If this wasn't you, please reset your password immediately and contact support.",
+        "If this wasn't you, reset your password immediately and contact support.",
     },
   });
 }
 
-// Order email functions with IOrder type
-export async function sendOrderConfirmationEmail(order: IOrder): Promise<void> {
+// Order emails
+export async function sendOrderConfirmationEmail(order: IOrder) {
   try {
-    // Generate invoice HTML
     const invoiceHtml = await generateInvoiceHtml(order);
-
-    // Render order confirmation template with invoice embedded
     const html = await renderTemplate("orderConfirmation", {
       order,
       brand: EMAIL_FROM_NAME,
       year: new Date().getFullYear(),
       brandColor: "#7C3AED",
-      invoiceHtml: invoiceHtml, // Pass invoice HTML to template
+      invoiceHtml,
     });
 
     await sendEmailHtml({
@@ -284,15 +262,14 @@ export async function sendOrderConfirmationEmail(order: IOrder): Promise<void> {
       subject: `🎉 Order Confirmed - ${order.orderNumber}`,
       html,
     });
-
     console.log(`✅ Order confirmation email sent for ${order.orderNumber}`);
   } catch (error) {
-    console.error(`❌ Failed to send order confirmation email:`, error);
+    console.error("❌ Failed to send order confirmation email:", error);
     throw error;
   }
 }
 
-export async function sendDeliveryReminderEmail(order: IOrder): Promise<void> {
+export async function sendDeliveryReminderEmail(order: IOrder) {
   try {
     const html = await renderTemplate("deliveryReminder", {
       order,
@@ -307,17 +284,14 @@ export async function sendDeliveryReminderEmail(order: IOrder): Promise<void> {
       subject: `🚚 Delivery Reminder - Your Order #${order.orderNumber} Arrives Soon`,
       html,
     });
-
     console.log(`✅ Delivery reminder email sent for ${order.orderNumber}`);
   } catch (error) {
-    console.error(`❌ Failed to send delivery reminder email:`, error);
+    console.error("❌ Failed to send delivery reminder email:", error);
     throw error;
   }
 }
 
-export async function sendPreDeliveryConfirmationEmail(
-  order: IOrder
-): Promise<void> {
+export async function sendPreDeliveryConfirmationEmail(order: IOrder) {
   try {
     const html = await renderTemplate("preDeliveryConfirmation", {
       order,
@@ -332,22 +306,17 @@ export async function sendPreDeliveryConfirmationEmail(
       subject: `📦 Delivery Confirmed - Your Order #${order.orderNumber} Arrives Tomorrow`,
       html,
     });
-
     console.log(
       `✅ Pre-delivery confirmation email sent for ${order.orderNumber}`
     );
   } catch (error) {
-    console.error(`❌ Failed to send pre-delivery confirmation email:`, error);
+    console.error("❌ Failed to send pre-delivery confirmation email:", error);
     throw error;
   }
 }
 
-export async function sendInvoiceEmail(
-  order: IOrder,
-  invoiceHtml: string
-): Promise<void> {
+export async function sendInvoiceEmail(order: IOrder, invoiceHtml: string) {
   try {
-    // Render the invoice email template
     const html = await renderTemplate("invoice", {
       order,
       invoiceHtml,
@@ -361,23 +330,17 @@ export async function sendInvoiceEmail(
       subject: `📄 Invoice - ${order.orderNumber}`,
       html,
     });
-
     console.log(`✅ Invoice email sent for ${order.orderNumber}`);
   } catch (error) {
-    console.error(`❌ Failed to send invoice email:`, error);
+    console.error("❌ Failed to send invoice email:", error);
     throw error;
   }
 }
 
-// Send email with invoice attachment (alternative method)
-export async function sendOrderWithInvoiceAttachment(
-  order: IOrder
-): Promise<void> {
+// Order with invoice attachment
+export async function sendOrderWithInvoiceAttachment(order: IOrder) {
   try {
-    // Generate invoice HTML
     const invoiceHtml = await generateInvoiceHtml(order);
-
-    // Create a combined email with invoice embedded
     const html = `
       <!DOCTYPE html>
       <html>
@@ -396,38 +359,34 @@ export async function sendOrderWithInvoiceAttachment(
           }</strong>.</p>
           <p>Estimated Delivery: ${order.estimatedDeliveryDate.toLocaleDateString()}</p>
         </div>
-        
         <div class="invoice-section">
           <h3>📄 Invoice</h3>
           ${invoiceHtml}
         </div>
-        
         <div style="margin-top: 30px; padding: 20px; background: #e8f5e8; border-radius: 5px;">
           <p><strong>Need Help?</strong></p>
-          <p>Contact us at ${EMAIL_FROM} or call +44 (0) 1234 567890</p>
+          <p>Contact us at ${EMAIL_FROM}</p>
         </div>
       </body>
       </html>
     `;
-
     await sendEmailHtml({
       to: order.shippingAddress.email,
       subject: `🎉 Order Confirmed with Invoice - ${order.orderNumber}`,
       html,
     });
-
     console.log(`✅ Order with invoice sent for ${order.orderNumber}`);
   } catch (error) {
-    console.error(`❌ Failed to send order with invoice:`, error);
+    console.error("❌ Failed to send order with invoice:", error);
     throw error;
   }
 }
 
-// Admin notification email
+// Admin notification
 export async function sendAdminOrderNotification(
   order: IOrder,
   adminEmail: string
-): Promise<void> {
+) {
   try {
     const html = `
       <!DOCTYPE html>
@@ -440,11 +399,7 @@ export async function sendAdminOrderNotification(
         </style>
       </head>
       <body>
-        <div class="alert">
-          <h2>🚨 New Order Received</h2>
-          <p>A new order has been placed and requires attention.</p>
-        </div>
-        
+        <div class="alert"><h2>🚨 New Order Received</h2><p>A new order has been placed and requires attention.</p></div>
         <div class="order-details">
           <h3>Order Details</h3>
           <p><strong>Order Number:</strong> ${order.orderNumber}</p>
@@ -457,30 +412,27 @@ export async function sendAdminOrderNotification(
           <p><strong>Status:</strong> ${order.status}</p>
           <p><strong>Delivery Date:</strong> ${order.estimatedDeliveryDate.toLocaleDateString()}</p>
         </div>
-        
         <p>Please log in to the admin panel to process this order.</p>
       </body>
       </html>
     `;
-
     await sendEmailHtml({
       to: adminEmail,
       subject: `🚨 New Order - ${order.orderNumber}`,
       html,
     });
-
     console.log(`✅ Admin notification sent for order ${order.orderNumber}`);
   } catch (error) {
-    console.error(`❌ Failed to send admin notification:`, error);
+    console.error("❌ Failed to send admin notification:", error);
     throw error;
   }
 }
 
-// Order status update email
+// Order status update
 export async function sendOrderStatusUpdateEmail(
   order: IOrder,
   previousStatus: string
-): Promise<void> {
+) {
   try {
     const statusMessages: Record<string, string> = {
       confirmed: "has been confirmed and is being processed",
@@ -488,14 +440,12 @@ export async function sendOrderStatusUpdateEmail(
       delivered: "has been delivered successfully",
       cancelled: "has been cancelled",
     };
-
     const statusEmoji: Record<string, string> = {
       confirmed: "✅",
       shipped: "🚚",
       delivered: "🎉",
       cancelled: "❌",
     };
-
     const message = statusMessages[order.status] || "status has been updated";
     const emoji = statusEmoji[order.status] || "📝";
 
@@ -514,7 +464,6 @@ export async function sendOrderStatusUpdateEmail(
           <h2>${emoji} Order Status Updated</h2>
           <p>Your order <strong>#${order.orderNumber}</strong> ${message}.</p>
         </div>
-        
         <div class="order-info">
           <p><strong>Previous Status:</strong> ${previousStatus}</p>
           <p><strong>New Status:</strong> ${order.status}</p>
@@ -531,26 +480,23 @@ export async function sendOrderStatusUpdateEmail(
               : ""
           }
         </div>
-        
-        <p>If you have any questions, please contact us at ${EMAIL_FROM}</p>
+        <p>If you have questions, contact ${EMAIL_FROM}</p>
       </body>
       </html>
     `;
-
     await sendEmailHtml({
       to: order.shippingAddress.email,
       subject: `${emoji} Order Status Update - ${order.orderNumber}`,
       html,
     });
-
     console.log(`✅ Status update email sent for ${order.orderNumber}`);
   } catch (error) {
-    console.error(`❌ Failed to send status update email:`, error);
+    console.error("❌ Failed to send status update email:", error);
     throw error;
   }
 }
 
-// Test email function
+// Test connection
 export async function testEmailConnection(): Promise<boolean> {
   try {
     await transporter.verify();
@@ -562,7 +508,7 @@ export async function testEmailConnection(): Promise<boolean> {
   }
 }
 
-// Send bulk delivery reminders
+// Bulk delivery reminders
 export async function sendBulkDeliveryReminders(
   orders: IOrder[]
 ): Promise<void> {
@@ -572,7 +518,7 @@ export async function sendBulkDeliveryReminders(
     }
     console.log(`✅ Sent delivery reminders for ${orders.length} orders`);
   } catch (error) {
-    console.error(`❌ Failed to send bulk delivery reminders:`, error);
+    console.error("❌ Failed to send bulk delivery reminders:", error);
     throw error;
   }
 }
