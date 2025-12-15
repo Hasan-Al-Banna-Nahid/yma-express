@@ -12,7 +12,6 @@ import { protectRoute } from "../../middlewares/auth.middleware";
 
 const router = express.Router();
 
-router.use(protectRoute);
 // Dynamic CRUD routes
 router
   .route("/")
