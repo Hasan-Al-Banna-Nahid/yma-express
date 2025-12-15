@@ -4,38 +4,48 @@ import ApiError from "../../utils/apiError";
 import { Types } from "mongoose";
 import { CreateProductData } from "./product.interface";
 
+/**
+ * Base filter for available products
+ * Only active & in-stock products should be visible publicly
+ */
+const AVAILABLE_PRODUCT_FILTER = {
+  active: true,
+  stock: { $gt: 0 },
+};
+
+/* =========================
+   CREATE PRODUCT
+========================= */
 export const createProduct = async (
   productData: CreateProductData
 ): Promise<IProductModel> => {
-  if (productData.categories && productData.categories.length > 0) {
-    const categoryIds = productData.categories.map(
-      (id) => new Types.ObjectId(id)
-    );
-    const categories = await Category.find({
-      _id: { $in: categoryIds },
-      isActive: true,
-    });
-
-    if (categories.length !== productData.categories.length) {
-      throw new ApiError("One or more categories are invalid or inactive", 400);
-    }
-
-    productData.categories = categoryIds as any;
-  } else {
+  if (!productData.categories || productData.categories.length === 0) {
     throw new ApiError("At least one category is required", 400);
   }
 
-  const productWithLocation = {
+  const categoryIds = productData.categories.map(
+    (id) => new Types.ObjectId(id)
+  );
+
+  const categories = await Category.find({
+    _id: { $in: categoryIds },
+    isActive: true,
+  });
+
+  if (categories.length !== categoryIds.length) {
+    throw new ApiError("One or more categories are invalid or inactive", 400);
+  }
+
+  const product = await Product.create({
     ...productData,
+    categories: categoryIds,
     location: {
       country: "England",
       state: productData.location.state,
       city: productData.location.city || "",
     },
     dateAdded: new Date(),
-  };
-
-  const product = await Product.create(productWithLocation);
+  });
 
   await product.populate({
     path: "categories",
@@ -46,6 +56,9 @@ export const createProduct = async (
   return product;
 };
 
+/* =========================
+   UPDATE PRODUCT
+========================= */
 export const updateProduct = async (
   productId: string,
   updateData: any
@@ -54,16 +67,17 @@ export const updateProduct = async (
     throw new ApiError("Invalid product ID", 400);
   }
 
-  if (updateData.categories && updateData.categories.length > 0) {
+  if (updateData.categories?.length) {
     const categoryIds = updateData.categories.map(
       (id: string) => new Types.ObjectId(id)
     );
+
     const categories = await Category.find({
       _id: { $in: categoryIds },
       isActive: true,
     });
 
-    if (categories.length !== updateData.categories.length) {
+    if (categories.length !== categoryIds.length) {
       throw new ApiError("One or more categories are invalid or inactive", 400);
     }
 
@@ -81,11 +95,7 @@ export const updateProduct = async (
   const product = await Product.findByIdAndUpdate(productId, updateData, {
     new: true,
     runValidators: true,
-  }).populate({
-    path: "categories",
-    select: "name slug description image",
-    match: { isActive: true },
-  });
+  }).populate("categories", "name slug description image");
 
   if (!product) {
     throw new ApiError("Product not found", 404);
@@ -94,16 +104,19 @@ export const updateProduct = async (
   return product;
 };
 
+/* =========================
+   GET ALL PRODUCTS
+========================= */
 export const getAllProducts = async (
-  page: number = 1,
-  limit: number = 10,
+  page = 1,
+  limit = 10,
   state?: string,
   category?: string,
   minPrice?: number,
   maxPrice?: number
 ): Promise<{ products: IProductModel[]; total: number; pages: number }> => {
   const skip = (page - 1) * limit;
-  const filter: any = { active: true };
+  const filter: any = { ...AVAILABLE_PRODUCT_FILTER };
 
   if (state) {
     filter["location.state"] = { $regex: state, $options: "i" };
@@ -134,6 +147,9 @@ export const getAllProducts = async (
   };
 };
 
+/* =========================
+   GET PRODUCT BY ID
+========================= */
 export const getProductById = async (
   productId: string
 ): Promise<IProductModel> => {
@@ -141,10 +157,10 @@ export const getProductById = async (
     throw new ApiError("Invalid product ID", 400);
   }
 
-  const product = await Product.findById(productId).populate(
-    "categories",
-    "name description"
-  );
+  const product = await Product.findOne({
+    _id: productId,
+    ...AVAILABLE_PRODUCT_FILTER,
+  }).populate("categories", "name description");
 
   if (!product) {
     throw new ApiError("Product not found", 404);
@@ -153,6 +169,9 @@ export const getProductById = async (
   return product;
 };
 
+/* =========================
+   SOFT DELETE PRODUCT
+========================= */
 export const deleteProduct = async (productId: string): Promise<void> => {
   if (!Types.ObjectId.isValid(productId)) {
     throw new ApiError("Invalid product ID", 400);
@@ -169,22 +188,32 @@ export const deleteProduct = async (productId: string): Promise<void> => {
   }
 };
 
+/* =========================
+   PRODUCTS BY STATE
+========================= */
 export const getProductsByState = async (
   state: string
 ): Promise<IProductModel[]> => {
-  const products = await Product.find({
+  return Product.find({
+    ...AVAILABLE_PRODUCT_FILTER,
     "location.state": { $regex: state, $options: "i" },
-    active: true,
   }).populate("categories", "name description");
-
-  return products;
 };
 
+/* =========================
+   AVAILABLE STATES
+========================= */
 export const getAvailableStates = async (): Promise<string[]> => {
-  const states = await Product.distinct("location.state", { active: true });
+  const states = await Product.distinct("location.state", {
+    ...AVAILABLE_PRODUCT_FILTER,
+  });
+
   return states.sort();
 };
 
+/* =========================
+   UPDATE STOCK
+========================= */
 export const updateProductStock = async (
   productId: string,
   newStock: number
@@ -210,28 +239,30 @@ export const updateProductStock = async (
   return product;
 };
 
+/* =========================
+   FEATURED PRODUCTS
+========================= */
 export const getFeaturedProducts = async (
-  limit: number = 8
+  limit = 8
 ): Promise<IProductModel[]> => {
-  const products = await Product.find({
-    active: true,
-    stock: { $gt: 0 },
-  })
+  return Product.find({ ...AVAILABLE_PRODUCT_FILTER })
     .populate("categories", "name description")
     .sort({ createdAt: -1 })
     .limit(limit);
-
-  return products;
 };
 
+/* =========================
+   SEARCH PRODUCTS
+========================= */
 export const searchProducts = async (
   query: string,
-  page: number = 1,
-  limit: number = 10
+  page = 1,
+  limit = 10
 ): Promise<{ products: IProductModel[]; total: number; pages: number }> => {
   const skip = (page - 1) * limit;
-  const searchFilter = {
-    active: true,
+
+  const filter = {
+    ...AVAILABLE_PRODUCT_FILTER,
     $or: [
       { name: { $regex: query, $options: "i" } },
       { description: { $regex: query, $options: "i" } },
@@ -241,13 +272,13 @@ export const searchProducts = async (
     ],
   };
 
-  const products = await Product.find(searchFilter)
+  const products = await Product.find(filter)
     .populate("categories", "name description")
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(limit);
 
-  const total = await Product.countDocuments(searchFilter);
+  const total = await Product.countDocuments(filter);
 
   return {
     products,
@@ -256,19 +287,22 @@ export const searchProducts = async (
   };
 };
 
+/* =========================
+   PRODUCTS BY CATEGORY
+========================= */
 export const getProductsByCategory = async (
   categoryId: string,
-  page: number = 1,
-  limit: number = 10
+  page = 1,
+  limit = 10
 ): Promise<{ products: IProductModel[]; total: number; pages: number }> => {
-  const skip = (page - 1) * limit;
-
   if (!Types.ObjectId.isValid(categoryId)) {
     throw new ApiError("Invalid category ID", 400);
   }
 
+  const skip = (page - 1) * limit;
+
   const filter = {
-    active: true,
+    ...AVAILABLE_PRODUCT_FILTER,
     categories: new Types.ObjectId(categoryId),
   };
 
