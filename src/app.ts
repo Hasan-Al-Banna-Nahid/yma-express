@@ -19,6 +19,7 @@ import cartRoutes from "./app/modules/Cart/cart.routes";
 import checkoutRoutes from "./app/modules/Checkout/checkout.routes";
 import userOrderRoutes from "./app/modules/UserOrder/user.order.routes";
 import locationRoutes from "./app/modules/Location/location.routes";
+import bookingRoutes from "./app/modules/Bookings/booking.route";
 
 const app = express();
 
@@ -56,6 +57,7 @@ app.use("/auth", authRouter);
 app.use("/api/v1/auth", authRouter);
 
 // API routes
+app.use("/api/v1", bookingRouter);
 app.use("/api/v1/bookings", bookingRouter);
 app.use("/api/v1/inventory", inventoryRouter);
 // app.use("/api/v1/invoices", invoiceRouter); // Remove if not needed

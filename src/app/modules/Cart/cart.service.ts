@@ -9,7 +9,7 @@ export const getCartByUserId = async (userId: string) => {
   const cart = await Cart.findOne({ user: new Types.ObjectId(userId) })
     .populate({
       path: "items.product",
-      select: "name imageCover price stock slug categories",
+      select: "name imageCover price stock slug categories productType", // Added productType
     })
     .lean();
 
@@ -90,6 +90,7 @@ export const addItemToCart = async (
       // Add new item - Save product as ObjectId
       cart.items.push({
         product: new Types.ObjectId(productId),
+        productType: (product as any).productType || "physical", // Added productType
         quantity,
         price: product.price,
         startDate,
@@ -185,6 +186,7 @@ export const addMultipleItemsToCart = async (
         // Add new item - Save product as ObjectId
         cart.items.push({
           product: new Types.ObjectId(productId),
+          productType: (product as any).productType || "physical", // Added productType
           quantity,
           price: product.price,
           startDate,
@@ -306,6 +308,7 @@ export const updateCartItems = async (
 
           cart.items.push({
             product: new Types.ObjectId(productId),
+            productType: (product as any).productType || "physical", // Added productType
             quantity,
             price: product.price,
             startDate,
@@ -367,6 +370,7 @@ export const updateCartItems = async (
 
         cart.items.push({
           product: new Types.ObjectId(productId),
+          productType: (product as any).productType || "physical", // Added productType
           quantity,
           price: product.price,
           startDate,
@@ -492,7 +496,7 @@ export const getCartSummary = async (userId: string) => {
   const cart = await Cart.findOne({ user: new Types.ObjectId(userId) })
     .populate({
       path: "items.product",
-      select: "name imageCover price",
+      select: "name imageCover price productType", // Added productType
     })
     .lean();
 
@@ -509,6 +513,7 @@ export const getCartSummary = async (userId: string) => {
     totalPrice: cart.totalPrice,
     items: cart.items.map((item: any) => ({
       product: item.product,
+      productType: item.productType, // Added productType
       quantity: item.quantity,
       price: item.price,
       subtotal: item.quantity * item.price,

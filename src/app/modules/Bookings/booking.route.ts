@@ -1,53 +1,38 @@
 import express from "express";
 import {
-  createBookingHandler,
-  getBookingHandler,
-  getBookingsHandler,
-  getBookingsByDateRangeHandler,
-  updateBookingHandler,
-  deleteBookingHandler,
-  getBookingsByProductHandler,
-  checkAvailabilityHandler,
-  updateBillingAddress,
-  updateShippingAddress,
+  createBooking,
+  getMyBookings,
+  getBookingById,
+  cancelBooking,
+  getAllBookings,
+  updateBookingStatus,
+  getBookingStats,
+  getUpcomingDeliveries,
+  searchBookings,
 } from "./booking.controller";
-import {
-  protect,
-  restrictTo,
-} from "../../middlewares/authorization.middleware";
-
-import { validateAddressBody } from "../../middlewares/validate.middleware";
+import { protectRoute } from "../../middlewares/auth.middleware";
+import { restrictTo } from "../../middlewares/authorization.middleware";
 
 const router = express.Router();
 
-// Protect all routes after this middleware
+// Public routes (none)
 
-router.use(protect);
-router.post("/", createBookingHandler);
-router.get("/", getBookingsHandler);
-router.get("/date-range", getBookingsByDateRangeHandler);
-router.get("/product/:productId", getBookingsByProductHandler);
-router.get("/check-availability", checkAvailabilityHandler);
-router.get("/:id", getBookingHandler);
-router.patch("/:id", updateBookingHandler);
-router.delete("/:id", deleteBookingHandler);
-router.patch(
-  "/:id/shipping-address",
+// Protected routes (User)
+router.use(protectRoute);
 
-  validateAddressBody, // optional but recommended
-  updateShippingAddress
-);
+// User booking routes
+router.post("/", createBooking);
+router.get("/my-bookings", getMyBookings);
+router.get("/:id", getBookingById);
+router.post("/:id/cancel", cancelBooking);
 
-// PATCH /api/bookings/:id/billing-address
-router.patch(
-  "/:id/billing-address",
+// Admin routes
+router.use(restrictTo("admin", "superadmin"));
 
-  validateAddressBody, // optional but recommended
-  updateBillingAddress
-);
-// Admin only routes
-router.use(restrictTo("admin"));
-
-// Add admin-only booking routes here if needed
+router.get("/admin/bookings", getAllBookings);
+router.patch("/admin/bookings/:id", updateBookingStatus);
+router.get("/admin/bookings/stats", getBookingStats);
+router.get("/admin/bookings/upcoming-deliveries", getUpcomingDeliveries);
+router.get("/admin/bookings/search", searchBookings);
 
 export default router;

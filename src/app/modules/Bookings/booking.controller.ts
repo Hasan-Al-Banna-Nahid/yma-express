@@ -1,323 +1,244 @@
-// src/controllers/booking.controller.ts
-import { Request, Response, NextFunction } from "express";
-import mongoose, { Types } from "mongoose";
+import { Request, Response } from "express";
+import asyncHandler from "../../utils/asyncHandler";
 import ApiError from "../../utils/apiError";
-import { IUser } from "../Auth/user.interface";
-import { IAddress } from "../UserOrder/address.interface";
-import Booking from "./booking.model";
-import { BookingService } from "./booking.service";
-import { toObjectId, normalizeIdOrThrow } from "../../utils/objectId";
+import { ApiResponse } from "../../utils/apiResponse";
+import BookingService from "./booking.service";
+import { AuthenticatedRequest } from "../../middlewares/auth.middleware";
+import { BookingFilter } from "./booking.interface";
+import mongoose from "mongoose";
 
-// ----- Types -----
-type Role = "user" | "admin";
-type AuthenticatedRequest = Request & {
-  user: IUser & { id: string; role: Role };
-};
+/**
+ * @desc    Create booking from cart
+ * @route   POST /api/v1/bookings
+ * @access  Private
+ */
+export const createBooking = asyncHandler(
+  async (req: Request, res: Response) => {
+    const userId = (req as AuthenticatedRequest).user._id;
 
-// ----- Guards / Utils -----
-function ensureAuth(req: Request): asserts req is AuthenticatedRequest {
-  const aReq = req as AuthenticatedRequest;
-  if (!aReq.user || !aReq.user.id)
-    throw new ApiError("User not authenticated", 401);
-}
-
-function parseISODate(value: any, field: string): Date {
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) throw new ApiError(`Invalid ${field}`, 400);
-  return d;
-}
-
-// Safely get the owner's id whether booking.user is ObjectId or a populated doc
-function bookingOwnerId(booking: {
-  user: Types.ObjectId | { _id: Types.ObjectId };
-}): string {
-  const u: any = booking.user;
-  if (u && typeof u === "object" && u._id)
-    return (u._id as Types.ObjectId).toString();
-  return (u as Types.ObjectId).toString();
-}
-
-/** POST /api/bookings */
-export const createBookingHandler = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
-    ensureAuth(req);
     const {
-      product,
-      price,
-      startDate,
-      endDate,
-      deliveryTime,
-      specialRequests,
       shippingAddress,
-      billingAddress,
+      paymentMethod,
+      termsAccepted,
+      invoiceType,
+      bankDetails,
+      customerNotes,
     } = req.body;
 
-    if (!product) throw new ApiError("product is required", 400);
-    if (price === undefined || price === null)
-      throw new ApiError("price is required", 400);
-    if (!startDate) throw new ApiError("startDate is required", 400);
-    if (!endDate) throw new ApiError("endDate is required", 400);
-    if (!deliveryTime) throw new ApiError("deliveryTime is required", 400);
+    // Validate required fields
+    if (!shippingAddress) {
+      throw new ApiError("Shipping address is required", 400);
+    }
 
-    const productId = toObjectId(product, "product");
-    const userId = toObjectId((req as any).user.id, "user");
+    if (!paymentMethod) {
+      throw new ApiError("Payment method is required", 400);
+    }
 
-    const start = parseISODate(startDate, "startDate");
-    const end = parseISODate(endDate, "endDate");
-    if (end < start) throw new ApiError("endDate must be after startDate", 400);
+    if (!termsAccepted) {
+      throw new ApiError("You must accept terms & conditions", 400);
+    }
 
-    const booking = await BookingService.createBooking({
-      product: productId,
-      user: userId,
-      price,
-      startDate: start,
-      endDate: end,
-      deliveryTime,
-      specialRequests,
+    const booking = await BookingService.createBookingFromCart(userId, {
       shippingAddress,
-      billingAddress,
+      paymentMethod,
+      termsAccepted,
+      invoiceType,
+      bankDetails,
+      customerNotes,
     });
 
-    res.status(201).json({ status: "success", data: { booking } });
-  } catch (err) {
-    next(err);
+    ApiResponse(res, 201, "Booking created successfully", { booking });
   }
-};
+);
 
-/** GET /api/bookings/:id */
-export const getBookingHandler = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
-    ensureAuth(req);
-    const id = normalizeIdOrThrow(req.params.id, "booking id");
+/**
+ * @desc    Get user's bookings
+ * @route   GET /api/v1/bookings/my-bookings
+ * @access  Private
+ */
+export const getMyBookings = asyncHandler(
+  async (req: Request, res: Response) => {
+    const userId = (req as AuthenticatedRequest).user._id;
+    const bookings = await BookingService.getUserBookings(userId.toString());
 
-    const booking = await Booking.findById(id);
-    if (!booking) throw new ApiError("Booking not found", 404);
+    ApiResponse(res, 200, "Bookings retrieved successfully", { bookings });
+  }
+);
 
-    const ownerId = bookingOwnerId(booking);
-    if (ownerId !== req.user.id && req.user.role !== "admin") {
-      throw new ApiError("Unauthorized", 403);
+/**
+ * @desc    Get booking by ID
+ * @route   GET /api/v1/bookings/:id
+ * @access  Private
+ */
+export const getBookingById = asyncHandler(
+  async (req: Request, res: Response) => {
+    const bookingId = req.params.id;
+    const userId = (req as AuthenticatedRequest).user._id;
+    const userRole = (req as AuthenticatedRequest).user.role;
+
+    const booking = await BookingService.getBookingById(bookingId);
+
+    // Check ownership (unless admin)
+    if (userRole !== "admin" && userRole !== "superadmin") {
+      if (booking.user._id.toString() !== userId.toString()) {
+        throw new ApiError("You can only view your own bookings", 403);
+      }
     }
 
-    res.status(200).json({ status: "success", data: { booking } });
-  } catch (err) {
-    next(err);
+    ApiResponse(res, 200, "Booking retrieved successfully", { booking });
   }
-};
+);
 
-/** GET /api/bookings */
-export const getBookingsHandler = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
-    ensureAuth(req);
-    const filter = req.user.role === "admin" ? {} : { user: req.user.id };
-    const bookings = await Booking.find(filter as any);
+/**
+ * @desc    Cancel booking
+ * @route   POST /api/v1/bookings/:id/cancel
+ * @access  Private
+ */
+export const cancelBooking = asyncHandler(
+  async (req: Request, res: Response) => {
+    const bookingId = req.params.id;
+    const userId = (req as AuthenticatedRequest).user._id;
+    const { reason } = req.body;
 
-    res.status(200).json({
-      status: "success",
-      results: bookings.length,
-      data: { bookings },
-    });
-  } catch (err) {
-    next(err);
-  }
-};
-
-/** GET /api/bookings/date-range?startDate=...&endDate=... */
-export const getBookingsByDateRangeHandler = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
-    ensureAuth(req);
-    const { startDate, endDate } = req.query;
-    if (!startDate || !endDate)
-      throw new ApiError("startDate and endDate are required", 400);
-
-    const start = parseISODate(startDate, "startDate");
-    const end = parseISODate(endDate, "endDate");
-    if (end < start) throw new ApiError("endDate must be after startDate", 400);
-
-    const base: any = { startDate: { $lte: end }, endDate: { $gte: start } };
-    if (req.user.role !== "admin") base.user = req.user.id;
-
-    const bookings = await Booking.find(base);
-    res.status(200).json({
-      status: "success",
-      results: bookings.length,
-      data: { bookings },
-    });
-  } catch (err) {
-    next(err);
-  }
-};
-
-/** GET /api/bookings/product/:productId */
-export const getBookingsByProductHandler = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
-    ensureAuth(req);
-    const productObjId = toObjectId(req.params.productId, "productId");
-
-    const filter: any = { product: productObjId };
-    if (req.user.role !== "admin") filter.user = req.user.id;
-
-    const bookings = await Booking.find(filter);
-    res.status(200).json({
-      status: "success",
-      results: bookings.length,
-      data: { bookings },
-    });
-  } catch (err) {
-    next(err);
-  }
-};
-
-/** GET /api/bookings/check-availability?productId=...&startDate=...&endDate=... */
-export const checkAvailabilityHandler = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
-    const { productId, startDate, endDate } = req.query;
-    const productObjId = toObjectId(productId, "productId");
-    if (!startDate || !endDate)
-      throw new ApiError("startDate and endDate are required", 400);
-
-    const start = parseISODate(startDate, "startDate");
-    const end = parseISODate(endDate, "endDate");
-    if (end < start) throw new ApiError("endDate must be after startDate", 400);
-
-    const conflict = await Booking.findOne({
-      product: productObjId,
-      status: { $ne: "cancelled" },
-      startDate: { $lte: end },
-      endDate: { $gte: start },
-    });
-
-    res.status(200).json({
-      status: "success",
-      data: { available: !conflict, conflictId: conflict?._id ?? null },
-    });
-  } catch (err) {
-    next(err);
-  }
-};
-
-/** PATCH /api/bookings/:id */
-export const updateBookingHandler = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
-    ensureAuth(req);
-    const id = normalizeIdOrThrow(req.params.id, "booking id");
-
-    const payload: any = { ...req.body };
-    if (payload.startDate)
-      payload.startDate = parseISODate(payload.startDate, "startDate");
-    if (payload.endDate)
-      payload.endDate = parseISODate(payload.endDate, "endDate");
-    if (
-      payload.startDate &&
-      payload.endDate &&
-      payload.endDate < payload.startDate
-    ) {
-      throw new ApiError("endDate must be after startDate", 400);
+    if (!reason) {
+      throw new ApiError("Cancellation reason is required", 400);
     }
 
-    const updated = await BookingService.updateBooking(
-      id,
-      req.user.id,
-      payload,
-      req.user.role === "admin"
-    );
-
-    res.status(200).json({ status: "success", data: { booking: updated } });
-  } catch (err) {
-    next(err);
-  }
-};
-
-/** DELETE /api/bookings/:id */
-export const deleteBookingHandler = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
-    ensureAuth(req);
-    const id = normalizeIdOrThrow(req.params.id, "booking id");
-
-    await BookingService.deleteBooking(
-      id,
-      req.user.id,
-      req.user.role === "admin"
-    );
-    res.status(204).json({ status: "success", data: null });
-  } catch (err) {
-    next(err);
-  }
-};
-
-/** PATCH /api/bookings/:id/shipping-address */
-export const updateShippingAddress = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
-    ensureAuth(req);
-    const bookingId = normalizeIdOrThrow(req.params.id, "booking id");
-
-    const address = req.body as IAddress;
-    const updated = await BookingService.updateShippingAddress(
+    const booking = await BookingService.cancelBooking(
       bookingId,
-      req.user.id,
-      address,
-      req.user.role === "admin"
+      userId,
+      reason
     );
-    res.status(200).json({ status: "success", data: { booking: updated } });
-  } catch (err) {
-    next(err);
+
+    ApiResponse(res, 200, "Booking cancelled successfully", { booking });
   }
-};
+);
 
-/** PATCH /api/bookings/:id/billing-address */
-export const updateBillingAddress = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
-    ensureAuth(req);
-    const bookingId = normalizeIdOrThrow(req.params.id, "booking id");
+/**
+ * @desc    Get all bookings (Admin)
+ * @route   GET /api/v1/admin/bookings
+ * @access  Private/Admin
+ */
+export const getAllBookings = asyncHandler(
+  async (req: Request, res: Response) => {
+    const {
+      status,
+      startDate,
+      endDate,
+      userId,
+      search,
+      paymentStatus,
+      minAmount,
+      maxAmount,
+      page = 1,
+      limit = 20,
+    } = req.query;
 
-    const address = req.body as IAddress;
-    const updated = await BookingService.updateBillingAddress(
+    const filters: BookingFilter = {};
+
+    if (status) filters.status = status as any;
+    if (userId) filters.userId = userId as string;
+    if (search) filters.search = search as string;
+    if (paymentStatus) filters.paymentStatus = paymentStatus as string;
+    if (minAmount) filters.minAmount = Number(minAmount);
+    if (maxAmount) filters.maxAmount = Number(maxAmount);
+
+    if (startDate) filters.startDate = new Date(startDate as string);
+    if (endDate) filters.endDate = new Date(endDate as string);
+
+    const result = await BookingService.getAllBookings(
+      filters,
+      Number(page),
+      Number(limit)
+    );
+
+    ApiResponse(res, 200, "Bookings retrieved successfully", {
+      bookings: result.bookings,
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total: result.total,
+        pages: result.pages,
+      },
+    });
+  }
+);
+
+/**
+ * @desc    Update booking status (Admin)
+ * @route   PATCH /api/v1/admin/bookings/:id
+ * @access  Private/Admin
+ */
+export const updateBookingStatus = asyncHandler(
+  async (req: Request, res: Response) => {
+    const bookingId = req.params.id;
+    const adminId = (req as AuthenticatedRequest).user._id;
+    const updateData = req.body;
+
+    const booking = await BookingService.updateBooking(
       bookingId,
-      req.user.id,
-      address,
-      req.user.role === "admin"
+      updateData,
+      adminId
     );
-    res.status(200).json({ status: "success", data: { booking: updated } });
-  } catch (err) {
-    next(err);
+
+    ApiResponse(res, 200, "Booking updated successfully", { booking });
   }
-};
+);
+
+/**
+ * @desc    Get booking statistics (Admin)
+ * @route   GET /api/v1/admin/bookings/stats
+ * @access  Private/Admin
+ */
+export const getBookingStats = asyncHandler(
+  async (req: Request, res: Response) => {
+    const stats = await BookingService.getBookingStats();
+
+    ApiResponse(res, 200, "Booking statistics retrieved", { stats });
+  }
+);
+
+/**
+ * @desc    Get upcoming deliveries (Admin)
+ * @route   GET /api/v1/admin/bookings/upcoming-deliveries
+ * @access  Private/Admin
+ */
+export const getUpcomingDeliveries = asyncHandler(
+  async (req: Request, res: Response) => {
+    const days = req.query.days ? Number(req.query.days) : 7;
+    const deliveries = await BookingService.getUpcomingDeliveries(days);
+
+    ApiResponse(res, 200, "Upcoming deliveries retrieved", { deliveries });
+  }
+);
+
+/**
+ * @desc    Search bookings (Admin)
+ * @route   GET /api/v1/admin/bookings/search
+ * @access  Private/Admin
+ */
+export const searchBookings = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { q: query, page = 1, limit = 20 } = req.query;
+
+    if (!query) {
+      throw new ApiError("Search query is required", 400);
+    }
+
+    const result = await BookingService.searchBookings(
+      query as string,
+      Number(page),
+      Number(limit)
+    );
+
+    ApiResponse(res, 200, "Search results retrieved", {
+      bookings: result.bookings,
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total: result.total,
+        pages: result.pages,
+      },
+    });
+  }
+);

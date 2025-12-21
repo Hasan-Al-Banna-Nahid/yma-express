@@ -45,8 +45,946 @@ export type EmailTemplate =
   | "orderConfirmation"
   | "deliveryReminder"
   | "preDeliveryConfirmation"
-  | "invoice";
+  | "invoice"
+  | "bookingConfirmation";
+// Import the Booking interface
+import { IBookingDocument } from "../Bookings/booking.model";
 
+// ... existing imports and code ...
+
+/**
+ * Send booking confirmation email
+ */
+export async function sendBookingConfirmationEmail(booking: IBookingDocument) {
+  try {
+    // Get user details
+    const user = await booking.populate("user", "name email phone");
+
+    const html = await renderTemplate("bookingConfirmation", {
+      booking,
+      user,
+      brand: EMAIL_FROM_NAME,
+      year: new Date().getFullYear(),
+      brandColor: "#7C3AED",
+      bookingNumber: booking.bookingNumber,
+      customerName: `${booking.shippingAddress.firstName} ${booking.shippingAddress.lastName}`,
+      totalAmount: booking.totalAmount.toFixed(2),
+      paymentMethod: booking.payment.method,
+      estimatedDeliveryDate: booking.estimatedDeliveryDate?.toLocaleDateString(
+        "en-GB",
+        {
+          weekday: "long",
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        }
+      ),
+      estimatedCollectionDate:
+        booking.estimatedCollectionDate?.toLocaleDateString("en-GB", {
+          weekday: "long",
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        }),
+      items: booking.items.map((item) => ({
+        name: item.name,
+        quantity: item.quantity,
+        price: item.price.toFixed(2),
+        totalDays: item.totalDays,
+        total: (item.quantity * item.price * item.totalDays).toFixed(2),
+        startDate: item.startDate.toLocaleDateString("en-GB"),
+        endDate: item.endDate.toLocaleDateString("en-GB"),
+      })),
+      subtotal: booking.subTotal.toFixed(2),
+      tax: booking.taxAmount.toFixed(2),
+      deliveryFee: booking.deliveryFee.toFixed(2),
+      securityDeposit: booking.securityDeposit?.toFixed(2) || "0.00",
+    });
+
+    await sendEmailHtml({
+      to: booking.shippingAddress.email,
+      subject: `🎉 Booking Confirmed - ${booking.bookingNumber}`,
+      html,
+    });
+
+    console.log(
+      `✅ Booking confirmation email sent for ${booking.bookingNumber}`
+    );
+  } catch (error) {
+    console.error("❌ Failed to send booking confirmation email:", error);
+    throw error;
+  }
+}
+
+/**
+ * Send booking status update email
+ */
+export async function sendBookingStatusUpdateEmail(booking: IBookingDocument) {
+  try {
+    const statusMessages: Record<
+      string,
+      { subject: string; message: string; emoji: string }
+    > = {
+      pending: {
+        subject: "⏳ Booking Received",
+        message: "Your booking has been received and is pending confirmation.",
+        emoji: "⏳",
+      },
+      confirmed: {
+        subject: "✅ Booking Confirmed",
+        message: "Your booking has been confirmed and is now being processed.",
+        emoji: "✅",
+      },
+      payment_pending: {
+        subject: "💰 Payment Required",
+        message: "Payment is required to proceed with your booking.",
+        emoji: "💰",
+      },
+      payment_completed: {
+        subject: "✅ Payment Received",
+        message: "Payment has been received successfully.",
+        emoji: "✅",
+      },
+      processing: {
+        subject: "⚙️ Processing Booking",
+        message: "Your booking is being processed and prepared.",
+        emoji: "⚙️",
+      },
+      ready_for_delivery: {
+        subject: "📦 Ready for Delivery",
+        message: "Your items are ready and scheduled for delivery.",
+        emoji: "📦",
+      },
+      out_for_delivery: {
+        subject: "🚚 Out for Delivery",
+        message: "Your items are currently out for delivery.",
+        emoji: "🚚",
+      },
+      delivered: {
+        subject: "🎉 Delivery Complete",
+        message: "Your items have been delivered successfully.",
+        emoji: "🎉",
+      },
+      ready_for_collection: {
+        subject: "🔄 Ready for Collection",
+        message: "Your items are ready for collection.",
+        emoji: "🔄",
+      },
+      collected: {
+        subject: "✅ Collection Complete",
+        message: "Your items have been collected successfully.",
+        emoji: "✅",
+      },
+      completed: {
+        subject: "🎊 Booking Completed",
+        message: "Your booking has been completed successfully.",
+        emoji: "🎊",
+      },
+      cancelled: {
+        subject: "❌ Booking Cancelled",
+        message: "Your booking has been cancelled.",
+        emoji: "❌",
+      },
+      refunded: {
+        subject: "💸 Refund Processed",
+        message: "Your refund has been processed successfully.",
+        emoji: "💸",
+      },
+    };
+
+    const statusInfo = statusMessages[booking.status] || {
+      subject: "📝 Booking Status Updated",
+      message: `Your booking status has been updated to ${booking.status}.`,
+      emoji: "📝",
+    };
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+          }
+          .header {
+            background: #7C3AED;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            border-radius: 10px 10px 0 0;
+          }
+          .content {
+            background: #f9f9f9;
+            padding: 30px;
+            border-radius: 0 0 10px 10px;
+          }
+          .status-badge {
+            display: inline-block;
+            background: #e3f2fd;
+            color: #1565c0;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-weight: bold;
+            margin: 20px 0;
+          }
+          .booking-details {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border-left: 4px solid #7C3AED;
+          }
+          .footer {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+            color: #666;
+            font-size: 12px;
+            text-align: center;
+          }
+          .button {
+            display: inline-block;
+            background: #7C3AED;
+            color: white;
+            padding: 12px 24px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 20px 0;
+          }
+          .items-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+          }
+          .items-table th, .items-table td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+          }
+          .items-table th {
+            background: #f5f5f5;
+            font-weight: bold;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>${statusInfo.emoji} ${statusInfo.subject}</h1>
+        </div>
+        
+        <div class="content">
+          <p>Dear ${booking.shippingAddress.firstName},</p>
+          
+          <p>${statusInfo.message}</p>
+          
+          <div class="status-badge">
+            Status: ${booking.status.toUpperCase()}
+          </div>
+          
+          <div class="booking-details">
+            <h3>📋 Booking Details</h3>
+            <p><strong>Booking Number:</strong> ${booking.bookingNumber}</p>
+            <p><strong>Booking Date:</strong> ${booking.createdAt?.toLocaleDateString(
+              "en-GB",
+              {
+                weekday: "long",
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+              }
+            )}</p>
+            
+            ${
+              booking.estimatedDeliveryDate
+                ? `
+              <p><strong>Estimated Delivery:</strong> ${booking.estimatedDeliveryDate.toLocaleDateString(
+                "en-GB",
+                {
+                  weekday: "long",
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
+                }
+              )}</p>
+            `
+                : ""
+            }
+            
+            ${
+              booking.estimatedCollectionDate
+                ? `
+              <p><strong>Estimated Collection:</strong> ${booking.estimatedCollectionDate.toLocaleDateString(
+                "en-GB",
+                {
+                  weekday: "long",
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
+                }
+              )}</p>
+            `
+                : ""
+            }
+            
+            <p><strong>Total Amount:</strong> £${booking.totalAmount.toFixed(
+              2
+            )}</p>
+            <p><strong>Payment Method:</strong> ${booking.payment.method
+              .replace(/_/g, " ")
+              .toUpperCase()}</p>
+            <p><strong>Payment Status:</strong> ${booking.payment.status.toUpperCase()}</p>
+          </div>
+          
+          ${
+            booking.items.length > 0
+              ? `
+            <h3>📦 Booked Items</h3>
+            <table class="items-table">
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  <th>Quantity</th>
+                  <th>Duration</th>
+                  <th>Price</th>
+                  <th>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${booking.items
+                  .map(
+                    (item) => `
+                  <tr>
+                    <td>${item.name}</td>
+                    <td>${item.quantity}</td>
+                    <td>${item.totalDays} day${
+                      item.totalDays > 1 ? "s" : ""
+                    }<br>
+                        <small>${item.startDate.toLocaleDateString(
+                          "en-GB"
+                        )} - ${item.endDate.toLocaleDateString("en-GB")}</small>
+                    </td>
+                    <td>£${item.price.toFixed(2)}/day</td>
+                    <td>£${(
+                      item.quantity *
+                      item.price *
+                      item.totalDays
+                    ).toFixed(2)}</td>
+                  </tr>
+                `
+                  )
+                  .join("")}
+              </tbody>
+            </table>
+          `
+              : ""
+          }
+          
+          ${
+            booking.adminNotes
+              ? `
+            <div style="background: #fff3cd; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #ffc107;">
+              <h4>📝 Admin Notes</h4>
+              <p>${booking.adminNotes}</p>
+            </div>
+          `
+              : ""
+          }
+          
+          ${
+            booking.cancellationReason
+              ? `
+            <div style="background: #f8d7da; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #dc3545;">
+              <h4>❌ Cancellation Reason</h4>
+              <p>${booking.cancellationReason}</p>
+            </div>
+          `
+              : ""
+          }
+          
+          ${
+            booking.status === "cancelled" && booking.refundAmount
+              ? `
+            <div style="background: #d1ecf1; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #0c5460;">
+              <h4>💸 Refund Information</h4>
+              <p><strong>Refund Amount:</strong> £${booking.refundAmount.toFixed(
+                2
+              )}</p>
+              <p><strong>Refund Date:</strong> ${
+                booking.refundedAt?.toLocaleDateString("en-GB") || "Processing"
+              }</p>
+            </div>
+          `
+              : ""
+          }
+          
+          <a href="${
+            process.env.CLIENT_URL || "http://localhost:3000"
+          }/bookings/${booking._id}" class="button">
+            View Booking Details
+          </a>
+          
+          <p>If you have any questions, please contact our support team at ${EMAIL_FROM}</p>
+          
+          <p>Best regards,<br>The ${EMAIL_FROM_NAME} Team</p>
+        </div>
+        
+        <div class="footer">
+          <p>&copy; ${new Date().getFullYear()} ${EMAIL_FROM_NAME}. All rights reserved.</p>
+          <p>This email was sent to ${booking.shippingAddress.email}</p>
+        </div>
+      </body>
+      </html>
+    `;
+
+    await sendEmailHtml({
+      to: booking.shippingAddress.email,
+      subject: `${statusInfo.emoji} ${statusInfo.subject} - ${booking.bookingNumber}`,
+      html,
+    });
+
+    console.log(
+      `✅ Booking status update email sent for ${booking.bookingNumber}`
+    );
+  } catch (error) {
+    console.error("❌ Failed to send booking status update email:", error);
+    throw error;
+  }
+}
+
+/**
+ * Send booking reminder email (24 hours before delivery)
+ */
+export async function sendBookingDeliveryReminder(booking: IBookingDocument) {
+  try {
+    if (!booking.estimatedDeliveryDate) return;
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+          }
+          .header {
+            background: #4CAF50;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            border-radius: 10px 10px 0 0;
+          }
+          .content {
+            background: #f9f9f9;
+            padding: 30px;
+            border-radius: 0 0 10px 10px;
+          }
+          .reminder-box {
+            background: #e8f5e9;
+            border: 2px solid #4CAF50;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+          }
+          .details-box {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border-left: 4px solid #4CAF50;
+          }
+          .button {
+            display: inline-block;
+            background: #4CAF50;
+            color: white;
+            padding: 12px 24px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 20px 0;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>🚚 Delivery Reminder</h1>
+        </div>
+        
+        <div class="content">
+          <p>Dear ${booking.shippingAddress.firstName},</p>
+          
+          <div class="reminder-box">
+            <h2>⏰ Your Delivery is Scheduled for Tomorrow!</h2>
+            <p>Please ensure someone will be available at the delivery address during the specified time window.</p>
+          </div>
+          
+          <div class="details-box">
+            <h3>📋 Delivery Information</h3>
+            <p><strong>Booking Number:</strong> ${booking.bookingNumber}</p>
+            <p><strong>Delivery Date:</strong> ${booking.estimatedDeliveryDate.toLocaleDateString(
+              "en-GB",
+              {
+                weekday: "long",
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+              }
+            )}</p>
+            ${
+              booking.shippingAddress.deliveryTime
+                ? `
+              <p><strong>Delivery Time Window:</strong> ${booking.shippingAddress.deliveryTime}</p>
+            `
+                : ""
+            }
+            <p><strong>Delivery Address:</strong><br>
+              ${booking.shippingAddress.street}<br>
+              ${
+                booking.shippingAddress.apartment
+                  ? `${booking.shippingAddress.apartment},<br>`
+                  : ""
+              }
+              ${booking.shippingAddress.city}<br>
+              ${booking.shippingAddress.zipCode}<br>
+              ${booking.shippingAddress.country}
+            </p>
+            
+            ${
+              booking.shippingAddress.locationAccessibility
+                ? `
+              <p><strong>Location Accessibility:</strong> ${booking.shippingAddress.locationAccessibility}</p>
+            `
+                : ""
+            }
+            
+            ${
+              booking.shippingAddress.floorType
+                ? `
+              <p><strong>Floor Type:</strong> ${booking.shippingAddress.floorType}</p>
+            `
+                : ""
+            }
+            
+            ${
+              booking.shippingAddress.notes
+                ? `
+              <p><strong>Special Instructions:</strong> ${booking.shippingAddress.notes}</p>
+            `
+                : ""
+            }
+          </div>
+          
+          <div class="details-box">
+            <h3>📦 Items to be Delivered</h3>
+            <ul>
+              ${booking.items
+                .map(
+                  (item) => `
+                <li><strong>${item.name}</strong> (x${item.quantity})</li>
+              `
+                )
+                .join("")}
+            </ul>
+          </div>
+          
+          <h3>📞 Important Notes</h3>
+          <ul>
+            <li>Please ensure clear access to the delivery location</li>
+            <li>Have your ID ready for verification</li>
+            <li>Inspect items upon delivery</li>
+            <li>Contact us immediately if there are any issues</li>
+          </ul>
+          
+          <a href="${
+            process.env.CLIENT_URL || "http://localhost:3000"
+          }/bookings/${booking._id}" class="button">
+            View Full Booking Details
+          </a>
+          
+          <p>If you need to make changes to your delivery, please contact us immediately at ${EMAIL_FROM}</p>
+          
+          <p>Best regards,<br>The ${EMAIL_FROM_NAME} Team</p>
+        </div>
+      </body>
+      </html>
+    `;
+
+    await sendEmailHtml({
+      to: booking.shippingAddress.email,
+      subject: `🚚 Delivery Reminder - Booking ${booking.bookingNumber}`,
+      html,
+    });
+
+    console.log(`✅ Delivery reminder email sent for ${booking.bookingNumber}`);
+  } catch (error) {
+    console.error("❌ Failed to send delivery reminder email:", error);
+    throw error;
+  }
+}
+
+/**
+ * Send booking collection reminder (24 hours before collection)
+ */
+export async function sendBookingCollectionReminder(booking: IBookingDocument) {
+  try {
+    if (!booking.estimatedCollectionDate) return;
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+          }
+          .header {
+            background: #FF9800;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            border-radius: 10px 10px 0 0;
+          }
+          .content {
+            background: #f9f9f9;
+            padding: 30px;
+            border-radius: 0 0 10px 10px;
+          }
+          .reminder-box {
+            background: #fff3e0;
+            border: 2px solid #FF9800;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+          }
+          .details-box {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border-left: 4px solid #FF9800;
+          }
+          .button {
+            display: inline-block;
+            background: #FF9800;
+            color: white;
+            padding: 12px 24px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 20px 0;
+          }
+          .checklist {
+            background: #e8f5e9;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>🔄 Collection Reminder</h1>
+        </div>
+        
+        <div class="content">
+          <p>Dear ${booking.shippingAddress.firstName},</p>
+          
+          <div class="reminder-box">
+            <h2>⏰ Collection Scheduled for Tomorrow!</h2>
+            <p>Our team will arrive to collect the rented items. Please ensure everything is ready.</p>
+          </div>
+          
+          <div class="details-box">
+            <h3>📋 Collection Information</h3>
+            <p><strong>Booking Number:</strong> ${booking.bookingNumber}</p>
+            <p><strong>Collection Date:</strong> ${booking.estimatedCollectionDate.toLocaleDateString(
+              "en-GB",
+              {
+                weekday: "long",
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+              }
+            )}</p>
+            ${
+              booking.shippingAddress.collectionTime
+                ? `
+              <p><strong>Collection Time Window:</strong> ${booking.shippingAddress.collectionTime}</p>
+            `
+                : ""
+            }
+            <p><strong>Collection Address:</strong><br>
+              ${booking.shippingAddress.street}<br>
+              ${
+                booking.shippingAddress.apartment
+                  ? `${booking.shippingAddress.apartment},<br>`
+                  : ""
+              }
+              ${booking.shippingAddress.city}<br>
+              ${booking.shippingAddress.zipCode}<br>
+              ${booking.shippingAddress.country}
+            </p>
+          </div>
+          
+          <div class="checklist">
+            <h3>✅ Pre-Collection Checklist</h3>
+            <ul>
+              <li>Ensure all items are clean and dry</li>
+              <li>Have all accessories and parts ready</li>
+              <li>Items should be deflated (if applicable)</li>
+              <li>Ensure clear access for our collection team</li>
+              <li>Have your ID ready for verification</li>
+              <li>Be present during the collection</li>
+            </ul>
+          </div>
+          
+          <div class="details-box">
+            <h3>📦 Items to be Collected</h3>
+            <ul>
+              ${booking.items
+                .map(
+                  (item) => `
+                <li><strong>${item.name}</strong> (x${item.quantity})</li>
+              `
+                )
+                .join("")}
+            </ul>
+          </div>
+          
+          <h3>💼 Return Conditions</h3>
+          <ul>
+            <li>Items should be in the same condition as when delivered</li>
+            <li>All parts and accessories must be returned</li>
+            <li>Any damage or missing items will incur additional charges</li>
+            <li>Security deposit will be refunded after inspection</li>
+          </ul>
+          
+          <a href="${
+            process.env.CLIENT_URL || "http://localhost:3000"
+          }/bookings/${booking._id}" class="button">
+            View Booking Details
+          </a>
+          
+          <p>If you need to reschedule or have questions, contact us immediately at ${EMAIL_FROM}</p>
+          
+          <p>Best regards,<br>The ${EMAIL_FROM_NAME} Team</p>
+        </div>
+      </body>
+      </html>
+    `;
+
+    await sendEmailHtml({
+      to: booking.shippingAddress.email,
+      subject: `🔄 Collection Reminder - Booking ${booking.bookingNumber}`,
+      html,
+    });
+
+    console.log(
+      `✅ Collection reminder email sent for ${booking.bookingNumber}`
+    );
+  } catch (error) {
+    console.error("❌ Failed to send collection reminder email:", error);
+    throw error;
+  }
+}
+
+/**
+ * Send booking invoice email
+ */
+export async function sendBookingInvoiceEmail(booking: IBookingDocument) {
+  try {
+    const html = await renderTemplate("bookingConfirmation", {
+      booking,
+      brand: EMAIL_FROM_NAME,
+      year: new Date().getFullYear(),
+      brandColor: "#7C3AED",
+      invoiceDate: new Date().toLocaleDateString("en-GB"),
+      dueDate: new Date(
+        Date.now() + 30 * 24 * 60 * 60 * 1000
+      ).toLocaleDateString("en-GB"), // 30 days from now
+      items: booking.items.map((item) => ({
+        description: `${item.name} (${item.totalDays} day${
+          item.totalDays > 1 ? "s" : ""
+        })`,
+        quantity: item.quantity,
+        unitPrice: item.price.toFixed(2),
+        total: (item.quantity * item.price * item.totalDays).toFixed(2),
+      })),
+      subtotal: booking.subTotal.toFixed(2),
+      tax: booking.taxAmount.toFixed(2),
+      deliveryFee: booking.deliveryFee.toFixed(2),
+      securityDeposit: booking.securityDeposit?.toFixed(2) || "0.00",
+      totalAmount: booking.totalAmount.toFixed(2),
+    });
+
+    await sendEmailHtml({
+      to: booking.shippingAddress.email,
+      subject: `📄 Invoice - ${booking.bookingNumber}`,
+      html,
+    });
+
+    console.log(`✅ Invoice email sent for ${booking.bookingNumber}`);
+  } catch (error) {
+    console.error("❌ Failed to send booking invoice email:", error);
+    throw error;
+  }
+}
+
+/**
+ * Send booking cancellation email with refund details
+ */
+export async function sendBookingCancellationEmail(
+  booking: IBookingDocument,
+  refundDetails?: {
+    amount: number;
+    method: string;
+    estimatedDate: Date;
+  }
+) {
+  try {
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+          }
+          .header {
+            background: #dc3545;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            border-radius: 10px 10px 0 0;
+          }
+          .content {
+            background: #f9f9f9;
+            padding: 30px;
+            border-radius: 0 0 10px 10px;
+          }
+          .refund-box {
+            background: #d4edda;
+            border: 2px solid #28a745;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+          }
+          .details-box {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border-left: 4px solid #dc3545;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>❌ Booking Cancelled</h1>
+        </div>
+        
+        <div class="content">
+          <p>Dear ${booking.shippingAddress.firstName},</p>
+          
+          <p>Your booking <strong>${
+            booking.bookingNumber
+          }</strong> has been cancelled as requested.</p>
+          
+          ${
+            booking.cancellationReason
+              ? `
+            <div class="details-box">
+              <h3>Cancellation Reason</h3>
+              <p>${booking.cancellationReason}</p>
+            </div>
+          `
+              : ""
+          }
+          
+          ${
+            refundDetails
+              ? `
+            <div class="refund-box">
+              <h2>💸 Refund Initiated</h2>
+              <p><strong>Refund Amount:</strong> £${refundDetails.amount.toFixed(
+                2
+              )}</p>
+              <p><strong>Refund Method:</strong> ${refundDetails.method}</p>
+              <p><strong>Estimated Refund Date:</strong> ${refundDetails.estimatedDate.toLocaleDateString(
+                "en-GB"
+              )}</p>
+              <p><em>Refunds typically take 3-5 business days to process.</em></p>
+            </div>
+          `
+              : booking.refundAmount
+              ? `
+            <div class="refund-box">
+              <h2>💸 Refund Processed</h2>
+              <p><strong>Refund Amount:</strong> £${booking.refundAmount.toFixed(
+                2
+              )}</p>
+              <p><strong>Refund Date:</strong> ${
+                booking.refundedAt?.toLocaleDateString("en-GB") || "Recently"
+              }</p>
+            </div>
+          `
+              : ""
+          }
+          
+          <div class="details-box">
+            <h3>Booking Details</h3>
+            <p><strong>Booking Number:</strong> ${booking.bookingNumber}</p>
+            <p><strong>Cancellation Date:</strong> ${new Date().toLocaleDateString(
+              "en-GB"
+            )}</p>
+            <p><strong>Original Total:</strong> £${booking.totalAmount.toFixed(
+              2
+            )}</p>
+          </div>
+          
+          <p>If you have any questions about your cancellation or refund, please contact us at ${EMAIL_FROM}</p>
+          
+          <p>We hope to serve you again in the future.</p>
+          
+          <p>Best regards,<br>The ${EMAIL_FROM_NAME} Team</p>
+        </div>
+      </body>
+      </html>
+    `;
+
+    await sendEmailHtml({
+      to: booking.shippingAddress.email,
+      subject: `❌ Booking Cancelled - ${booking.bookingNumber}`,
+      html,
+    });
+
+    console.log(`✅ Cancellation email sent for ${booking.bookingNumber}`);
+  } catch (error) {
+    console.error("❌ Failed to send booking cancellation email:", error);
+    throw error;
+  }
+}
 // Resolve template path (fix for src/dist and auth/emails folders)
 function resolveEmailTemplate(templateName: EmailTemplate): string {
   const candidates = [

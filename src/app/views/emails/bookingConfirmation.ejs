@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Booking Confirmation - <%= brand %></title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        line-height: 1.6;
+        color: #333;
+        max-width: 600px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+
+      .content {
+        background: #f9f9f9;
+        padding: 30px;
+        border-radius: 0 0 10px 10px;
+      }
+      .confirmation-badge {
+        background: #d4edda;
+        color: #155724;
+        padding: 15px;
+        border-radius: 5px;
+        text-align: center;
+        margin: 20px 0;
+        border-left: 4px solid #28a745;
+      }
+
+      .table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 20px 0;
+      }
+      .table th,
+      .table td {
+        padding: 12px;
+        text-align: left;
+        border-bottom: 1px solid #ddd;
+      }
+      .table th {
+        background: #f5f5f5;
+        font-weight: bold;
+      }
+      .total-row td {
+        font-size: 16px;
+        font-weight: bold;
+      }
+      .footer {
+        margin-top: 30px;
+        padding-top: 20px;
+        border-top: 1px solid #ddd;
+        color: #666;
+        font-size: 12px;
+        text-align: center;
+      }
+      .contact-info {
+        background: #e3f2fd;
+        padding: 15px;
+        border-radius: 5px;
+        margin: 20px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      <h1>🎉 Booking Confirmed!</h1>
+      <p>Thank you for choosing <%= brand %></p>
+    </div>
+
+    <div class="content">
+      <div class="confirmation-badge">
+        <h2>✅ BOOKING CONFIRMED</h2>
+        <p>Your booking reference: <strong><%= bookingNumber %></strong></p>
+      </div>
+
+      <p>Dear <%= customerName %>,</p>
+
+      <p>
+        Thank you for your booking! We're excited to serve you and ensure your
+        event is a success.
+      </p>
+
+      <div class="section">
+        <h3>📅 Booking Schedule</h3>
+        <% if (estimatedDeliveryDate) { %>
+        <p><strong>Delivery Date:</strong> <%= estimatedDeliveryDate %></p>
+        <% } %> <% if (estimatedCollectionDate) { %>
+        <p><strong>Collection Date:</strong> <%= estimatedCollectionDate %></p>
+        <% } %>
+      </div>
+
+      <div class="section">
+        <h3>📍 Delivery Information</h3>
+        <p>
+          <strong>Address:</strong><br />
+          <%= booking.shippingAddress.street %><br />
+          <% if (booking.shippingAddress.apartment) { %> <%=
+          booking.shippingAddress.apartment %>,<br />
+          <% } %> <%= booking.shippingAddress.city %><br />
+          <%= booking.shippingAddress.zipCode %><br />
+          <%= booking.shippingAddress.country %>
+        </p>
+        <% if (booking.shippingAddress.phone) { %>
+        <p>
+          <strong>Contact Phone:</strong> <%= booking.shippingAddress.phone %>
+        </p>
+        <% } %>
+      </div>
+
+      <div class="section">
+        <h3>📦 Booking Summary</h3>
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Qty</th>
+              <th>Duration</th>
+              <th>Price/Day</th>
+              <th>Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% items.forEach(function(item) { %>
+            <tr>
+              <td><%= item.name %></td>
+              <td><%= item.quantity %></td>
+              <td>
+                <%= item.totalDays %> day(s)<br />
+                <small><%= item.startDate %> to <%= item.endDate %></small>
+              </td>
+              <td>£<%= item.price %></td>
+              <td>£<%= item.total %></td>
+            </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="section">
+        <h3>💰 Payment Summary</h3>
+        <table class="table">
+          <tr>
+            <td>Subtotal:</td>
+            <td>£<%= subtotal %></td>
+          </tr>
+          <tr>
+            <td>VAT (20%):</td>
+            <td>£<%= tax %></td>
+          </tr>
+          <tr>
+            <td>Delivery Fee:</td>
+            <td>£<%= deliveryFee %></td>
+          </tr>
+          <% if (parseFloat(securityDeposit) > 0) { %>
+          <tr>
+            <td>Security Deposit:</td>
+            <td>£<%= securityDeposit %></td>
+          </tr>
+          <% } %>
+          <tr class="total-row">
+            <td><strong>Total Amount:</strong></td>
+            <td><strong>£<%= totalAmount %></strong></td>
+          </tr>
+        </table>
+        <p>
+          <strong>Payment Method:</strong> <%= paymentMethod.replace(/_/g, '
+          ').toUpperCase() %>
+        </p>
+        <p><strong>Payment Status:</strong> PAID</p>
+      </div>
+
+      <div class="contact-info">
+        <h3>📞 Need Help?</h3>
+        <p>
+          If you have any questions or need to make changes to your booking,
+          please contact us:
+        </p>
+        <p><strong>Phone:</strong> [Your Phone Number]</p>
+        <p><strong>Email:</strong> <%= process.env.EMAIL_FROM %></p>
+        <p><strong>Hours:</strong> Monday-Friday 9am-6pm, Saturday 10am-4pm</p>
+      </div>
+
+      <a
+        href="<%= process.env.CLIENT_URL || 'http://localhost:3000' %>/bookings"
+        class="button"
+      >
+        View Your Booking
+      </a>
+
+      <p><strong>Important Notes:</strong></p>
+      <ul>
+        <li>Please ensure clear access for delivery and collection</li>
+        <li>Have your ID ready for verification</li>
+        <li>Inspect items upon delivery</li>
+        <li>Review our terms and conditions for safety guidelines</li>
+      </ul>
+
+      <p>We look forward to making your event unforgettable!</p>
+
+      <p>Best regards,<br />The <%= brand %> Team</p>
+    </div>
+
+    <div class="footer">
+      <p>&copy; <%= year %> <%= brand %>. All rights reserved.</p>
+      <p>This email was sent to <%= booking.shippingAddress.email %></p>
+      <p><%= brand %>, [Your Address Here]</p>
+    </div>
+  </body>
+</html>

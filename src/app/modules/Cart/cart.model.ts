@@ -11,6 +11,7 @@ const cartItemSchema: Schema = new Schema({
     ref: "Product",
     required: true,
   },
+  rentalType: { type: String },
   quantity: {
     type: Number,
     required: true,
