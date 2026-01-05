@@ -7,12 +7,12 @@ import {
   clearCart,
   getCartSummary,
 } from "./cart.controller";
-import { protect } from "../../middlewares/authorization.middleware";
+import { protectRoute } from "../../middlewares/auth.middleware"; // Correct import
 
 const router = express.Router();
 
 // All cart routes require authentication
-router.use(protect);
+router.use(protectRoute); // Correct middleware usage
 
 router
   .route("/")

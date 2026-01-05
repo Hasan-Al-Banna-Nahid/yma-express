@@ -5,7 +5,8 @@ import multer from "multer";
 import dotenv from "dotenv";
 
 dotenv.config();
-
+const env = process.env;
+console.log(process.env.CLOUDINARY_CLOUD_NAME, "Nahid");
 // Validate Cloudinary environment variables
 if (
   !process.env.CLOUDINARY_CLOUD_NAME ||

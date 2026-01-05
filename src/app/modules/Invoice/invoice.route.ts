@@ -1,34 +1,64 @@
+// src/app/modules/Invoice/invoice.route.ts
 import express from "express";
-
 import {
-    createInvoiceHandler,
-    getInvoiceHandler,
-    getInvoicesHandler,
-    getInvoicesByBookingHandler,
-    updateInvoiceHandler,
-    deleteInvoiceHandler,
-    generateInvoiceForBookingHandler,
-    generateCustomInvoiceHandler,
-} from './invoice.controller';
-import { protectRoute, restrictTo } from '../middlewares/auth.middleware';
+  createInvoice,
+  getInvoice,
+  getInvoices,
+  getInvoicesByBooking,
+  updateInvoice,
+  deleteInvoice,
+  generateInvoiceForBooking,
+  generateCustomInvoice,
+  getInvoicesByUser,
+  updateInvoiceStatus,
+} from "./invoice.controller"; // Import from same folder
+import { protectRoute } from "../../middlewares/auth.middleware";
+import { restrictTo } from "../../middlewares/authorization.middleware";
 
 const router = express.Router();
 
 // Protect all routes after this middleware
 router.use(protectRoute);
 
-router.post("/", createInvoiceHandler);
-router.get("/", getInvoicesHandler);
-router.get("/booking/:bookingId", getInvoicesByBookingHandler);
-router.post("/generate/:bookingId", generateInvoiceForBookingHandler);
-router.post("/generate-custom", generateCustomInvoiceHandler);
-router.get("/:id", getInvoiceHandler);
-router.patch("/:id", updateInvoiceHandler);
-router.delete("/:id", deleteInvoiceHandler);
+// All these routes require authentication
 
-// Admin only routes
-router.use(restrictTo('admin'));
+router
+  .route("/")
+  .post(restrictTo("admin", "superadmin", "editor"), createInvoice)
+  .get(restrictTo("admin", "superadmin", "editor"), getInvoices);
 
-// Add admin-only invoice routes here if needed
+// User can get their own invoices
+router.get("/user/:userId?", getInvoicesByUser);
+
+router.get(
+  "/booking/:bookingId",
+  restrictTo("admin", "superadmin", "editor"),
+  getInvoicesByBooking
+);
+
+router.post(
+  "/generate/:bookingId",
+  restrictTo("admin", "superadmin", "editor"),
+  generateInvoiceForBooking
+);
+
+router.post(
+  "/generate-custom",
+  restrictTo("admin", "superadmin"),
+  generateCustomInvoice
+);
+
+router
+  .route("/:id")
+  .get(restrictTo("admin", "superadmin", "editor"), getInvoice)
+  .patch(restrictTo("admin", "superadmin", "editor"), updateInvoice)
+  .delete(restrictTo("admin", "superadmin"), deleteInvoice);
+
+// Update invoice status
+router.patch(
+  "/:id/status",
+  restrictTo("admin", "superadmin", "editor"),
+  updateInvoiceStatus
+);
 
 export default router;

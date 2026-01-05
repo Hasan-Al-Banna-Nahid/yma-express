@@ -35,7 +35,8 @@ export const addItemToCart = async (
   productId: string,
   quantity: number,
   startDate?: Date,
-  endDate?: Date
+  endDate?: Date,
+  rentalType?: string // Added rentalType
 ) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -86,6 +87,7 @@ export const addItemToCart = async (
       cart.items[existingItemIndex].price = product.price;
       if (startDate) cart.items[existingItemIndex].startDate = startDate;
       if (endDate) cart.items[existingItemIndex].endDate = endDate;
+      if (rentalType) cart.items[existingItemIndex].rentalType = rentalType;
     } else {
       // Add new item - Save product as ObjectId
       cart.items.push({
@@ -95,6 +97,7 @@ export const addItemToCart = async (
         price: product.price,
         startDate,
         endDate,
+        rentalType, // Added rentalType
       });
     }
 
@@ -129,6 +132,7 @@ export const addMultipleItemsToCart = async (
     quantity: number;
     startDate?: Date;
     endDate?: Date;
+    rentalType?: string; // Added rentalType
   }>
 ) => {
   const session = await mongoose.startSession();
@@ -155,7 +159,7 @@ export const addMultipleItemsToCart = async (
     }
 
     for (const item of items) {
-      const { productId, quantity, startDate, endDate } = item;
+      const { productId, quantity, startDate, endDate, rentalType } = item; // Added rentalType
 
       // Validate product exists
       const product = await Product.findById(productId).session(session);
@@ -182,6 +186,7 @@ export const addMultipleItemsToCart = async (
         cart.items[existingItemIndex].price = product.price;
         if (startDate) cart.items[existingItemIndex].startDate = startDate;
         if (endDate) cart.items[existingItemIndex].endDate = endDate;
+        if (rentalType) cart.items[existingItemIndex].rentalType = rentalType; // Update rentalType
       } else {
         // Add new item - Save product as ObjectId
         cart.items.push({
@@ -191,6 +196,7 @@ export const addMultipleItemsToCart = async (
           price: product.price,
           startDate,
           endDate,
+          rentalType, // Added rentalType
         });
       }
     }
@@ -227,11 +233,13 @@ export const updateCartItems = async (
       quantity: number;
       startDate?: Date;
       endDate?: Date;
+      rentalType?: string; // Added rentalType
     }>;
     productId?: string;
     quantity?: number;
     startDate?: Date;
     endDate?: Date;
+    rentalType?: string; // Added rentalType
   }
 ) => {
   const session = await mongoose.startSession();
@@ -254,7 +262,7 @@ export const updateCartItems = async (
     if (Array.isArray(updateData.items)) {
       // Update multiple items
       for (const updateItem of updateData.items) {
-        const { productId, quantity, startDate, endDate } = updateItem;
+        const { productId, quantity, startDate, endDate, rentalType } = updateItem; // Added rentalType
 
         const existingItemIndex = cart.items.findIndex(
           (item) => item.product.toString() === productId
@@ -291,6 +299,7 @@ export const updateCartItems = async (
               cart.items[existingItemIndex].price;
             if (startDate) cart.items[existingItemIndex].startDate = startDate;
             if (endDate) cart.items[existingItemIndex].endDate = endDate;
+            if (rentalType) cart.items[existingItemIndex].rentalType = rentalType; // Update rentalType
           }
         } else if (quantity > 0) {
           // Add new item if quantity > 0
@@ -313,12 +322,13 @@ export const updateCartItems = async (
             price: product.price,
             startDate,
             endDate,
+            rentalType, // Added rentalType
           });
         }
       }
     } else if (updateData.productId && updateData.quantity !== undefined) {
       // Update single item (backward compatibility)
-      const { productId, quantity, startDate, endDate } = updateData;
+      const { productId, quantity, startDate, endDate, rentalType } = updateData; // Added rentalType
 
       const existingItemIndex = cart.items.findIndex(
         (item) => item.product.toString() === productId
@@ -353,6 +363,7 @@ export const updateCartItems = async (
             cart.items[existingItemIndex].price;
           if (startDate) cart.items[existingItemIndex].startDate = startDate;
           if (endDate) cart.items[existingItemIndex].endDate = endDate;
+          if (rentalType) cart.items[existingItemIndex].rentalType = rentalType; // Update rentalType
         }
       } else if (quantity > 0) {
         // Add new item if quantity > 0
@@ -375,6 +386,7 @@ export const updateCartItems = async (
           price: product.price,
           startDate,
           endDate,
+          rentalType, // Added rentalType
         });
       }
     }
@@ -522,3 +534,4 @@ export const getCartSummary = async (userId: string) => {
     })),
   };
 };
+

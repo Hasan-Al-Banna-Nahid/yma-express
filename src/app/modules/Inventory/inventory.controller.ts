@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from "express";
+import asyncHandler from "../../utils/asyncHandler";
 import {
   createInventoryItem,
   getInventoryItem,
@@ -14,90 +15,56 @@ import { IInventory } from "./inventory.interface";
 import ApiError from "../../utils/apiError";
 import { ApiResponse } from "../../utils/apiResponse";
 
-export const createInventoryItemHandler = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
+export const createInventoryItemHandler = asyncHandler(
+  async (req: Request, res: Response, next: NextFunction) => {
     const inventoryItem = await createInventoryItem(req.body);
 
     ApiResponse(res, 201, "Inventory item created successfully", {
       inventoryItem,
     });
-  } catch (err) {
-    next(err);
   }
-};
+);
 
-export const getInventoryItemHandler = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
+export const getInventoryItemHandler = asyncHandler(
+  async (req: Request, res: Response, next: NextFunction) => {
     const inventoryItem = await getInventoryItem(req.params.id);
 
     ApiResponse(res, 200, "Inventory item retrieved successfully", {
       inventoryItem,
     });
-  } catch (err) {
-    next(err);
   }
-};
+);
 
-export const getInventoryItemsHandler = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
+export const getInventoryItemsHandler = asyncHandler(
+  async (req: Request, res: Response, next: NextFunction) => {
     const inventoryItems = await getInventoryItems(req.query);
 
     ApiResponse(res, 200, "Inventory items retrieved successfully", {
       inventoryItems,
     });
-  } catch (err) {
-    next(err);
   }
-};
+);
 
-export const updateInventoryItemHandler = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
+export const updateInventoryItemHandler = asyncHandler(
+  async (req: Request, res: Response, next: NextFunction) => {
     const inventoryItem = await updateInventoryItem(req.params.id, req.body);
 
     ApiResponse(res, 200, "Inventory item updated successfully", {
       inventoryItem,
     });
-  } catch (err) {
-    next(err);
   }
-};
+);
 
-export const deleteInventoryItemHandler = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
+export const deleteInventoryItemHandler = asyncHandler(
+  async (req: Request, res: Response, next: NextFunction) => {
     await deleteInventoryItem(req.params.id);
 
     ApiResponse(res, 204, "Inventory item deleted successfully");
-  } catch (err) {
-    next(err);
   }
-};
+);
 
-export const getAvailableInventoryHandler = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
+export const getAvailableInventoryHandler = asyncHandler(
+  async (req: Request, res: Response, next: NextFunction) => {
     const { productId, startDate, endDate } = req.query;
     if (!productId || !startDate || !endDate) {
       throw new ApiError(
@@ -115,17 +82,11 @@ export const getAvailableInventoryHandler = async (
     ApiResponse(res, 200, "Available inventory retrieved successfully", {
       availableInventory,
     });
-  } catch (err) {
-    next(err);
   }
-};
+);
 
-export const getBookedInventoryHandler = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
+export const getBookedInventoryHandler = asyncHandler(
+  async (req: Request, res: Response, next: NextFunction) => {
     const { productId, startDate, endDate } = req.query;
     if (!productId || !startDate || !endDate) {
       throw new ApiError(
@@ -143,17 +104,11 @@ export const getBookedInventoryHandler = async (
     ApiResponse(res, 200, "Booked inventory retrieved successfully", {
       bookedInventory,
     });
-  } catch (err) {
-    next(err);
   }
-};
+);
 
-export const checkInventoryAvailabilityHandler = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
+export const checkInventoryAvailabilityHandler = asyncHandler(
+  async (req: Request, res: Response, next: NextFunction) => {
     const { productId, date } = req.query;
     if (!productId || !date) {
       throw new ApiError(
@@ -170,23 +125,15 @@ export const checkInventoryAvailabilityHandler = async (
     ApiResponse(res, 200, "Inventory availability checked successfully", {
       availability,
     });
-  } catch (err) {
-    next(err);
   }
-};
+);
 
-export const releaseExpiredCartItemsHandler = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
+export const releaseExpiredCartItemsHandler = asyncHandler(
+  async (req: Request, res: Response, next: NextFunction) => {
     const count = await releaseExpiredCartItems();
 
     ApiResponse(res, 200, "Expired cart items released successfully", {
       count,
     });
-  } catch (err) {
-    next(err);
   }
-};
+);

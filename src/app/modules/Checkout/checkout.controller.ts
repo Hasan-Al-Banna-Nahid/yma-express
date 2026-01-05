@@ -3,10 +3,10 @@ import asyncHandler from "../../utils/asyncHandler";
 import * as checkoutService from "./checkout.service";
 import { AuthenticatedRequest } from "../../middlewares/auth.middleware";
 import ApiError from "../../utils/apiError";
-import { createOrderFromCart } from "./checkout.service";
+import { createOrderFromCart } from "./checkout.service"; // Corrected import
 
 // checkout.controller.ts
-export const createOrder = asyncHandler(async (req, res) => {
+export const createOrder = asyncHandler(async (req: Request, res: Response) => { // Added explicit types for req and res
   const userId = (req as AuthenticatedRequest).user._id;
 
   const {

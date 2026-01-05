@@ -2,7 +2,7 @@
 import mongoose from "mongoose";
 
 export interface ICartItem {
-  rentalType?: string; // ✅ Make it optional and correct type
+  rentalType?: string;
   productType: string;
   product: mongoose.Types.ObjectId;
   quantity: number;
@@ -25,15 +25,15 @@ export interface IAddToCartRequest {
   items: Array<{
     productId: string;
     quantity: number;
-    startDate?: string; // ISO string
-    endDate?: string; // ISO string
-    rentalType?: string; // Add this
+    startDate?: Date;
+    endDate?: Date;
+    rentalType?: string;
   }>;
 }
 
 export interface IUpdateCartItemRequest {
   quantity: number;
-  startDate?: string;
-  endDate?: string;
-  rentalType?: string; // Add this
+  startDate?: Date;
+  endDate?: Date;
+  rentalType?: string;
 }

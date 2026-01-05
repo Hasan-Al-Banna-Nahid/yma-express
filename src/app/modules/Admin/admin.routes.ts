@@ -1,18 +1,17 @@
 import express from "express";
 import * as adminController from "./admin.controller";
-import * as authController from "../Auth/auth.controller";
+import * as orderController from "./order.controller";
+import { protectRoute } from "../../middlewares/auth.middleware"; // Correct import for protectRoute
 import {
   restrictTo,
   canManageUser,
-  protect,
-} from "../../middlewares/authorization.middleware";
+} from "../../middlewares/authorization.middleware"; // Removed redundant protect import
 import { upload } from "../../utils/cloudinary.util";
 
 const router = express.Router();
 
 // Protect all admin routes
-router.use(authController.protectRoute);
-router.use(protect);
+router.use(protectRoute); // Now correctly uses the central protectRoute
 // Get system stats - superadmin & admin only
 router.get(
   "/stats",
@@ -55,6 +54,58 @@ router.post(
   "/users/change-role",
   restrictTo("superadmin"),
   adminController.changeUserRole
+);
+
+// Order management routes
+router.get(
+  "/orders",
+  restrictTo("superadmin", "admin"),
+  orderController.getAllOrders
+);
+router.get(
+  "/orders/stats",
+  restrictTo("superadmin", "admin"),
+  orderController.getOrderStats
+);
+router.get(
+  "/orders/search",
+  restrictTo("superadmin", "admin"),
+  orderController.searchOrders
+);
+router.get(
+  "/orders/delivery-reminders",
+  restrictTo("superadmin", "admin"),
+  orderController.getDeliveryReminderOrders
+);
+router.post(
+  "/orders/send-delivery-reminders",
+  restrictTo("superadmin", "admin"),
+  orderController.sendDeliveryReminders
+);
+router.get(
+  "/orders/:id",
+  restrictTo("superadmin", "admin"),
+  orderController.getOrderById
+);
+router.post(
+  "/orders",
+  restrictTo("superadmin", "admin"),
+  orderController.createOrder
+);
+router.patch(
+  "/orders/:id",
+  restrictTo("superadmin", "admin"),
+  orderController.updateOrder
+);
+router.patch(
+  "/orders/:id/status",
+  restrictTo("superadmin", "admin"),
+  orderController.updateOrderStatus
+);
+router.delete(
+  "/orders/:id",
+  restrictTo("superadmin", "admin"),
+  orderController.deleteOrder
 );
 
 export default router;

@@ -12,15 +12,19 @@ import { protectRoute } from "../../middlewares/auth.middleware";
 
 const router = express.Router();
 
-// Dynamic CRUD routes
+// Public routes
+router.get("/", getLocationsHandler); // Get all locations
+router.get("/:id", getLocationHandler); // Get location by ID
+
+// Protected routes (require authentication and authorization)
+router.use(protectRoute); // All routes below this require authentication
+
 router
   .route("/")
-  .post(restrictTo("superadmin", "admin", "editor"), createLocationHandler)
-  .get(getLocationsHandler);
+  .post(restrictTo("superadmin", "admin", "editor"), createLocationHandler);
 
 router
   .route("/:id")
-  .get(getLocationHandler)
   .patch(restrictTo("superadmin", "admin", "editor"), updateLocationHandler)
   .delete(restrictTo("superadmin", "admin", "editor"), deleteLocationHandler);
 

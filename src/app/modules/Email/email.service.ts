@@ -14,7 +14,7 @@ const EMAIL_HOST = process.env.EMAIL_HOST;
 const EMAIL_PORT = parseInt(process.env.EMAIL_PORT || "587");
 const EMAIL_USER = process.env.EMAIL_USER;
 const EMAIL_PASS = process.env.EMAIL_PASS;
-const EMAIL_FROM = process.env.EMAIL_FROM || "noreply@ymabouncycastle.com";
+export const EMAIL_FROM = process.env.EMAIL_FROM || "noreply@ymabouncycastle.com"; // Exported
 const EMAIL_FROM_NAME = process.env.EMAIL_FROM_NAME || "YMABouncyCastle";
 
 if (!EMAIL_HOST || !EMAIL_USER || !EMAIL_PASS) {
@@ -35,7 +35,7 @@ const transporter = nodemailer.createTransport({
 transporter.verify((error) => {
   if (error)
     console.error("❌ Nodemailer transporter verification failed:", error);
-  else console.log("✅ Nodemailer transporter ready");
+  // else console.log("✅ Nodemailer transporter ready");
 });
 
 // Email templates
@@ -107,9 +107,9 @@ export async function sendBookingConfirmationEmail(booking: IBookingDocument) {
       html,
     });
 
-    console.log(
-      `✅ Booking confirmation email sent for ${booking.bookingNumber}`
-    );
+    // console.log(
+    //   `✅ Booking confirmation email sent for ${booking.bookingNumber}`
+    // );
   } catch (error) {
     console.error("❌ Failed to send booking confirmation email:", error);
     throw error;

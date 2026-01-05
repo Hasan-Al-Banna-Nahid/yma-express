@@ -12,10 +12,8 @@ import {
   searchProducts,
   getProductsByCategory,
 } from "./product.controller";
-import {
-  protect,
-  restrictTo,
-} from "../../middlewares/authorization.middleware";
+import { protectRoute } from "../../middlewares/auth.middleware"; // Correct import
+import { restrictTo } from "../../middlewares/authorization.middleware"; // Removed redundant protect import
 
 const router = express.Router();
 
@@ -27,7 +25,7 @@ router.get("/search", searchProducts);
 router.get("/category/:categoryId", getProductsByCategory);
 router.get("/:id", getProduct);
 
-router.use(protect);
+router.use(protectRoute); // Correct middleware usage
 
 router.post("/", restrictTo("superadmin", "admin", "editor"), createProduct);
 router.patch(

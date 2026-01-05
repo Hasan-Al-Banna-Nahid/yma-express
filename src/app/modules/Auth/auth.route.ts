@@ -11,16 +11,15 @@ import {
   updateMe,
   logout,
 } from "./auth.controller";
-import { protectRoute, restrictTo } from "../../middlewares/auth.middleware";
+import { protectRoute } from "../../middlewares/auth.middleware";
+import { restrictTo } from "../../middlewares/authorization.middleware"; // Correct import for restrictTo
 import { upload } from "../../utils/cloudinary.util";
-import { protect } from "../../middlewares/authorization.middleware";
 
 const router = express.Router();
 
 // Public routes
 router.post("/register", upload.single("photo"), register);
 router.post("/login", loginUser);
-router.post("/logout", logout);
 router.post("/refresh-token", refreshTokenHandler);
 router.post("/forgot-password", forgotPasswordHandler);
 
@@ -34,7 +33,8 @@ router.post("/reset-password", resetPasswordHandler);
 // Protected routes (require authentication)
 router.use(protectRoute);
 
-// router.patch("/update-password", updatePasswordHandler);
+router.post("/logout", logout); // Now protected
+router.patch("/update-password", updatePasswordHandler); // Now uncommented
 router.get("/me", getMe);
 router.patch("/update-me", upload.single("photo"), updateMe);
 

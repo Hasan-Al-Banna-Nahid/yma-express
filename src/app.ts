@@ -5,21 +5,19 @@ import cookieParser from "cookie-parser";
 import path from "path";
 
 // Import routes
-import authRouter from "../src/app/modules/Auth/auth.route";
+import authRouter from "./app/modules/Auth/auth.route";
 import bookingRouter from "./app/modules/Bookings/booking.route";
 import inventoryRouter from "./app/modules/Inventory/inventory.route";
-// import invoiceRouter from "./app/routes/invoice.route"; // Remove if not needed
+import invoiceRouter from "./app/modules/Invoice/invoice.route";
 import adminRoutes from "./app/modules/Admin/admin.routes";
-import { globalErrorHandler } from "../src/app/utils/apiError";
+import { globalErrorHandler } from "./app/utils/apiError";
 import mailRoute from "./app/modules/Mail/mail.route";
 import categoryRoutes from "./app/modules/Category/category.routes";
 import productRoutes from "./app/modules/Product/product.route";
 import cartRoutes from "./app/modules/Cart/cart.routes";
-// import locationRoutes from "./app/routes/location.routes";
 import checkoutRoutes from "./app/modules/Checkout/checkout.routes";
 import userOrderRoutes from "./app/modules/UserOrder/user.order.routes";
 import locationRoutes from "./app/modules/Location/location.routes";
-import bookingRoutes from "./app/modules/Bookings/booking.route";
 
 const app = express();
 
@@ -53,14 +51,12 @@ app.set("view engine", "ejs");
 app.set("views", path.join(process.cwd(), "src", "app", "views"));
 
 // Auth routes
-app.use("/auth", authRouter);
 app.use("/api/v1/auth", authRouter);
 
 // API routes
-app.use("/api/v1", bookingRouter);
 app.use("/api/v1/bookings", bookingRouter);
 app.use("/api/v1/inventory", inventoryRouter);
-// app.use("/api/v1/invoices", invoiceRouter); // Remove if not needed
+app.use("/api/v1/invoices", invoiceRouter);
 app.use("/api/v1/admin", adminRoutes);
 app.use("/api/v1/mail", mailRoute);
 app.use("/api/v1/locations", locationRoutes);
@@ -69,9 +65,6 @@ app.use("/api/v1/products", productRoutes);
 app.use("/api/v1/cart", cartRoutes);
 app.use("/api/v1/checkout", checkoutRoutes);
 app.use("/api/v1/orders", userOrderRoutes); // User order routes
-
-// Order management routes
-app.use("/api/v1/admin", adminRoutes); // Add this line
 
 // Health check
 app.get("/healthz", (_req, res) => res.json({ ok: true }));

@@ -27,12 +27,35 @@ router.get("/:id", getBookingById);
 router.post("/:id/cancel", cancelBooking);
 
 // Admin routes
-router.use(restrictTo("admin", "superadmin"));
-
-router.get("/admin/bookings", getAllBookings);
-router.patch("/admin/bookings/:id", updateBookingStatus);
-router.get("/admin/bookings/stats", getBookingStats);
-router.get("/admin/bookings/upcoming-deliveries", getUpcomingDeliveries);
-router.get("/admin/bookings/search", searchBookings);
+router.get(
+  "/admin",
+  protectRoute,
+  restrictTo("admin", "superadmin"),
+  getAllBookings
+);
+router.patch(
+  "/admin/:id",
+  protectRoute,
+  restrictTo("admin", "superadmin"),
+  updateBookingStatus
+);
+router.get(
+  "/admin/stats",
+  protectRoute,
+  restrictTo("admin", "superadmin"),
+  getBookingStats
+);
+router.get(
+  "/admin/upcoming-deliveries",
+  protectRoute,
+  restrictTo("admin", "superadmin"),
+  getUpcomingDeliveries
+);
+router.get(
+  "/admin/search",
+  protectRoute,
+  restrictTo("admin", "superadmin"),
+  searchBookings
+);
 
 export default router;

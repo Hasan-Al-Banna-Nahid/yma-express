@@ -87,6 +87,14 @@ export const createOrderFromCart = async (
     bankDetails: data.bankDetails,
   });
 
+  // Send order confirmation email
+  try {
+    await sendOrderConfirmationEmail(order);
+  } catch (emailError) {
+    console.error("Failed to send order confirmation email:", emailError);
+    // Optionally rethrow or handle this error, but usually order creation should not fail due to email
+  }
+
   cart.items = [];
   await cart.save();
 

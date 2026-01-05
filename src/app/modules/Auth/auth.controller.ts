@@ -22,8 +22,7 @@ import { ApiResponse } from "../../utils/apiResponse";
 import asyncHandler from "../../utils/asyncHandler";
 import { hashToken, issueTokens, sanitizeUser } from "../../utils/auth.util";
 import { uploadToCloudinary } from "../../utils/cloudinary.util";
-
-type AuthenticatedRequest = Request & { user: IUser };
+import { AuthenticatedRequest } from "../../middlewares/auth.middleware"; // Import AuthenticatedRequest
 
 // ---------------- cookies helpers ----------------
 export const setAuthCookies = (
@@ -366,6 +365,7 @@ export const updateMe = asyncHandler(async (req: Request, res: Response) => {
     ...(rotatedTokens ? { tokens: rotatedTokens } : {}),
   });
 });
+
 
 export const protectRoute = asyncHandler(
   async (req: Request, _res: Response, next: NextFunction) => {

@@ -1,61 +1,9 @@
 import { Request, Response, NextFunction } from "express";
-import jwt from "jsonwebtoken";
 import ApiError from "../utils/apiError";
-import User from "../modules/Auth/user.model";
 import { IUser } from "../modules/Auth/user.interface";
 import mongoose from "mongoose";
 
 type AuthenticatedRequest = Request & { user?: IUser };
-
-// ---------------------------------------------
-// PROTECT → Requires Bearer Token
-// ---------------------------------------------
-
-export const protect = async (
-  req: Request,
-  _res: Response,
-  next: NextFunction
-) => {
-  try {
-    let token: string | undefined;
-
-    // 1️⃣ Priority: httpOnly cookie
-    if ((req as any).cookies?.accessToken) {
-      token = (req as any).cookies.accessToken;
-    }
-
-    // 2️⃣ Fallback: Authorization header (Bearer)
-    if (
-      !token &&
-      req.headers.authorization &&
-      req.headers.authorization.startsWith("Bearer ")
-    ) {
-      token = req.headers.authorization.split(" ")[1];
-    }
-
-    if (!token) {
-      return next(new ApiError("You are not logged in", 401));
-    }
-
-    // 3️⃣ Verify token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as {
-      id: string;
-    };
-
-    // 4️⃣ Check user exists
-    const user = await User.findById(decoded.id);
-    if (!user) {
-      return next(new ApiError("User no longer exists", 401));
-    }
-
-    // 5️⃣ Attach user to request
-    (req as AuthenticatedRequest).user = user;
-
-    next();
-  } catch (error) {
-    next(new ApiError("Invalid or expired token", 401));
-  }
-};
 
 // ---------------------------------------------
 // restrictTo → Only selected roles can access

@@ -36,6 +36,7 @@ export interface IOrder extends Document {
   estimatedDeliveryDate: Date;
   adminNotes?: string;
   deliveryDate?: Date;
+  bankDetails?: string; // Added bankDetails field as string
   createdAt: Date;
   updatedAt: Date;
 }
@@ -95,6 +96,7 @@ const orderSchema = new Schema<IOrder>(
     estimatedDeliveryDate: { type: Date },
     adminNotes: { type: String },
     deliveryDate: { type: Date },
+    bankDetails: { type: String }, // Added bankDetails field
   },
   { timestamps: true }
 );

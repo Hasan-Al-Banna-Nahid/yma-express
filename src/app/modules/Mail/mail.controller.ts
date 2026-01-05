@@ -2,35 +2,29 @@
 import { Request, Response, NextFunction } from "express";
 import asyncHandler from "../../utils/asyncHandler";
 import ApiError from "../../utils/apiError";
-import { sendPlainMail } from "../Email/email.service";
+import { sendPlainMail, EMAIL_FROM } from "../Email/email.service"; // Import EMAIL_FROM
 
 export const sendMailController = asyncHandler(
   async (req: Request, res: Response, next: NextFunction) => {
-    const { name, email, to, subject, message, fromEmail, fromName } =
+    const { name, email, subject, message } =
       req.body as {
         name?: string;
         email?: string; // sender email (will be Reply-To)
-        to?: string; // recipient (can hardcode if you want)
         subject?: string;
         message?: string;
-        fromEmail?: string; // OPTIONAL override (must be verified in your email service)
-        fromName?: string; // OPTIONAL override
       };
 
-    if (!subject || !message) {
-      throw new ApiError("subject and message are required", 400);
+    if (!email || !subject || !message) {
+      throw new ApiError("Email, subject, and message are required", 400);
     }
 
-    // If you want the recipient hardcoded:
-    const recipient = to && to.trim() ? to.trim() : "Iamnahid591998@gmail.com";
+    // Recipient is always internal (can be configured via env var CONTACT_FORM_RECIPIENT_EMAIL)
+    const recipient = process.env.CONTACT_FORM_RECIPIENT_EMAIL || EMAIL_FROM;
 
-    // Basic email checks (loose)
+    // Basic email checks
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (email && !emailRegex.test(String(email))) {
-      throw new ApiError("Invalid sender email", 400);
-    }
-    if (!emailRegex.test(recipient)) {
-      throw new ApiError("Invalid recipient email", 400);
+    if (!emailRegex.test(String(email))) {
+      throw new ApiError("Invalid sender email format", 400);
     }
     if (subject.length > 200) {
       throw new ApiError("Subject too long (max 200 chars)", 400);
@@ -41,12 +35,13 @@ export const sendMailController = asyncHandler(
 
     await sendPlainMail({
       to: recipient,
-      subject: subject.trim(),
+      subject: `Contact Form: ${subject.trim()}`, // Prefix subject for clarity
       message: message.trim(),
       senderName: name?.trim(),
       senderEmail: email?.trim(),
-      fromEmail: fromEmail?.trim(), // optional override
-      fromName: fromName?.trim(),
+      // fromEmail and fromName are not passed from client for this public form
+      // The actual 'From' header will be `EMAIL_FROM` from the service configuration.
+      // The `senderEmail` will be used for Reply-To.
     });
 
     res.status(200).json({

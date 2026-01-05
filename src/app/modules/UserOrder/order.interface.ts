@@ -44,15 +44,13 @@ export interface IOrder {
   user: mongoose.Types.ObjectId;
   items: IOrderItem[];
   totalAmount: number;
-  paymentMethod: "cash_on_delivery" | "online";
+  paymentMethod: "cash_on_delivery" | "bank_transfer" | "credit_card"; // Updated enum
   status: "pending" | "confirmed" | "shipped" | "delivered" | "cancelled";
   orderNumber: string;
   estimatedDeliveryDate?: Date;
   deliveryDate?: Date;
   invoiceType?: "regular" | "corporate";
-  bankDetails?: {
-    bankInfo: string;
-  };
+  bankDetails?: string; // Changed to string
   shippingAddress: IShippingAddress;
   termsAccepted: boolean;
   adminNotes?: string;
@@ -66,5 +64,5 @@ export type OrderStatus =
   | "shipped"
   | "delivered"
   | "cancelled";
-export type PaymentMethod = "cash_on_delivery" | "online";
+export type PaymentMethod = "cash_on_delivery" | "bank_transfer" | "credit_card"; // Updated enum
 export type InvoiceType = "regular" | "corporate";

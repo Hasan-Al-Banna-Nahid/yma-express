@@ -25,13 +25,16 @@ export const getCart = asyncHandler(
 export const addToCart = asyncHandler(
   async (req: Request, res: Response, next: NextFunction) => {
     const userId = (req as AuthenticatedRequest).user._id.toString();
-    const { items, productId, quantity, startDate, endDate } = req.body;
+    const { items, productId, quantity, startDate, endDate, rentalType } = req.body;
 
     console.log("🛒 [CART CONTROLLER] Add to cart request:", {
       userId,
       hasItemsArray: Array.isArray(items),
       itemsCount: Array.isArray(items) ? items.length : 0,
       singleItem: productId ? { productId, quantity } : null,
+      startDate,
+      endDate,
+      rentalType,
     });
 
     let cart;
@@ -43,18 +46,23 @@ export const addToCart = asyncHandler(
         throw new ApiError("Items array cannot be empty", 400);
       }
 
-      // Validate each item in the array
-      for (const item of items) {
+      // Validate each item in the array and convert dates
+      const processedItems = items.map((item: any) => {
         if (!item.productId || !item.quantity) {
           throw new ApiError("Each item must have productId and quantity", 400);
         }
         if (item.quantity <= 0) {
           throw new ApiError("Quantity must be greater than 0", 400);
         }
-      }
+        return {
+          ...item,
+          startDate: item.startDate ? new Date(item.startDate) : undefined,
+          endDate: item.endDate ? new Date(item.endDate) : undefined,
+        };
+      });
 
       // Multiple items
-      cart = await cartService.addMultipleItemsToCart(userId, items);
+      cart = await cartService.addMultipleItemsToCart(userId, processedItems);
     } else if (productId && quantity) {
       // Single item (backward compatibility)
       if (quantity <= 0) {
@@ -65,8 +73,9 @@ export const addToCart = asyncHandler(
         userId,
         productId,
         quantity,
-        startDate,
-        endDate
+        startDate ? new Date(startDate) : undefined,
+        endDate ? new Date(endDate) : undefined,
+        rentalType
       );
     } else {
       throw new ApiError(
@@ -90,13 +99,16 @@ export const addToCart = asyncHandler(
 export const updateCartItems = asyncHandler(
   async (req: Request, res: Response, next: NextFunction) => {
     const userId = (req as AuthenticatedRequest).user._id.toString();
-    const { items, productId, quantity, startDate, endDate } = req.body;
+    const { items, productId, quantity, startDate, endDate, rentalType } = req.body;
 
     console.log("🔄 [CART CONTROLLER] Update cart request:", {
       userId,
       hasItemsArray: Array.isArray(items),
       itemsCount: Array.isArray(items) ? items.length : 0,
       singleItem: productId ? { productId, quantity } : null,
+      startDate,
+      endDate,
+      rentalType,
     });
 
     let cart;
@@ -105,22 +117,26 @@ export const updateCartItems = asyncHandler(
       // Multiple items update
       console.log("📦 [CART CONTROLLER] Processing multiple items update");
 
-      // Validate items array
+      // Validate items array and convert dates
       if (items.length === 0) {
         throw new ApiError("Items array cannot be empty", 400);
       }
 
-      // Validate each item in the array
-      for (const item of items) {
+      const processedItems = items.map((item: any) => {
         if (!item.productId || item.quantity === undefined) {
           throw new ApiError("Each item must have productId and quantity", 400);
         }
         if (item.quantity < 0) {
           throw new ApiError("Quantity cannot be negative", 400);
         }
-      }
+        return {
+          ...item,
+          startDate: item.startDate ? new Date(item.startDate) : undefined,
+          endDate: item.endDate ? new Date(item.endDate) : undefined,
+        };
+      });
 
-      cart = await cartService.updateCartItems(userId, { items });
+      cart = await cartService.updateCartItems(userId, { items: processedItems });
     } else if (productId && quantity !== undefined) {
       // Single item update (backward compatibility)
       console.log(
@@ -135,8 +151,9 @@ export const updateCartItems = asyncHandler(
       cart = await cartService.updateCartItems(userId, {
         productId,
         quantity,
-        startDate,
-        endDate,
+        startDate: startDate ? new Date(startDate) : undefined,
+        endDate: endDate ? new Date(endDate) : undefined,
+        rentalType,
       });
     } else {
       // Invalid request
