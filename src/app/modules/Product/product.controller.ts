@@ -3,7 +3,183 @@ import asyncHandler from "../../utils/asyncHandler";
 import * as productService from "./product.service";
 import ApiError from "../../utils/apiError";
 import { Types } from "mongoose";
+// Add these functions to your existing product.controller.ts
 
+/* =========================
+   CLIENT SEARCH PRODUCTS
+========================= */
+export const clientSearchProducts = asyncHandler(
+  async (req: Request, res: Response, next: NextFunction) => {
+    const {
+      category,
+      state,
+      city,
+      startDate,
+      endDate,
+      page = 1,
+      limit = 10,
+      minPrice,
+      maxPrice,
+      difficulty,
+      ageMin,
+      ageMax,
+      ageUnit,
+      material,
+      isSensitive,
+    } = req.query;
+
+    // Convert query parameters to proper types
+    const params: productService.ClientSearchParams = {
+      category: category as string,
+      state: state as string,
+      city: city as string,
+      startDate: startDate as string,
+      endDate: endDate as string,
+      page: parseInt(page as string) || 1,
+      limit: parseInt(limit as string) || 10,
+      minPrice: minPrice ? parseFloat(minPrice as string) : undefined,
+      maxPrice: maxPrice ? parseFloat(maxPrice as string) : undefined,
+      difficulty: difficulty as "easy" | "medium" | "difficult",
+      ageMin: ageMin ? parseInt(ageMin as string) : undefined,
+      ageMax: ageMax ? parseInt(ageMax as string) : undefined,
+      ageUnit: ageUnit as "years" | "months",
+      material: material as string,
+      isSensitive:
+        isSensitive !== undefined ? isSensitive === "true" : undefined,
+    };
+
+    // Validate date range
+    if (params.startDate && params.endDate) {
+      const start = new Date(params.startDate);
+      const end = new Date(params.endDate);
+
+      if (start > end) {
+        throw new ApiError("Start date cannot be after end date", 400);
+      }
+    }
+
+    // Validate price range
+    if (params.minPrice !== undefined && params.maxPrice !== undefined) {
+      if (params.minPrice > params.maxPrice) {
+        throw new ApiError(
+          "Minimum price cannot be greater than maximum price",
+          400
+        );
+      }
+    }
+
+    // Validate age range
+    if (params.ageMin !== undefined && params.ageMax !== undefined) {
+      if (params.ageMin > params.ageMax) {
+        throw new ApiError(
+          "Minimum age cannot be greater than maximum age",
+          400
+        );
+      }
+    }
+
+    const result = await productService.clientSearchProducts(params);
+
+    res.status(200).json({
+      status: "success",
+      message: "Products fetched successfully",
+      data: {
+        products: result.products,
+        filters: result.filters,
+        pagination: {
+          page: params.page,
+          limit: params.limit,
+          total: result.total,
+          pages: result.pages,
+          hasNext: (params.page ?? 1) < result.pages,
+          hasPrev: (params.page ?? 1) > 1,
+        },
+      },
+    });
+  }
+);
+
+/* =========================
+   ADMIN SEARCH PRODUCTS
+========================= */
+/* =========================
+   ADMIN SEARCH PRODUCTS - FIXED
+========================= */
+export const adminSearchProducts = asyncHandler(
+  async (req: Request, res: Response, next: NextFunction) => {
+    const {
+      searchTerm,
+      productId,
+      active,
+      available,
+      categories,
+      page = 1,
+      limit = 10,
+      sortBy = "createdAt",
+      sortOrder = "desc",
+    } = req.query;
+
+    // Parse categories from query string (comma-separated)
+    const categoriesArray = categories
+      ? (categories as string).split(",").filter((cat) => cat.trim())
+      : [];
+
+    // Validate productId if provided
+    if (productId) {
+      if (!Types.ObjectId.isValid(productId as string)) {
+        throw new ApiError("Invalid product ID format", 400);
+      }
+    }
+
+    const params: productService.AdminSearchParams = {
+      searchTerm: searchTerm as string,
+      productId: productId as string,
+      active: active !== undefined ? active === "true" : undefined,
+      available: available !== undefined ? available === "true" : undefined,
+      categories: categoriesArray,
+      page: parseInt(page as string) || 1,
+      limit: parseInt(limit as string) || 10,
+      sortBy: sortBy as string,
+      sortOrder: sortOrder as "asc" | "desc",
+    };
+
+    const result = await productService.adminSearchProducts(params);
+
+    res.status(200).json({
+      status: "success",
+      message: "Products fetched successfully",
+      data: {
+        products: result.products,
+        filters: result.filters,
+        pagination: {
+          page: params.page,
+          limit: params.limit,
+          total: result.total,
+          pages: result.pages,
+          hasNext: (params.page ?? 1) < result.pages,
+          hasPrev: (params.page ?? 1) > 1,
+        },
+      },
+    });
+  }
+);
+
+/* =========================
+   GET AVAILABLE FILTERS
+========================= */
+export const getAvailableFilters = asyncHandler(
+  async (req: Request, res: Response, next: NextFunction) => {
+    const filters = await productService.getAvailableFilters();
+
+    res.status(200).json({
+      status: "success",
+      message: "Available filters fetched successfully",
+      data: {
+        filters,
+      },
+    });
+  }
+);
 const validateRequiredFields = (
   body: any,
   requiredFields: string[]

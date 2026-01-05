@@ -320,3 +320,377 @@ export const getProductsByCategory = async (
     pages: Math.ceil(total / limit),
   };
 };
+// Add these search functions to your existing product.service.ts
+
+/* =========================
+   CLIENT SEARCH INTERFACE & FUNCTION
+   Search by: category, location, date
+========================= */
+export interface ClientSearchParams {
+  category?: string;
+  state?: string;
+  city?: string;
+  startDate?: string | Date;
+  endDate?: string | Date;
+  page?: number;
+  limit?: number;
+  minPrice?: number;
+  maxPrice?: number;
+  difficulty?: "easy" | "medium" | "difficult";
+  ageMin?: number;
+  ageMax?: number;
+  ageUnit?: "years" | "months";
+  material?: string;
+  isSensitive?: boolean;
+}
+
+export const clientSearchProducts = async (
+  params: ClientSearchParams
+): Promise<{
+  products: IProductModel[];
+  total: number;
+  pages: number;
+  filters: any;
+}> => {
+  const {
+    category,
+    state,
+    city,
+    startDate,
+    endDate,
+    page = 1,
+    limit = 10,
+    minPrice,
+    maxPrice,
+    difficulty,
+    ageMin,
+    ageMax,
+    ageUnit = "years",
+    material,
+    isSensitive,
+  } = params;
+
+  const skip = (page - 1) * limit;
+  const filter: any = {
+    active: true,
+    stock: { $gt: 0 },
+  };
+
+  // Convert string dates to Date objects
+  const startDateObj = startDate ? new Date(startDate) : null;
+  const endDateObj = endDate ? new Date(endDate) : null;
+
+  // Date availability filter
+  const dateConditions = [];
+
+  if (startDateObj && endDateObj) {
+    // Search for products available during the entire date range
+    dateConditions.push({
+      availableFrom: { $lte: endDateObj },
+      availableUntil: { $gte: startDateObj },
+    });
+  } else if (startDateObj) {
+    // Products available from start date onward
+    dateConditions.push({
+      availableUntil: { $gte: startDateObj },
+    });
+  } else if (endDateObj) {
+    // Products available until end date
+    dateConditions.push({
+      availableFrom: { $lte: endDateObj },
+    });
+  } else {
+    // Default: show currently available products
+    const now = new Date();
+    dateConditions.push({
+      availableFrom: { $lte: now },
+      availableUntil: { $gte: now },
+    });
+  }
+
+  // Add date conditions to filter
+  if (dateConditions.length > 0) {
+    filter.$and = filter.$and || [];
+    filter.$and.push(...dateConditions);
+  }
+
+  // Category filter
+  if (category && Types.ObjectId.isValid(category)) {
+    filter.categories = new Types.ObjectId(category);
+  }
+
+  // Location filters
+  if (state) {
+    filter["location.state"] = { $regex: state, $options: "i" };
+  }
+  if (city) {
+    filter["location.city"] = { $regex: city, $options: "i" };
+  }
+
+  // Price range filter
+  if (minPrice !== undefined || maxPrice !== undefined) {
+    filter.price = {};
+    if (minPrice !== undefined) filter.price.$gte = minPrice;
+    if (maxPrice !== undefined) filter.price.$lte = maxPrice;
+  }
+
+  // Difficulty filter
+  if (difficulty) {
+    filter.difficulty = difficulty;
+  }
+
+  // Age range filter
+  if (ageMin !== undefined || ageMax !== undefined) {
+    const ageFilter: any = {};
+
+    if (ageMin !== undefined) {
+      ageFilter["ageRange.min"] = { $lte: ageMax !== undefined ? ageMax : 999 };
+    }
+
+    if (ageMax !== undefined) {
+      ageFilter["ageRange.max"] = { $gte: ageMin !== undefined ? ageMin : 0 };
+    }
+
+    if (ageUnit) {
+      ageFilter["ageRange.unit"] = ageUnit;
+    }
+
+    filter.$and = filter.$and || [];
+    filter.$and.push(ageFilter);
+  }
+
+  // Material filter
+  if (material) {
+    filter.material = { $regex: material, $options: "i" };
+  }
+
+  // Sensitive items filter
+  if (isSensitive !== undefined) {
+    filter.isSensitive = isSensitive;
+  }
+
+  // Execute query
+  const [products, total] = await Promise.all([
+    Product.find(filter)
+      .populate("categories", "name description slug")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    Product.countDocuments(filter),
+  ]);
+
+  return {
+    products: products as IProductModel[],
+    total,
+    pages: Math.ceil(total / limit),
+    filters: {
+      applied: params,
+      totalResults: total,
+    },
+  };
+};
+
+/* =========================
+   ADMIN SEARCH INTERFACE & FUNCTION
+   Search by: name, ID
+   Filter by: availability, categories
+========================= */
+/* =========================
+   ADMIN SEARCH INTERFACE & FUNCTION - FIXED
+   Search by: name, ID
+   Filter by: availability, categories
+========================= */
+export interface AdminSearchParams {
+  searchTerm?: string;
+  productId?: string;
+  active?: boolean;
+  available?: boolean;
+  categories?: string[];
+  page?: number;
+  limit?: number;
+  sortBy?: string;
+  sortOrder?: "asc" | "desc";
+}
+
+export const adminSearchProducts = async (
+  params: AdminSearchParams
+): Promise<{
+  products: IProductModel[];
+  total: number;
+  pages: number;
+  filters: any;
+}> => {
+  const {
+    searchTerm,
+    productId,
+    active,
+    available,
+    categories = [],
+    page = 1,
+    limit = 10,
+    sortBy = "createdAt",
+    sortOrder = "desc",
+  } = params;
+
+  const skip = (page - 1) * limit;
+  const filter: any = {};
+
+  // FIXED: Search by product ID (exact match) - HIGHEST PRIORITY
+  if (productId && Types.ObjectId.isValid(productId)) {
+    // If searching by ID, ignore all other filters and return that specific product
+    const product = await Product.findById(productId)
+      .populate("categories", "name description slug")
+      .lean();
+
+    return {
+      products: product ? [product as IProductModel] : [],
+      total: product ? 1 : 0,
+      pages: product ? 1 : 0,
+      filters: {
+        applied: { productId },
+        totalResults: product ? 1 : 0,
+      },
+    };
+  }
+
+  // Search by name or description (text search)
+  if (searchTerm && searchTerm.trim()) {
+    const searchRegex = { $regex: searchTerm.trim(), $options: "i" };
+    filter.$or = [
+      { name: searchRegex },
+      { description: searchRegex },
+      { summary: searchRegex },
+      { material: searchRegex },
+      { design: searchRegex },
+      { "location.state": searchRegex },
+      { "location.city": searchRegex },
+    ];
+  }
+
+  // Filter by active status
+  if (active !== undefined) {
+    filter.active = active;
+  }
+
+  // Filter by availability - FIXED LOGIC
+  if (available !== undefined) {
+    const now = new Date();
+    if (available) {
+      // Show available products (in stock and within date range)
+      filter.$and = [
+        { stock: { $gt: 0 } },
+        { availableFrom: { $lte: now } },
+        { availableUntil: { $gte: now } },
+      ];
+    } else {
+      // Show unavailable products (out of stock OR outside date range)
+      filter.$or = [
+        { stock: { $lte: 0 } },
+        { availableFrom: { $gt: now } },
+        { availableUntil: { $lt: now } },
+      ];
+    }
+  }
+
+  // Filter by categories
+  if (categories.length > 0) {
+    const validCategoryIds = categories
+      .filter((cat) => Types.ObjectId.isValid(cat))
+      .map((cat) => new Types.ObjectId(cat));
+
+    if (validCategoryIds.length > 0) {
+      filter.categories = { $in: validCategoryIds };
+    }
+  }
+
+  // Sort configuration
+  const sort: any = {};
+  const validSortFields = [
+    "name",
+    "price",
+    "stock",
+    "createdAt",
+    "updatedAt",
+    "availableFrom",
+    "availableUntil",
+    "difficulty",
+  ];
+
+  // Default to createdAt if invalid sort field
+  const finalSortBy = validSortFields.includes(sortBy) ? sortBy : "createdAt";
+  sort[finalSortBy] = sortOrder === "asc" ? 1 : -1;
+
+  // Execute query
+  const [products, total] = await Promise.all([
+    Product.find(filter)
+      .populate("categories", "name description slug")
+      .sort(sort)
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    Product.countDocuments(filter),
+  ]);
+
+  return {
+    products: products as IProductModel[],
+    total,
+    pages: Math.ceil(total / limit),
+    filters: {
+      applied: params,
+      totalResults: total,
+    },
+  };
+};
+
+/* =========================
+   GET AVAILABLE FILTER OPTIONS
+   For client search UI
+========================= */
+export const getAvailableFilters = async (): Promise<{
+  states: string[];
+  cities: string[];
+  difficulties: string[];
+  materials: string[];
+  priceRange: { min: number; max: number };
+}> => {
+  const [states, cities, difficulties, materials, priceRange] =
+    await Promise.all([
+      // Distinct states from active products
+      Product.distinct("location.state", { active: true, stock: { $gt: 0 } }),
+
+      // Distinct cities from active products
+      Product.distinct("location.city", { active: true, stock: { $gt: 0 } }),
+
+      // Distinct difficulty levels
+      Product.distinct("difficulty", { active: true, stock: { $gt: 0 } }),
+
+      // Distinct materials
+      Product.distinct("material", { active: true, stock: { $gt: 0 } }),
+
+      // Price range
+      Product.aggregate([
+        { $match: { active: true, stock: { $gt: 0 } } },
+        {
+          $group: {
+            _id: null,
+            minPrice: { $min: "$price" },
+            maxPrice: { $max: "$price" },
+          },
+        },
+      ]),
+    ]);
+
+  return {
+    states: states.filter(Boolean).sort(),
+    cities: cities.filter(Boolean).sort(),
+    difficulties: difficulties.filter(Boolean).sort(),
+    materials: materials.filter(Boolean).sort(),
+    priceRange: priceRange[0]
+      ? {
+          min: Math.floor(priceRange[0].minPrice || 0),
+          max: Math.ceil(priceRange[0].maxPrice || 0),
+        }
+      : { min: 0, max: 0 },
+  };
+};
