@@ -59,6 +59,10 @@ export const createProduct = async (
 /* =========================
    UPDATE PRODUCT
 ========================= */
+/* =========================
+   ENHANCED UPDATE PRODUCT
+   Supports updating all fields from the JSON example
+========================= */
 export const updateProduct = async (
   productId: string,
   updateData: any
@@ -67,6 +71,41 @@ export const updateProduct = async (
     throw new ApiError("Invalid product ID", 400);
   }
 
+  // Create a clean update object with proper transformations
+  const cleanUpdateData: any = {};
+
+  // Basic fields that can be directly updated
+  const basicFields = [
+    "name",
+    "description",
+    "summary",
+    "price",
+    "perDayPrice",
+    "perWeekPrice",
+    "deliveryAndCollection",
+    "priceDiscount",
+    "duration",
+    "maxGroupSize",
+    "difficulty",
+    "images",
+    "imageCover",
+    "size",
+    "active",
+    "stock",
+    "isSensitive",
+    "material",
+    "design",
+    "dateAdded",
+  ];
+
+  // Copy basic fields if they exist in updateData
+  basicFields.forEach((field) => {
+    if (updateData[field] !== undefined) {
+      cleanUpdateData[field] = updateData[field];
+    }
+  });
+
+  // Handle categories update
   if (updateData.categories?.length) {
     const categoryIds = updateData.categories.map(
       (id: string) => new Types.ObjectId(id)
@@ -81,20 +120,76 @@ export const updateProduct = async (
       throw new ApiError("One or more categories are invalid or inactive", 400);
     }
 
-    updateData.categories = categoryIds;
+    cleanUpdateData.categories = categoryIds;
   }
 
+  // Handle location update
   if (updateData.location) {
-    updateData.location = {
+    cleanUpdateData.location = {
       country: "England",
       state: updateData.location.state || "",
       city: updateData.location.city || "",
     };
   }
 
-  const product = await Product.findByIdAndUpdate(productId, updateData, {
+  // Handle dimensions update
+  if (updateData.dimensions) {
+    const { length, width, height } = updateData.dimensions;
+    cleanUpdateData.dimensions = {
+      length: length || 1,
+      width: width || 1,
+      height: height || 1,
+    };
+  }
+
+  // Handle date fields
+  if (updateData.availableFrom) {
+    cleanUpdateData.availableFrom = new Date(updateData.availableFrom);
+  }
+
+  if (updateData.availableUntil) {
+    cleanUpdateData.availableUntil = new Date(updateData.availableUntil);
+  }
+
+  // Handle ageRange update
+  if (updateData.ageRange) {
+    const { min, max, unit } = updateData.ageRange;
+    cleanUpdateData.ageRange = {
+      min: min || 0,
+      max: max || 0,
+      unit: unit || "years",
+    };
+  }
+
+  // Handle safetyFeatures update
+  if (updateData.safetyFeatures !== undefined) {
+    if (!Array.isArray(updateData.safetyFeatures)) {
+      throw new ApiError("Safety features must be an array", 400);
+    }
+    if (updateData.safetyFeatures.length === 0) {
+      throw new ApiError("At least one safety feature is required", 400);
+    }
+    cleanUpdateData.safetyFeatures = updateData.safetyFeatures;
+  }
+
+  // Handle qualityAssurance update
+  if (updateData.qualityAssurance) {
+    const { isCertified, certification, warrantyPeriod, warrantyDetails } =
+      updateData.qualityAssurance;
+
+    cleanUpdateData.qualityAssurance = {
+      isCertified: isCertified !== undefined ? isCertified : false,
+      certification: certification || undefined,
+      warrantyPeriod: warrantyPeriod || undefined,
+      warrantyDetails: warrantyDetails || undefined,
+    };
+  }
+
+  // Update the product with validation
+  const product = await Product.findByIdAndUpdate(productId, cleanUpdateData, {
     new: true,
     runValidators: true,
+    context: "query", // This ensures validators run on update
   }).populate("categories", "name slug description image");
 
   if (!product) {

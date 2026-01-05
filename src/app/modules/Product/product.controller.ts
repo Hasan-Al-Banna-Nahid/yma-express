@@ -447,6 +447,31 @@ export const updateProduct = asyncHandler(
     const productId = req.params.id;
     const updateData = req.body;
 
+    // Enhanced validation for all fields
+    if (updateData.categories) {
+      if (!Array.isArray(updateData.categories)) {
+        throw new ApiError("Categories must be an array", 400);
+      }
+      for (const categoryId of updateData.categories) {
+        if (!Types.ObjectId.isValid(categoryId)) {
+          throw new ApiError(`Invalid category ID: ${categoryId}`, 400);
+        }
+      }
+    }
+
+    if (updateData.dimensions) {
+      const { length, width, height } = updateData.dimensions;
+      if (length !== undefined && length < 1) {
+        throw new ApiError("Length must be at least 1 foot", 400);
+      }
+      if (width !== undefined && width < 1) {
+        throw new ApiError("Width must be at least 1 foot", 400);
+      }
+      if (height !== undefined && height < 1) {
+        throw new ApiError("Height must be at least 1 foot", 400);
+      }
+    }
+
     if (updateData.ageRange) {
       const { min, max, unit } = updateData.ageRange;
 
@@ -456,6 +481,10 @@ export const updateProduct = asyncHandler(
 
       if (max !== undefined && max < 0) {
         throw new ApiError("Maximum age cannot be negative", 400);
+      }
+
+      if (min !== undefined && max !== undefined && max < min) {
+        throw new ApiError("Maximum age must be greater than minimum age", 400);
       }
 
       if (unit !== undefined && !["years", "months"].includes(unit)) {
@@ -481,12 +510,29 @@ export const updateProduct = asyncHandler(
       }
     }
 
-    if (updateData.location) {
-      updateData.location = {
-        country: "England",
-        state: updateData.location.state || "",
-        city: updateData.location.city || "",
-      };
+    if (updateData.price !== undefined && updateData.price < 0) {
+      throw new ApiError("Price cannot be negative", 400);
+    }
+
+    if (updateData.stock !== undefined && updateData.stock < 0) {
+      throw new ApiError("Stock cannot be negative", 400);
+    }
+
+    if (updateData.maxGroupSize !== undefined && updateData.maxGroupSize < 1) {
+      throw new ApiError("Max group size must be at least 1", 400);
+    }
+
+    // Validate date range if both dates are provided
+    if (updateData.availableFrom && updateData.availableUntil) {
+      const startDate = new Date(updateData.availableFrom);
+      const endDate = new Date(updateData.availableUntil);
+
+      if (startDate > endDate) {
+        throw new ApiError(
+          "Available from date cannot be after available until date",
+          400
+        );
+      }
     }
 
     const product = await productService.updateProduct(productId, updateData);
