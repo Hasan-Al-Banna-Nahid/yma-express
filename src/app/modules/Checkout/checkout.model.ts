@@ -1,68 +1,68 @@
-// order.model.ts
-import mongoose, { Schema, Document } from "mongoose";
+import mongoose, { Schema } from "mongoose";
 import { IOrder, IOrderItem } from "./checkout.interface";
 
-export interface IOrderItemModel extends IOrderItem, Document {}
-export interface IOrderModel extends IOrder, Document {}
+// Check if model already exists
+if (mongoose.models.Order) {
+  delete mongoose.models.Order;
+}
 
-const orderItemSchema = new Schema({
-  product: { type: Schema.Types.ObjectId, ref: "Product", required: true },
-  quantity: { type: Number, required: true, min: 1 },
-  price: { type: Number, required: true },
-  name: { type: String, required: true },
-  startDate: Date,
-  endDate: Date,
-});
+const orderItemSchema = new Schema<IOrderItem>(
+  {
+    product: { type: Schema.Types.ObjectId, ref: "Product", required: true },
+    quantity: { type: Number, required: true, min: 1 },
+    price: { type: Number, required: true },
+    name: { type: String, required: true },
+    startDate: { type: Date },
+    endDate: { type: Date },
+  },
+  { _id: false }
+);
 
-const orderSchema = new Schema(
+const orderSchema = new Schema<IOrder>(
   {
     user: { type: Schema.Types.ObjectId, ref: "User", required: true },
-    items: [orderItemSchema],
+    items: { type: [orderItemSchema], required: true },
     totalAmount: { type: Number, required: true },
-
     paymentMethod: {
       type: String,
       enum: ["cash_on_delivery", "online"],
       default: "cash_on_delivery",
+      required: true,
     },
-
     status: {
       type: String,
       enum: ["pending", "confirmed", "shipped", "delivered", "cancelled"],
       default: "pending",
+      required: true,
     },
-
     shippingAddress: {
       firstName: { type: String, required: true },
       lastName: { type: String, required: true },
-      email: { type: String, required: true },
       phone: { type: String, required: true },
-
+      email: { type: String, required: true },
       country: { type: String, required: true },
       city: { type: String, required: true },
       street: { type: String, required: true },
       zipCode: { type: String, required: true },
-      apartment: String,
-
-      companyName: String,
-      locationAccessibility: String,
-      deliveryTime: String,
-      collectionTime: String,
-      floorType: String,
-      userType: String,
+      apartment: { type: String },
+      location: { type: String },
+      companyName: { type: String },
+      locationAccessibility: { type: String },
+      deliveryTime: { type: String },
+      floorType: { type: String },
+      collectionTime: { type: String },
+      userType: { type: String },
       keepOvernight: { type: Boolean, default: false },
-      hireOccasion: String,
-      notes: String,
-
+      hireOccasion: { type: String },
+      notes: { type: String },
       differentBillingAddress: { type: Boolean, default: false },
-      billingFirstName: String,
-      billingLastName: String,
-      billingStreet: String,
-      billingCity: String,
-      // billingState: String,
-      billingZipCode: String,
+      billingFirstName: { type: String },
+      billingLastName: { type: String },
+      billingStreet: { type: String },
+      billingCity: { type: String },
+      billingZipCode: { type: String },
+      billingCompanyName: { type: String },
     },
-
     termsAccepted: {
       type: Boolean,
       required: true,
@@ -71,14 +71,18 @@ const orderSchema = new Schema(
         message: "You must accept the terms and conditions",
       },
     },
-
     invoiceType: {
+      type: String,
+      enum: ["regular", "corporate"],
       default: "regular",
+      required: true,
     },
-
-    bankDetails: String,
+    bankDetails: { type: String },
   },
   { timestamps: true }
 );
 
-export default mongoose.model<IOrderModel>("Order", orderSchema);
+// Export the model
+export const Order =
+  mongoose.models.Order || mongoose.model<IOrder>("Order", orderSchema);
+export default Order;

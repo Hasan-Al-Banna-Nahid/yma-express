@@ -1,26 +1,33 @@
+// src/services/checkout/checkout.service.ts
 import mongoose, { Types } from "mongoose";
-import Cart from "../Cart/cart.model";
-import Order, { IOrder } from "../UserOrder/order.model";
-import Product, { IProductModel } from "../Product/product.model";
+import Cart from "../../modules/Cart/cart.model";
+import UserOrder, {
+  IOrder as UserOrderInterface,
+} from "../../modules/UserOrder/order.model";
+import Product from "../../modules/Product/product.model";
 import ApiError from "../../utils/apiError";
-import { sendOrderConfirmationEmail } from "../Email/email.service";
+import {
+  sendOrderConfirmationEmail,
+  sendOrderNotificationToAdmin,
+} from "./email.service";
 
 export interface CreateOrderData {
   shippingAddress: {
     firstName: string;
     lastName: string;
-    email: string;
     phone: string;
+    email: string;
     country: string;
     city: string;
     street: string;
     zipCode: string;
     apartment?: string;
+    location?: string;
     companyName?: string;
     locationAccessibility?: string;
     deliveryTime?: string;
-    collectionTime?: string;
     floorType?: string;
+    collectionTime?: string;
     userType?: string;
     keepOvernight?: boolean;
     hireOccasion?: string;
@@ -30,7 +37,6 @@ export interface CreateOrderData {
     billingLastName?: string;
     billingStreet?: string;
     billingCity?: string;
-    // billingState?: string;
     billingZipCode?: string;
     billingCompanyName?: string;
   };
@@ -40,63 +46,126 @@ export interface CreateOrderData {
   bankDetails?: string;
 }
 
-// checkout.service.ts
 export const createOrderFromCart = async (
   userId: Types.ObjectId,
   data: CreateOrderData
-) => {
-  const cart = await Cart.findOne({ user: userId });
-  if (!cart || cart.items.length === 0) {
-    throw new ApiError("Cart is empty", 400);
-  }
+): Promise<UserOrderInterface> => {
+  const session = await mongoose.startSession();
 
-  let totalAmount = 0;
-  const orderItems = [];
+  try {
+    session.startTransaction();
 
-  for (const item of cart.items) {
-    const product = await Product.findById(item.product);
-    if (!product) throw new ApiError("Product not found", 404);
-
-    if (product.stock < item.quantity) {
-      throw new ApiError(`Insufficient stock for ${product.name}`, 400);
+    // Find cart
+    const cart = await Cart.findOne({ user: userId }).session(session);
+    if (!cart || cart.items.length === 0) {
+      throw new ApiError("Cart is empty", 400);
     }
 
-    product.stock -= item.quantity;
-    await product.save();
+    let totalAmount = 0;
+    const orderItems: Array<{
+      product: Types.ObjectId;
+      quantity: number;
+      price: number;
+      name: string;
+      startDate?: Date;
+      endDate?: Date;
+    }> = [];
 
-    orderItems.push({
-      product: product._id,
-      quantity: item.quantity,
-      price: item.price,
-      name: product.name,
-      startDate: item.startDate,
-      endDate: item.endDate,
-    });
+    // Process cart items
+    for (const item of cart.items) {
+      const product = await Product.findById(item.product).session(session);
+      if (!product) {
+        throw new ApiError(`Product not found: ${item.product}`, 404);
+      }
 
-    totalAmount += item.quantity * item.price;
+      if (product.stock < item.quantity) {
+        throw new ApiError(
+          `Insufficient stock for ${product.name}. Available: ${product.stock}, Requested: ${item.quantity}`,
+          400
+        );
+      }
+
+      // Update stock
+      product.stock -= item.quantity;
+      await product.save({ session });
+
+      // Add to order items
+      orderItems.push({
+        product: product._id,
+        quantity: item.quantity,
+        price: item.price,
+        name: product.name,
+        startDate: item.startDate,
+        endDate: item.endDate,
+      });
+
+      totalAmount += item.quantity * item.price;
+    }
+
+    // Prepare order data for UserOrder model
+    const orderData = {
+      user: userId,
+      items: orderItems,
+      totalAmount,
+      paymentMethod:
+        data.paymentMethod === "online" ? "credit_card" : "cash_on_delivery",
+      status: "pending" as const,
+      shippingAddress: {
+        firstName: data.shippingAddress.firstName,
+        lastName: data.shippingAddress.lastName,
+        email: data.shippingAddress.email,
+        phone: data.shippingAddress.phone,
+        street: data.shippingAddress.street,
+        apartment: data.shippingAddress.apartment || "",
+        city: data.shippingAddress.city,
+        state: data.shippingAddress.country,
+        zipCode: data.shippingAddress.zipCode,
+        country: data.shippingAddress.country,
+        deliveryTime: data.shippingAddress.deliveryTime || "",
+        notes: data.shippingAddress.notes || "",
+      },
+      bankDetails: data.bankDetails,
+      termsAccepted: data.termsAccepted,
+      invoiceType: data.invoiceType || "regular",
+      estimatedDeliveryDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days from now
+      // orderNumber will be auto-generated by the model's default function
+    };
+
+    // Create order
+    const [createdOrder] = await UserOrder.create([orderData], { session });
+
+    if (!createdOrder) {
+      throw new ApiError("Failed to create order", 500);
+    }
+
+    // Clear cart
+    cart.items = [];
+    await cart.save({ session });
+
+    // Commit transaction
+    await session.commitTransaction();
+
+    console.log(
+      `✅ Order created successfully: ${createdOrder._id}, Order Number: ${createdOrder.orderNumber}`
+    );
+
+    // Send emails (outside transaction)
+    try {
+      // Now createdOrder has all required properties including termsAccepted and invoiceType
+      await sendOrderConfirmationEmail(createdOrder);
+      await sendOrderNotificationToAdmin(createdOrder);
+
+      console.log(`📧 Emails sent for order: ${createdOrder.orderNumber}`);
+    } catch (emailError) {
+      console.error("⚠️ Email sending failed:", emailError);
+      // Don't throw - order was already created successfully
+    }
+
+    return createdOrder;
+  } catch (error) {
+    await session.abortTransaction();
+    throw error;
+  } finally {
+    session.endSession();
   }
-
-  const order = await Order.create({
-    user: userId,
-    items: orderItems,
-    totalAmount,
-    paymentMethod: data.paymentMethod,
-    shippingAddress: data.shippingAddress,
-    termsAccepted: data.termsAccepted,
-    invoiceType: data.invoiceType || "regular",
-    bankDetails: data.bankDetails,
-  });
-
-  // Send order confirmation email
-  try {
-    await sendOrderConfirmationEmail(order);
-  } catch (emailError) {
-    console.error("Failed to send order confirmation email:", emailError);
-    // Optionally rethrow or handle this error, but usually order creation should not fail due to email
-  }
-
-  cart.items = [];
-  await cart.save();
-
-  return order;
 };

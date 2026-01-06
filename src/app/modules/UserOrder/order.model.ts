@@ -1,4 +1,4 @@
-// src/models/order.model.ts
+// src/modules/UserOrder/order.model.ts
 import mongoose, { Schema, Document } from "mongoose";
 
 export interface IOrderItem {
@@ -25,18 +25,26 @@ export interface IShippingAddress {
   notes?: string;
 }
 
+// Update IOrder interface to include all required fields
 export interface IOrder extends Document {
   orderNumber: string;
   user: mongoose.Types.ObjectId;
   items: IOrderItem[];
   shippingAddress: IShippingAddress;
-  paymentMethod: "cash_on_delivery" | "bank_transfer" | "credit_card";
+  paymentMethod:
+    | "cash_on_delivery"
+    | "bank_transfer"
+    | "credit_card"
+    | "online";
   status: "pending" | "confirmed" | "shipped" | "delivered" | "cancelled";
   totalAmount: number;
   estimatedDeliveryDate: Date;
   adminNotes?: string;
   deliveryDate?: Date;
-  bankDetails?: string; // Added bankDetails field as string
+  bankDetails?: string;
+  // ADD THESE REQUIRED FIELDS:
+  termsAccepted: boolean;
+  invoiceType: "regular" | "corporate";
   createdAt: Date;
   updatedAt: Date;
 }
@@ -84,7 +92,7 @@ const orderSchema = new Schema<IOrder>(
     shippingAddress: shippingAddressSchema,
     paymentMethod: {
       type: String,
-      enum: ["cash_on_delivery", "bank_transfer", "credit_card"],
+      enum: ["cash_on_delivery", "bank_transfer", "credit_card", "online"],
       required: true,
     },
     status: {
@@ -96,17 +104,31 @@ const orderSchema = new Schema<IOrder>(
     estimatedDeliveryDate: { type: Date },
     adminNotes: { type: String },
     deliveryDate: { type: Date },
-    bankDetails: { type: String }, // Added bankDetails field
+    bankDetails: { type: String },
+    // ADD THESE TO THE SCHEMA:
+    termsAccepted: {
+      type: Boolean,
+      required: true,
+      default: false,
+    },
+    invoiceType: {
+      type: String,
+      enum: ["regular", "corporate"],
+      required: true,
+      default: "regular",
+    },
   },
   { timestamps: true }
 );
 
-// Indexes for faster queries
+// Indexes
 orderSchema.index({ orderNumber: 1 });
 orderSchema.index({ user: 1 });
 orderSchema.index({ status: 1 });
 orderSchema.index({ createdAt: -1 });
 orderSchema.index({ estimatedDeliveryDate: 1 });
 
-const Order = mongoose.model<IOrder>("Order", orderSchema);
+// Check if model exists to prevent OverwriteModelError
+const Order =
+  mongoose.models.Order || mongoose.model<IOrder>("Order", orderSchema);
 export default Order;

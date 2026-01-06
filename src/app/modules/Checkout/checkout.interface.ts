@@ -1,4 +1,3 @@
-// checkout.interface.ts
 import { Types } from "mongoose";
 
 export interface IOrderItem {
@@ -11,34 +10,39 @@ export interface IOrderItem {
 }
 
 export interface IShippingAddress {
+  // Basic required fields
   firstName: string;
   lastName: string;
-  email: string;
   phone: string;
+  email: string;
 
+  // Address fields
   country: string;
   city: string;
   street: string;
   zipCode: string;
   apartment?: string;
 
+  // Additional optional fields
+  location?: string;
   companyName?: string;
   locationAccessibility?: string;
   deliveryTime?: string;
-  collectionTime?: string;
   floorType?: string;
+  collectionTime?: string;
   userType?: string;
   keepOvernight?: boolean;
   hireOccasion?: string;
   notes?: string;
 
+  // Billing address fields
   differentBillingAddress?: boolean;
   billingFirstName?: string;
   billingLastName?: string;
   billingStreet?: string;
   billingCity?: string;
-  // billingState?: string;
   billingZipCode?: string;
+  billingCompanyName?: string;
 }
 
 export interface IOrder {
