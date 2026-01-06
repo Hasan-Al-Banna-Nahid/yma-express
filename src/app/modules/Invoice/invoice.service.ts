@@ -2,7 +2,7 @@
 import mongoose from "mongoose";
 import Invoice from "./invoice.model";
 import { IInvoice } from "./invoice.interface";
-import { IOrder } from "../../modules/UserOrder/order.model";
+import { IOrder } from "../../modules/Checkout/checkout.interface";
 
 // Get all invoices
 export const getAllInvoices = async () => {

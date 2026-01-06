@@ -1,4 +1,5 @@
-import { Types } from "mongoose";
+// src/interfaces/checkout.interface.ts
+import { Types, Document } from "mongoose";
 
 export interface IOrderItem {
   product: Types.ObjectId;
@@ -7,35 +8,30 @@ export interface IOrderItem {
   name: string;
   startDate?: Date;
   endDate?: Date;
+  hireOccasion?: string;
+  keepOvernight?: boolean;
 }
 
 export interface IShippingAddress {
-  // Basic required fields
   firstName: string;
   lastName: string;
   phone: string;
   email: string;
-
-  // Address fields
   country: string;
   city: string;
   street: string;
   zipCode: string;
   apartment?: string;
-
-  // Additional optional fields
   location?: string;
   companyName?: string;
   locationAccessibility?: string;
   deliveryTime?: string;
-  floorType?: string;
   collectionTime?: string;
+  floorType?: string;
   userType?: string;
   keepOvernight?: boolean;
   hireOccasion?: string;
   notes?: string;
-
-  // Billing address fields
   differentBillingAddress?: boolean;
   billingFirstName?: string;
   billingLastName?: string;
@@ -49,7 +45,10 @@ export interface IOrder {
   user: Types.ObjectId;
   items: IOrderItem[];
   totalAmount: number;
-  paymentMethod: "cash_on_delivery" | "online";
+  subtotalAmount: number;
+  deliveryFee: number;
+  overnightFee: number;
+  paymentMethod: "cash_on_delivery" | "credit_card" | "online";
   status: "pending" | "confirmed" | "shipped" | "delivered" | "cancelled";
   shippingAddress: IShippingAddress;
   termsAccepted: boolean;
@@ -57,4 +56,9 @@ export interface IOrder {
   bankDetails?: string;
   createdAt?: Date;
   updatedAt?: Date;
+  orderNumber?: string;
+  estimatedDeliveryDate?: Date;
 }
+
+export interface IOrderItemDocument extends IOrderItem, Document {}
+export interface IOrderDocument extends IOrder, Document {}

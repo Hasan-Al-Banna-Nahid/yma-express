@@ -171,7 +171,7 @@ export const generateInvoiceForBooking = asyncHandler(
       // Create a new invoice document
       const invoiceData: IInvoice = {
         invoiceNumber: await generateInvoiceNumber(),
-        booking: order._id as mongoose.Schema.Types.ObjectId,
+        booking: (order as any)._id as mongoose.Schema.Types.ObjectId,
         user: (order.user as any)._id || order.user,
         issueDate: new Date(),
         dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),

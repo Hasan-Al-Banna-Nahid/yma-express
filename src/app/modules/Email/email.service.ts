@@ -14,7 +14,8 @@ const EMAIL_HOST = process.env.EMAIL_HOST;
 const EMAIL_PORT = parseInt(process.env.EMAIL_PORT || "587");
 const EMAIL_USER = process.env.EMAIL_USER;
 const EMAIL_PASS = process.env.EMAIL_PASS;
-export const EMAIL_FROM = process.env.EMAIL_FROM || "noreply@ymabouncycastle.com"; // Exported
+export const EMAIL_FROM =
+  process.env.EMAIL_FROM || "noreply@ymabouncycastle.com"; // Exported
 const EMAIL_FROM_NAME = process.env.EMAIL_FROM_NAME || "YMABouncyCastle";
 
 if (!EMAIL_HOST || !EMAIL_USER || !EMAIL_PASS) {
@@ -1275,7 +1276,7 @@ export async function sendInvoiceEmail(order: IOrder, invoiceHtml: string) {
   }
 }
 
-// Order with invoice attachment
+// Order with invoice attachment - FIXED VERSION
 export async function sendOrderWithInvoiceAttachment(order: IOrder) {
   try {
     const invoiceHtml = await generateInvoiceHtml(order);
@@ -1295,7 +1296,11 @@ export async function sendOrderWithInvoiceAttachment(order: IOrder) {
           <p>Thank you for your order <strong>#${
             order.orderNumber
           }</strong>.</p>
-          <p>Estimated Delivery: ${order.estimatedDeliveryDate.toLocaleDateString()}</p>
+          ${
+            order.estimatedDeliveryDate
+              ? `<p>Estimated Delivery: ${order.estimatedDeliveryDate.toLocaleDateString()}</p>`
+              : ""
+          }
         </div>
         <div class="invoice-section">
           <h3>📄 Invoice</h3>
@@ -1320,7 +1325,7 @@ export async function sendOrderWithInvoiceAttachment(order: IOrder) {
   }
 }
 
-// Admin notification
+// Admin notification - FIXED VERSION
 export async function sendAdminOrderNotification(
   order: IOrder,
   adminEmail: string
@@ -1348,7 +1353,11 @@ export async function sendAdminOrderNotification(
           <p><strong>Phone:</strong> ${order.shippingAddress.phone}</p>
           <p><strong>Total Amount:</strong> £${order.totalAmount.toFixed(2)}</p>
           <p><strong>Status:</strong> ${order.status}</p>
-          <p><strong>Delivery Date:</strong> ${order.estimatedDeliveryDate.toLocaleDateString()}</p>
+          ${
+            order.estimatedDeliveryDate
+              ? `<p><strong>Delivery Date:</strong> ${order.estimatedDeliveryDate.toLocaleDateString()}</p>`
+              : ""
+          }
         </div>
         <p>Please log in to the admin panel to process this order.</p>
       </body>
@@ -1366,7 +1375,7 @@ export async function sendAdminOrderNotification(
   }
 }
 
-// Order status update
+// Order status update - FIXED VERSION
 export async function sendOrderStatusUpdateEmail(
   order: IOrder,
   previousStatus: string
@@ -1406,7 +1415,11 @@ export async function sendOrderStatusUpdateEmail(
           <p><strong>Previous Status:</strong> ${previousStatus}</p>
           <p><strong>New Status:</strong> ${order.status}</p>
           <p><strong>Order Date:</strong> ${order.createdAt.toLocaleDateString()}</p>
-          <p><strong>Estimated Delivery:</strong> ${order.estimatedDeliveryDate.toLocaleDateString()}</p>
+          ${
+            order.estimatedDeliveryDate
+              ? `<p><strong>Estimated Delivery:</strong> ${order.estimatedDeliveryDate.toLocaleDateString()}</p>`
+              : ""
+          }
           ${
             order.deliveryDate
               ? `<p><strong>Actual Delivery:</strong> ${order.deliveryDate.toLocaleDateString()}</p>`
