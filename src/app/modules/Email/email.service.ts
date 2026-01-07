@@ -1145,43 +1145,215 @@ export async function sendPlainMail(options: PlainEmailOptions): Promise<void> {
 }
 
 // Auth email helpers
+// In your email.service.ts file, replace these functions:
+
+/**
+ * Send password reset email with beautiful template
+ */
+// In email.service.ts - sendPasswordResetEmail
 export async function sendPasswordResetEmail(
   to: string,
   name: string,
   resetURL: string
 ) {
-  await sendTemplatedEmail({
-    to,
-    subject: "Reset your YMA Bouncy Castle password (valid 10 minutes)",
-    templateName: "passwordReset",
-    templateVars: {
-      brand: EMAIL_FROM_NAME,
-      name,
-      resetURL,
-      preheader:
-        "Tap the button to reset your password. Link expires in 10 minutes.",
-      year: new Date().getFullYear(),
-      brandColor: "#7C3AED",
-    },
-  });
+  try {
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; background-color: #f5f7fa; padding: 20px; }
+          .email-container { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1); }
+          .email-header { background: linear-gradient(135deg, #4A90E2, #2C3E50); padding: 30px 20px; text-align: center; }
+          .logo { max-width: 180px; height: auto; margin-bottom: 20px; }
+          .email-title { color: white; font-size: 28px; font-weight: 600; margin: 10px 0; }
+          .email-subtitle { color: rgba(255, 255, 255, 0.9); font-size: 16px; font-weight: 400; }
+          .email-content { padding: 40px 30px; }
+          .greeting { font-size: 18px; margin-bottom: 25px; color: #2C3E50; }
+          .reset-box { background: #F0F8FF; border-left: 4px solid #4A90E2; padding: 25px; border-radius: 8px; margin: 25px 0; }
+          .reset-title { color: #2C3E50; font-size: 20px; margin-bottom: 15px; }
+          .reset-button { display: inline-block; background: #4A90E2; color: white; text-decoration: none; padding: 14px 32px; border-radius: 6px; font-weight: 600; font-size: 16px; margin: 20px 0; transition: background 0.3s; }
+          .reset-button:hover { background: #357abd; }
+          .token-link { background: #f8f9fa; padding: 15px; border-radius: 6px; font-family: monospace; font-size: 14px; word-break: break-all; margin: 15px 0; border: 1px dashed #ddd; }
+          .warning-box { background: #FFF3E0; border-left: 4px solid #FF9800; padding: 20px; border-radius: 8px; margin: 25px 0; }
+          .footer { text-align: center; padding: 30px; color: #666; font-size: 14px; border-top: 1px solid #eee; }
+          @media (max-width: 600px) { 
+            .email-content { padding: 25px 20px; } 
+            .email-title { font-size: 24px; } 
+            .reset-button { display: block; text-align: center; } 
+          }
+        </style>
+      </head>
+      <body>
+        <div class="email-container">
+          <div class="email-header">
+            <img src="https://res.cloudinary.com/dj785gqtu/image/upload/v1767711924/logo2_xos8xa.png" 
+                 alt="YMA Bouncy Castle" 
+                 class="logo">
+            <h1 class="email-title">Password Reset</h1>
+            <p class="email-subtitle">YMA Bouncy Castle Rentals</p>
+          </div>
+          
+          <div class="email-content">
+            <p class="greeting">Hi <strong>${name}</strong>,</p>
+            
+            <p>We received a request to reset your password for your YMA Bouncy Castle account.</p>
+            
+            <div class="reset-box">
+              <h2 class="reset-title">🔐 Reset Your Password</h2>
+              <p>Click the button below to reset your password. This link will expire in 10 minutes.</p>
+              
+              <a href="${resetURL}" class="reset-button" style="color: white; text-decoration: none;">
+                  Reset Password Now
+              </a>
+              
+              <p style="margin-top: 15px; font-size: 14px;">
+                  Or copy and paste this link in your browser:
+              </p>
+              <div class="token-link">${resetURL}</div>
+            </div>
+            
+            <div class="warning-box">
+              <strong>⚠️ Security Notice:</strong>
+              <p>If you didn't request this password reset, please ignore this email. 
+              Your account is safe and no changes have been made.</p>
+            </div>
+            
+            <p style="margin-top: 30px;">Best regards,<br>
+            <strong>The YMA Bouncy Castle Team</strong></p>
+          </div>
+          
+          <div class="footer">
+            <p>© ${new Date().getFullYear()} YMA Bouncy Castle. All rights reserved.</p>
+            <p>This email was sent to ${to}.</p>
+            <p>If you have any questions, contact us at support@ymabouncycastle.com</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    await sendEmailHtml({
+      to,
+      subject: "🔐 Reset Your YMA Bouncy Castle Password",
+      html,
+    });
+
+    console.log(`✅ Password reset email sent to: ${to}`);
+  } catch (error) {
+    console.error("❌ Failed to send password reset email:", error);
+    throw error;
+  }
 }
 
+/**
+ * Send password reset success email
+ */
 export async function sendResetSuccessEmail(to: string, name: string) {
-  await sendTemplatedEmail({
-    to,
-    subject: "Your YMA Bouncy Castle password was changed",
-    templateName: "resetSuccess",
-    templateVars: {
-      brand: EMAIL_FROM_NAME,
-      name,
-      preheader:
-        "This is a confirmation that your password was successfully changed.",
-      year: new Date().getFullYear(),
-      brandColor: "#7C3AED",
-      securityNote:
-        "If this wasn't you, reset your password immediately and contact support.",
-    },
-  });
+  try {
+    const loginURL = `${process.env.FRONTEND_URL}/login`;
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; background-color: #f5f7fa; padding: 20px; }
+          .email-container { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1); }
+          .email-header { background: linear-gradient(135deg, #27AE60, #2C3E50); padding: 30px 20px; text-align: center; }
+          .logo { max-width: 180px; height: auto; margin-bottom: 20px; }
+          .email-title { color: white; font-size: 28px; font-weight: 600; margin: 10px 0; }
+          .email-subtitle { color: rgba(255, 255, 255, 0.9); font-size: 16px; font-weight: 400; }
+          .email-content { padding: 40px 30px; }
+          .success-box { background: #E8F5E9; border-left: 4px solid #27AE60; padding: 25px; border-radius: 8px; margin: 25px 0; text-align: center; }
+          .success-icon { font-size: 48px; margin-bottom: 15px; }
+          .security-tips { background: #FFF3E0; border-left: 4px solid #FF9800; padding: 20px; border-radius: 8px; margin: 25px 0; }
+          .login-button { display: inline-block; background: #27AE60; color: white; text-decoration: none; padding: 14px 32px; border-radius: 6px; font-weight: 600; font-size: 16px; margin: 20px 0; transition: background 0.3s; }
+          .login-button:hover { background: #219653; }
+          .footer { text-align: center; padding: 30px; color: #666; font-size: 14px; border-top: 1px solid #eee; }
+          @media (max-width: 600px) { 
+            .email-content { padding: 25px 20px; } 
+            .email-title { font-size: 24px; } 
+            .login-button { display: block; text-align: center; } 
+          }
+        </style>
+      </head>
+      <body>
+        <div class="email-container">
+          <div class="email-header">
+            <img src="https://res.cloudinary.com/dj785gqtu/image/upload/v1767711924/logo2_xos8xa.png" 
+                 alt="YMA Bouncy Castle" 
+                 class="logo">
+            <h1 class="email-title">Password Updated!</h1>
+            <p class="email-subtitle">YMA Bouncy Castle Rentals</p>
+          </div>
+          
+          <div class="email-content">
+            <p style="font-size: 18px; margin-bottom: 25px;">
+                Hi <strong>${name}</strong>,
+            </p>
+            
+            <div class="success-box">
+                <div class="success-icon">✅</div>
+                <h2 style="color: #27AE60; margin-bottom: 15px;">Password Changed Successfully</h2>
+                <p>Your YMA Bouncy Castle account password has been successfully updated.</p>
+            </div>
+            
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="${loginURL}" class="login-button" style="color: white; text-decoration: none;">
+                    Login to Your Account
+                </a>
+            </div>
+            
+            <div class="security-tips">
+                <h3 style="color: #FF9800; margin-bottom: 15px;">🔒 Security Tips:</h3>
+                <ul style="margin-left: 20px; margin-top: 10px;">
+                    <li style="margin-bottom: 8px;">Use a strong, unique password for your account</li>
+                    <li style="margin-bottom: 8px;">Don't share your password with anyone</li>
+                    <li style="margin-bottom: 8px;">Log out from shared or public devices</li>
+                    <li style="margin-bottom: 8px;">Change your password regularly</li>
+                </ul>
+            </div>
+            
+            <div style="background: #F0F8FF; padding: 20px; border-radius: 8px; margin: 25px 0;">
+                <h4 style="color: #2C3E50; margin-bottom: 10px;">❓ Need Help?</h4>
+                <p>If you didn't make this change or suspect unauthorized activity:</p>
+                <p><strong>📍 Contact our support team immediately:</strong></p>
+                <p>📧 support@ymabouncycastle.com<br>
+                📞 +44 1234 567890</p>
+            </div>
+            
+            <p style="margin-top: 30px;">Best regards,<br>
+            <strong>The YMA Bouncy Castle Team</strong></p>
+          </div>
+          
+          <div class="footer">
+            <p>© ${new Date().getFullYear()} YMA Bouncy Castle. All rights reserved.</p>
+            <p>This email was sent to ${to}.</p>
+            <p>If you have any questions, contact us at support@ymabouncycastle.com</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    await sendEmailHtml({
+      to,
+      subject: "✅ Password Reset Successful - YMA Bouncy Castle",
+      html,
+    });
+
+    console.log(`✅ Password reset success email sent to: ${to}`);
+  } catch (error) {
+    console.error("❌ Failed to send reset success email:", error);
+    throw error;
+  }
 }
 
 // Order emails

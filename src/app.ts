@@ -27,6 +27,8 @@ const allowedOrigins = [
   "http://localhost:7000",
   "https://yma-eight.vercel.app",
   "https://yma-frontend.vercel.app",
+  process.env.FRONTEND_URL, // From environment
+  "http://localhost:8001",
 ];
 
 app.use(

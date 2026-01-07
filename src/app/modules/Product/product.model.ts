@@ -5,6 +5,32 @@ export type IProductModel = IProduct & mongoose.Document;
 
 const productSchema: Schema = new Schema(
   {
+    isTopSelling: {
+      type: Boolean,
+      default: false,
+    },
+    topSellingRank: {
+      type: Number,
+      min: 1,
+      max: 100,
+    },
+    topSellingNotes: {
+      type: String,
+      trim: true,
+      maxlength: [200, "Notes cannot exceed 200 characters"],
+    },
+    topSellingMarkedAt: {
+      type: Date,
+    },
+    salesCount: {
+      // You can update this based on actual bookings
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    lastSoldAt: {
+      type: Date,
+    },
     name: {
       type: String,
       required: [true, "Product name is required"],

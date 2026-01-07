@@ -35,10 +35,12 @@ export const updateLocation = async (
   id: string,
   data: Partial<ILocation>
 ): Promise<ILocationModel | null> => {
+  // Simply update with whatever data is provided
   const updated = await Location.findByIdAndUpdate(id, data, {
     new: true,
     runValidators: true,
   });
+
   return updated;
 };
 

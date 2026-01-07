@@ -35,11 +35,25 @@ export const getLocationHandler = asyncHandler(
 // Update location
 export const updateLocationHandler = asyncHandler(
   async (req: Request, res: Response) => {
-    const updated = await LocationService.updateLocation(
-      req.params.id,
-      req.body
-    );
-    if (!updated) return ApiResponse(res, 404, "Location not found");
+    const { id } = req.params;
+    const updateData = req.body;
+
+    // Validate that we have an ID
+    if (!id) {
+      return ApiResponse(res, 400, "Location ID is required");
+    }
+
+    // Validate that we have update data
+    if (!updateData || Object.keys(updateData).length === 0) {
+      return ApiResponse(res, 400, "Update data is required");
+    }
+
+    const updated = await LocationService.updateLocation(id, updateData);
+
+    if (!updated) {
+      return ApiResponse(res, 404, "Location not found");
+    }
+
     ApiResponse(res, 200, "Location updated successfully", updated);
   }
 );

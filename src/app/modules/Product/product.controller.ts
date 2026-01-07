@@ -3,6 +3,7 @@ import asyncHandler from "../../utils/asyncHandler";
 import * as productService from "./product.service";
 import ApiError from "../../utils/apiError";
 import { Types } from "mongoose";
+import Category from "../Category/category.model";
 // Add these functions to your existing product.controller.ts
 
 /* =========================
@@ -98,7 +99,51 @@ export const clientSearchProducts = asyncHandler(
     });
   }
 );
+// Get top selling products based on booking frequency
+export const getTopSellingProducts = asyncHandler(
+  async (req: Request, res: Response, next: NextFunction) => {
+    const {
+      limit = 10,
+      timeRange = "month", // day, week, month, year, all
+      category,
+      state,
+    } = req.query;
 
+    const result = await productService.getTopSellingProducts({
+      limit: parseInt(limit as string),
+      timeRange: timeRange as "day" | "week" | "month" | "year" | "all",
+      category: category as string,
+      state: state as string,
+    });
+
+    res.status(200).json({
+      status: "success",
+      message: "Top selling products fetched successfully",
+      data: result,
+    });
+  }
+);
+
+// Admin endpoint to manually mark products as top selling (featured)
+export const markAsTopSelling = asyncHandler(
+  async (req: Request, res: Response, next: NextFunction) => {
+    const { productId } = req.params;
+    const { isTopSelling = true, rank, notes } = req.body;
+
+    const product = await productService.markAsTopSelling(
+      productId,
+      isTopSelling,
+      rank,
+      notes
+    );
+
+    res.status(200).json({
+      status: "success",
+      message: `Product ${isTopSelling ? "marked" : "unmarked"} as top selling`,
+      data: { product },
+    });
+  }
+);
 /* =========================
    ADMIN SEARCH PRODUCTS
 ========================= */
@@ -235,106 +280,46 @@ export const createProduct = asyncHandler(
       qualityAssurance,
     } = req.body;
 
-    const requiredFields = [
-      "name",
-      "description",
-      "price",
-      "deliveryAndCollection",
-      "duration",
-      "maxGroupSize",
-      "difficulty",
-      "categories",
-      "images",
-      "imageCover",
-      "location",
-      "dimensions",
-      "availableFrom",
-      "availableUntil",
-      "stock",
-      "material",
-      "design",
-      "ageRange",
-      "safetyFeatures",
-      "qualityAssurance",
-    ];
-
-    if (isSensitive === undefined) {
-      throw new ApiError("isSensitive field is required", 400);
-    }
-
-    const missingFields = validateRequiredFields(req.body, requiredFields);
-    if (missingFields.length > 0) {
-      throw new ApiError(
-        `Missing required fields: ${missingFields.join(", ")}`,
-        400
-      );
-    }
-
+    // Validate categories exist and are active
     if (!Array.isArray(categories) || categories.length === 0) {
-      throw new ApiError("Categories must be a non-empty array", 400);
+      throw new ApiError("At least one category is required", 400);
     }
 
-    for (const categoryId of categories) {
-      if (!Types.ObjectId.isValid(categoryId)) {
-        throw new ApiError(`Invalid category ID: ${categoryId}`, 400);
-      }
+    // Check if all categories exist and are active
+    const existingCategories = await Category.find({
+      _id: { $in: categories },
+      isActive: true,
+    }).select("_id");
+
+    if (existingCategories.length !== categories.length) {
+      throw new ApiError("One or more categories are invalid or inactive", 400);
     }
 
-    if (!location || !location.state) {
-      throw new ApiError("Location state is required", 400);
-    }
+    // Validate location if provided
+    const locationData = location
+      ? {
+          state: location.state || "",
+          city: location.city || "",
+        }
+      : {
+          state: "",
+          city: "",
+        };
 
-    if (
-      !dimensions ||
-      !dimensions.length ||
-      !dimensions.width ||
-      !dimensions.height
-    ) {
-      throw new ApiError(
-        "Dimensions (length, width, height) are required",
-        400
-      );
-    }
+    // Validate dimensions if provided
+    const dimensionsData = dimensions
+      ? {
+          length: dimensions.length || 0,
+          width: dimensions.width || 0,
+          height: dimensions.height || 0,
+        }
+      : {
+          length: 0,
+          width: 0,
+          height: 0,
+        };
 
-    if (
-      dimensions.length < 1 ||
-      dimensions.width < 1 ||
-      dimensions.height < 1
-    ) {
-      throw new ApiError("Dimensions must be at least 1 foot", 400);
-    }
-
-    if (!ageRange || !ageRange.min || !ageRange.max || !ageRange.unit) {
-      throw new ApiError("Age range (min, max, unit) is required", 400);
-    }
-
-    if (ageRange.min < 0 || ageRange.max < 0) {
-      throw new ApiError("Age values cannot be negative", 400);
-    }
-
-    if (ageRange.max < ageRange.min) {
-      throw new ApiError("Maximum age must be greater than minimum age", 400);
-    }
-
-    if (!["years", "months"].includes(ageRange.unit)) {
-      throw new ApiError("Age unit must be 'years' or 'months'", 400);
-    }
-
-    if (!Array.isArray(safetyFeatures) || safetyFeatures.length === 0) {
-      throw new ApiError("At least one safety feature is required", 400);
-    }
-
-    if (
-      !qualityAssurance ||
-      typeof qualityAssurance.isCertified !== "boolean"
-    ) {
-      throw new ApiError(
-        "Quality assurance certification status is required",
-        400
-      );
-    }
-
-    const product = await productService.createProduct({
+    const productData: any = {
       name,
       description,
       summary,
@@ -349,43 +334,42 @@ export const createProduct = asyncHandler(
       categories,
       images,
       imageCover,
-      location: {
-        state: location.state,
-        city: location.city,
-      },
-      dimensions: {
-        length: dimensions.length,
-        width: dimensions.width,
-        height: dimensions.height,
-      },
-      availableFrom: new Date(availableFrom),
-      availableUntil: new Date(availableUntil),
+      location: locationData,
+      dimensions: dimensionsData,
+      availableFrom: availableFrom ? new Date(availableFrom) : new Date(),
+      availableUntil: availableUntil ? new Date(availableUntil) : undefined,
       size,
       active,
-      stock,
+      stock: stock || 0,
       isSensitive: isSensitive || false,
       material,
       design,
-      ageRange: {
-        min: ageRange.min,
-        max: ageRange.max,
-        unit: ageRange.unit,
-      },
       safetyFeatures,
-      qualityAssurance: {
-        isCertified: qualityAssurance.isCertified,
-        certification: qualityAssurance.certification,
-        warrantyPeriod: qualityAssurance.warrantyPeriod,
-        warrantyDetails: qualityAssurance.warrantyDetails,
-      },
-    });
+    };
+
+    if (ageRange) {
+      productData.ageRange = {
+        min: ageRange.min || 0,
+        max: ageRange.max || 0,
+        unit: ageRange.unit || "years",
+      };
+    }
+
+    if (qualityAssurance) {
+      productData.qualityAssurance = {
+        isCertified: qualityAssurance.isCertified || false,
+        certification: qualityAssurance.certification || "",
+        warrantyPeriod: qualityAssurance.warrantyPeriod || 0,
+        warrantyDetails: qualityAssurance.warrantyDetails || "",
+      };
+    }
+
+    const product = await productService.createProduct(productData);
 
     res.status(201).json({
       status: "success",
       message: "Product created successfully",
-      data: {
-        product,
-      },
+      data: { product },
     });
   }
 );

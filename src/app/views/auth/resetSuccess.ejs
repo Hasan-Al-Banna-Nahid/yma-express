@@ -1,93 +1,212 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title><%= title %></title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Password Reset Successful</title>
     <style>
-      body {
-        font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial,
-          sans-serif;
-        background: #f6f9fc;
-        color: #111827;
+      * {
         margin: 0;
+        padding: 0;
+        box-sizing: border-box;
       }
-      .wrap {
-        max-width: 480px;
-        margin: 40px auto;
-        background: #fff;
-        padding: 28px;
-        border-radius: 16px;
-        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        line-height: 1.6;
+        color: #333;
+        background-color: #f5f7fa;
+        padding: 20px;
+      }
+
+      .email-container {
+        max-width: 600px;
+        margin: 0 auto;
+        background: #ffffff;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+      }
+
+      /* Header */
+      .email-header {
+        background: linear-gradient(135deg, #27ae60, #2c3e50);
+        padding: 30px 20px;
         text-align: center;
       }
-      h1 {
-        font-size: 22px;
-        margin: 0 0 12px;
+
+      .logo {
+        max-width: 180px;
+        height: auto;
+        margin-bottom: 20px;
       }
-      p {
-        margin: 8px 0;
+
+      .email-title {
+        color: white;
+        font-size: 28px;
+        font-weight: 600;
+        margin: 10px 0;
       }
-      a.btn {
+
+      .email-subtitle {
+        color: rgba(255, 255, 255, 0.9);
+        font-size: 16px;
+        font-weight: 400;
+      }
+
+      /* Content */
+      .email-content {
+        padding: 40px 30px;
+      }
+
+      .success-box {
+        background: #e8f5e9;
+        border-left: 4px solid #27ae60;
+        padding: 25px;
+        border-radius: 8px;
+        margin: 25px 0;
+        text-align: center;
+      }
+
+      .success-icon {
+        font-size: 48px;
+        margin-bottom: 15px;
+      }
+
+      .security-tips {
+        background: #fff3e0;
+        border-left: 4px solid #ff9800;
+        padding: 20px;
+        border-radius: 8px;
+        margin: 25px 0;
+      }
+
+      .login-button {
         display: inline-block;
-        margin-top: 16px;
-        padding: 12px 16px;
-        background: #7c3aed;
-        color: #fff;
-        border-radius: 10px;
-        font-weight: 700;
+        background: #27ae60;
+        color: white;
         text-decoration: none;
+        padding: 14px 32px;
+        border-radius: 6px;
+        font-weight: 600;
+        font-size: 16px;
+        margin: 20px 0;
+        transition: background 0.3s;
       }
-      .muted {
-        color: #6b7280;
-        font-size: 12px;
-        margin-top: 12px;
+
+      .login-button:hover {
+        background: #219653;
       }
-      @media (prefers-color-scheme: dark) {
-        body {
-          background: #0b0d12 !important;
-          color: #e5e7eb !important;
+
+      .footer {
+        text-align: center;
+        padding: 30px;
+        color: #666;
+        font-size: 14px;
+        border-top: 1px solid #eee;
+      }
+
+      /* Responsive */
+      @media (max-width: 600px) {
+        .email-content {
+          padding: 25px 20px;
         }
-        .wrap {
-          background: #111827 !important;
+
+        .email-title {
+          font-size: 24px;
         }
-        .muted {
-          color: #9ca3af !important;
+
+        .login-button {
+          display: block;
+          text-align: center;
         }
       }
     </style>
   </head>
   <body>
-    <!-- Safe preheader fallback (optional) -->
-    <div
-      style="
-        display: none !important;
-        visibility: hidden;
-        opacity: 0;
-        color: transparent;
-        max-height: 0;
-        max-width: 0;
-        overflow: hidden;
-      "
-    >
-      <%= typeof preheader !== 'undefined' ? preheader : '' %>
-    </div>
+    <div class="email-container">
+      <div class="email-header">
+        <img
+          src="https://res.cloudinary.com/dj785gqtu/image/upload/v1767711924/logo2_xos8xa.png"
+          alt="YMA Bouncy Castle"
+          class="logo"
+        />
+        <h1 class="email-title">Password Updated!</h1>
+        <p class="email-subtitle">YMA Bouncy Castle Rentals</p>
+      </div>
 
-    <div class="wrap">
-      <h1>Password updated ✅</h1>
-      <% if (typeof email !== 'undefined' && email) { %>
-      <p>
-        The password for <strong><%= email %></strong> has been changed
-        successfully.
-      </p>
-      <% } else { %>
-      <p>Your password has been changed successfully.</p>
-      <% } %>
-      <p>You can now sign in with your new password.</p>
-      <!-- <a class="btn" href="/">Go to home</a> -->
-      <div class="muted">
-        If this wasn’t you, please reset your password again and contact
-        support.
+      <div class="email-content">
+        <p style="font-size: 18px; margin-bottom: 25px">
+          Hi <strong><%= name %></strong>,
+        </p>
+
+        <div class="success-box">
+          <div class="success-icon">✅</div>
+          <h2 style="color: #27ae60; margin-bottom: 15px">
+            Password Changed Successfully
+          </h2>
+          <p>
+            Your YMA Bouncy Castle account password has been successfully
+            updated.
+          </p>
+        </div>
+
+        <div style="text-align: center; margin: 30px 0">
+          <a href="<%= loginURL %>" class="login-button">
+            Login to Your Account
+          </a>
+        </div>
+
+        <div class="security-tips">
+          <h3 style="color: #ff9800; margin-bottom: 15px">🔒 Security Tips:</h3>
+          <ul style="margin-left: 20px; margin-top: 10px">
+            <li style="margin-bottom: 8px">
+              Use a strong, unique password for your account
+            </li>
+            <li style="margin-bottom: 8px">
+              Don't share your password with anyone
+            </li>
+            <li style="margin-bottom: 8px">
+              Log out from shared or public devices
+            </li>
+            <li style="margin-bottom: 8px">Change your password regularly</li>
+          </ul>
+        </div>
+
+        <div
+          style="
+            background: #f0f8ff;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 25px 0;
+          "
+        >
+          <h4 style="color: #2c3e50; margin-bottom: 10px">❓ Need Help?</h4>
+          <p>
+            If you didn't make this change or suspect unauthorized activity:
+          </p>
+          <p><strong>📍 Contact our support team immediately:</strong></p>
+          <p>
+            📧 support@ymabouncycastle.com<br />
+            📞 +44 1234 567890
+          </p>
+        </div>
+
+        <p style="margin-top: 30px">
+          Best regards,<br />
+          <strong>The YMA Bouncy Castle Team</strong>
+        </p>
+      </div>
+
+      <div class="footer">
+        <p>
+          © <%= new Date().getFullYear() %> YMA Bouncy Castle. All rights
+          reserved.
+        </p>
+        <p>This email was sent to <%= email %>.</p>
+        <p>
+          If you have any questions, contact us at support@ymabouncycastle.com
+        </p>
       </div>
     </div>
   </body>

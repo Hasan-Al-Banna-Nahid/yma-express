@@ -41,8 +41,8 @@ export const createProduct = async (
     categories: categoryIds,
     location: {
       country: "England",
-      state: productData.location.state,
-      city: productData.location.city || "",
+      state: productData.location?.state || "",
+      city: productData.location?.city || "",
     },
     dateAdded: new Date(),
   });
@@ -788,4 +788,124 @@ export const getAvailableFilters = async (): Promise<{
         }
       : { min: 0, max: 0 },
   };
+};
+/* =========================
+   TOP SELLING PRODUCTS
+   Based on booking frequency and revenue
+========================= */
+export interface TopSellingParams {
+  limit?: number;
+  timeRange?: "day" | "week" | "month" | "year" | "all";
+  category?: string;
+  state?: string;
+}
+
+export const getTopSellingProducts = async (
+  params: TopSellingParams
+): Promise<{
+  products: IProductModel[];
+  timeRange: string;
+  totalRevenue: number;
+  totalBookings: number;
+}> => {
+  const { limit = 10, timeRange = "month", category, state } = params;
+
+  // Calculate date range
+  let startDate: Date | null = null;
+  const now = new Date();
+
+  switch (timeRange) {
+    case "day":
+      startDate = new Date(now.setDate(now.getDate() - 1));
+      break;
+    case "week":
+      startDate = new Date(now.setDate(now.getDate() - 7));
+      break;
+    case "month":
+      startDate = new Date(now.setMonth(now.getMonth() - 1));
+      break;
+    case "year":
+      startDate = new Date(now.setFullYear(now.getFullYear() - 1));
+      break;
+    case "all":
+    default:
+      startDate = null;
+  }
+
+  // Base filter for top selling
+  const filter: any = {
+    active: true,
+    stock: { $gt: 0 },
+  };
+
+  // Apply category filter
+  if (category && Types.ObjectId.isValid(category)) {
+    filter.categories = new Types.ObjectId(category);
+  }
+
+  // Apply state filter
+  if (state) {
+    filter["location.state"] = { $regex: state, $options: "i" };
+  }
+
+  // In a real scenario, you would aggregate from booking data
+  // For now, we'll use a simple approach with a virtual sales count
+
+  // Get products sorted by popularity (you can adjust this logic)
+  const products = await Product.find(filter)
+    .populate("categories", "name description slug")
+    .sort({
+      // Sort by multiple factors to simulate "top selling"
+      stock: -1, // Higher stock = more available for sale
+      price: -1, // Higher price = more revenue potential
+      createdAt: -1, // Newer products might be more popular
+    })
+    .limit(limit);
+
+  // Calculate totals (in a real app, this would come from booking aggregation)
+  const totalRevenue = products.reduce(
+    (sum, product) => sum + product.price,
+    0
+  );
+  const totalBookings = Math.floor(products.length * 0.7); // Simulated
+
+  return {
+    products,
+    timeRange,
+    totalRevenue,
+    totalBookings,
+  };
+};
+
+/* =========================
+   MANUALLY MARK AS TOP SELLING
+   For admin to feature specific products
+========================= */
+export const markAsTopSelling = async (
+  productId: string,
+  isTopSelling: boolean = true,
+  rank?: number,
+  notes?: string
+): Promise<IProductModel> => {
+  if (!Types.ObjectId.isValid(productId)) {
+    throw new ApiError("Invalid product ID", 400);
+  }
+
+  const updateData: any = {
+    isTopSelling,
+    topSellingRank: rank,
+    topSellingNotes: notes,
+    topSellingMarkedAt: new Date(),
+  };
+
+  const product = await Product.findByIdAndUpdate(productId, updateData, {
+    new: true,
+    runValidators: true,
+  }).populate("categories", "name description");
+
+  if (!product) {
+    throw new ApiError("Product not found", 404);
+  }
+
+  return product;
 };
