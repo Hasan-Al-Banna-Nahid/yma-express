@@ -11,7 +11,6 @@ import {
   checkInventoryAvailability,
   releaseExpiredCartItems,
 } from "./inventory.service";
-import { IInventory } from "./inventory.interface";
 import ApiError from "../../utils/apiError";
 import { ApiResponse } from "../../utils/apiResponse";
 
@@ -65,7 +64,8 @@ export const deleteInventoryItemHandler = asyncHandler(
 
 export const getAvailableInventoryHandler = asyncHandler(
   async (req: Request, res: Response, next: NextFunction) => {
-    const { productId, startDate, endDate } = req.query;
+    const { productId, startDate, endDate, warehouse } = req.query;
+
     if (!productId || !startDate || !endDate) {
       throw new ApiError(
         "Please provide productId, startDate and endDate query parameters",
@@ -76,7 +76,8 @@ export const getAvailableInventoryHandler = asyncHandler(
     const availableInventory = await getAvailableInventory(
       productId as string,
       new Date(startDate as string),
-      new Date(endDate as string)
+      new Date(endDate as string),
+      warehouse as string | undefined
     );
 
     ApiResponse(res, 200, "Available inventory retrieved successfully", {
@@ -87,7 +88,8 @@ export const getAvailableInventoryHandler = asyncHandler(
 
 export const getBookedInventoryHandler = asyncHandler(
   async (req: Request, res: Response, next: NextFunction) => {
-    const { productId, startDate, endDate } = req.query;
+    const { productId, startDate, endDate, warehouse } = req.query;
+
     if (!productId || !startDate || !endDate) {
       throw new ApiError(
         "Please provide productId, startDate and endDate query parameters",
@@ -98,7 +100,8 @@ export const getBookedInventoryHandler = asyncHandler(
     const bookedInventory = await getBookedInventory(
       productId as string,
       new Date(startDate as string),
-      new Date(endDate as string)
+      new Date(endDate as string),
+      warehouse as string | undefined
     );
 
     ApiResponse(res, 200, "Booked inventory retrieved successfully", {
@@ -109,7 +112,8 @@ export const getBookedInventoryHandler = asyncHandler(
 
 export const checkInventoryAvailabilityHandler = asyncHandler(
   async (req: Request, res: Response, next: NextFunction) => {
-    const { productId, date } = req.query;
+    const { productId, date, warehouse } = req.query;
+
     if (!productId || !date) {
       throw new ApiError(
         "Please provide productId and date query parameters",
@@ -119,7 +123,8 @@ export const checkInventoryAvailabilityHandler = asyncHandler(
 
     const availability = await checkInventoryAvailability(
       productId as string,
-      new Date(date as string)
+      new Date(date as string),
+      warehouse as string | undefined
     );
 
     ApiResponse(res, 200, "Inventory availability checked successfully", {
