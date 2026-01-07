@@ -10,13 +10,14 @@ import {
   checkInventoryAvailabilityHandler,
   releaseExpiredCartItemsHandler,
 } from "./inventory.controller";
-import { protectRoute } from "../../middlewares/auth.middleware"; // New import
+import { protectRoute } from "../../middlewares/auth.middleware";
 import { restrictTo } from "../../middlewares/authorization.middleware";
 
 const router = express.Router();
 
-// Protect all routes after this middleware
-router.use(protectRoute); // Added protectRoute
+// Protect all routes
+router.use(protectRoute);
+
 // Admin only routes
 router.use(restrictTo("admin", "superadmin"));
 

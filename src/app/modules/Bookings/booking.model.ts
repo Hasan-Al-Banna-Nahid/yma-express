@@ -1,3 +1,4 @@
+// booking.model.ts
 import mongoose, { Schema, Document, Model } from "mongoose";
 import {
   IBooking,
@@ -5,10 +6,12 @@ import {
   IShippingAddress,
   IPaymentDetails,
   IBookingStatusHistory,
-  BookingStatus,
-  InvoiceType,
 } from "./booking.interface";
-
+import {
+  BookingStatus,
+  PaymentMethod,
+  PaymentStatus,
+} from "../../types/express/common.types";
 export interface IBookingDocument extends Omit<IBooking, "_id">, Document {}
 export interface IBookingModel extends Model<IBookingDocument> {
   generateBookingNumber(): Promise<string>;
@@ -51,7 +54,20 @@ const bookingItemSchema = new Schema<IBookingItem>({
   rentalType: {
     type: String,
     enum: ["daily", "weekly", "monthly"],
-    default: "daily",
+    required: true,
+  },
+  warehouse: {
+    type: String,
+    required: true,
+  },
+  vendor: {
+    type: String,
+    required: true,
+  },
+  rentalFee: {
+    type: Number,
+    required: true,
+    min: 0,
   },
 });
 
@@ -60,36 +76,11 @@ const shippingAddressSchema = new Schema<IShippingAddress>({
   lastName: { type: String, required: true },
   email: { type: String, required: true },
   phone: { type: String, required: true },
-  country: { type: String, required: true, default: "United Kingdom" },
+  address: { type: String, required: true },
   city: { type: String, required: true },
-  street: { type: String, required: true },
-  zipCode: { type: String, required: true },
-  apartment: String,
-  companyName: String,
-  locationAccessibility: {
-    type: String,
-    enum: ["easy", "moderate", "difficult"],
-  },
-  deliveryTime: String,
-  collectionTime: String,
-  floorType: {
-    type: String,
-    enum: ["ground", "first", "second", "higher"],
-  },
-  userType: {
-    type: String,
-    enum: ["personal", "business", "event"],
-  },
-  keepOvernight: { type: Boolean, default: false },
-  hireOccasion: String,
+  postalCode: { type: String, required: true },
+  country: { type: String, required: true, default: "United Kingdom" },
   notes: String,
-  differentBillingAddress: { type: Boolean, default: false },
-  billingFirstName: String,
-  billingLastName: String,
-  billingStreet: String,
-  billingCity: String,
-  billingZipCode: String,
-  billingCompanyName: String,
 });
 
 const paymentDetailsSchema = new Schema<IPaymentDetails>({
@@ -195,14 +186,6 @@ const bookingSchema = new Schema<IBookingDocument>(
       type: Number,
       default: 0,
     },
-    depositPaid: {
-      type: Boolean,
-      default: false,
-    },
-    depositAmount: {
-      type: Number,
-      default: 0,
-    },
     invoiceType: {
       type: String,
       enum: ["regular", "corporate"],
@@ -213,14 +196,6 @@ const bookingSchema = new Schema<IBookingDocument>(
       accountNumber: String,
       sortCode: String,
       bankName: String,
-    },
-    termsAccepted: {
-      type: Boolean,
-      required: true,
-      validate: {
-        validator: (v: boolean) => v === true,
-        message: "You must accept the terms and conditions",
-      },
     },
     estimatedDeliveryDate: Date,
     actualDeliveryDate: Date,
@@ -234,26 +209,8 @@ const bookingSchema = new Schema<IBookingDocument>(
   },
   {
     timestamps: true,
-    toJSON: { virtuals: true },
-    toObject: { virtuals: true },
   }
 );
-
-// Virtual for booking duration
-bookingSchema.virtual("durationDays").get(function () {
-  if (
-    this.items &&
-    this.items.length > 0 &&
-    this.items[0].endDate &&
-    this.items[0].startDate
-  ) {
-    const diffTime = Math.abs(
-      this.items[0].endDate.getTime() - this.items[0].startDate.getTime()
-    );
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  }
-  return 0;
-});
 
 // Static method to generate booking number
 bookingSchema.statics.generateBookingNumber =
@@ -262,12 +219,7 @@ bookingSchema.statics.generateBookingNumber =
     const year = new Date().getFullYear().toString().slice(-2);
     const month = (new Date().getMonth() + 1).toString().padStart(2, "0");
 
-    // Find the latest booking for today
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
     const lastBooking = await this.findOne({
-      createdAt: { $gte: today },
       bookingNumber: new RegExp(`^${prefix}${year}${month}`),
     }).sort({ bookingNumber: -1 });
 
@@ -280,52 +232,16 @@ bookingSchema.statics.generateBookingNumber =
     return `${prefix}${year}${month}${sequence.toString().padStart(4, "0")}`;
   };
 
-// Static method to get booking statistics
-bookingSchema.statics.getStats = async function () {
-  const stats = await this.aggregate([
-    {
-      $group: {
-        _id: null,
-        totalBookings: { $sum: 1 },
-        totalRevenue: { $sum: "$totalAmount" },
-        averageBookingValue: { $avg: "$totalAmount" },
-      },
-    },
-  ]);
-
-  return (
-    stats[0] || {
-      totalBookings: 0,
-      totalRevenue: 0,
-      averageBookingValue: 0,
-    }
-  );
-};
-
-// Indexes for performance
+// Indexes
 bookingSchema.index({ bookingNumber: 1 });
 bookingSchema.index({ user: 1, createdAt: -1 });
 bookingSchema.index({ status: 1, createdAt: -1 });
 bookingSchema.index({ "payment.status": 1 });
 bookingSchema.index({ createdAt: -1 });
-bookingSchema.index({ "items.startDate": 1, "items.endDate": 1 });
-bookingSchema.index({ totalAmount: 1 });
-
-// Pre-save middleware to update status history
-bookingSchema.pre("save", function (next) {
-  if (this.isModified("status") && this.statusHistory) {
-    this.statusHistory.push({
-      status: this.status,
-      changedAt: new Date(),
-      changedBy: this.user,
-      notes: "Status updated",
-    });
-  }
-  next();
-});
 
 const Booking = mongoose.model<IBookingDocument, IBookingModel>(
   "Booking",
   bookingSchema
 );
+
 export default Booking;

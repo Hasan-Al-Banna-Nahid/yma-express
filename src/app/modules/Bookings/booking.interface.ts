@@ -1,4 +1,12 @@
+// booking.interface.ts
 import { Types } from "mongoose";
+import {
+  BookingStatus,
+  PaymentMethod,
+  PaymentStatus,
+  InvoiceType,
+  RentalType,
+} from "../../types/express/common.types";
 
 export interface IBookingItem {
   product: Types.ObjectId;
@@ -8,7 +16,10 @@ export interface IBookingItem {
   startDate: Date;
   endDate: Date;
   totalDays: number;
-  rentalType?: "daily" | "weekly" | "monthly";
+  rentalType: RentalType;
+  warehouse: string;
+  vendor: string;
+  rentalFee: number;
 }
 
 export interface IShippingAddress {
@@ -16,32 +27,24 @@ export interface IShippingAddress {
   lastName: string;
   email: string;
   phone: string;
-  country: string;
+  address: string;
   city: string;
-  street: string;
-  zipCode: string;
-  apartment?: string;
-  companyName?: string;
-  locationAccessibility?: "easy" | "moderate" | "difficult";
+  postalCode: string;
+  country: string;
+  notes?: string;
+  // Add the missing properties as optional
   deliveryTime?: string;
   collectionTime?: string;
-  floorType?: "ground" | "first" | "second" | "higher";
-  userType?: "personal" | "business" | "event";
-  keepOvernight?: boolean;
-  hireOccasion?: string;
-  notes?: string;
-  differentBillingAddress?: boolean;
-  billingFirstName?: string;
-  billingLastName?: string;
-  billingStreet?: string;
-  billingCity?: string;
-  billingZipCode?: string;
-  billingCompanyName?: string;
+  street?: string;
+  apartment?: string;
+  zipCode?: string;
+  locationAccessibility?: string;
+  floorType?: string;
 }
 
 export interface IPaymentDetails {
-  method: "cash_on_delivery" | "bank_transfer" | "card" | "paypal";
-  status: "pending" | "paid" | "failed" | "refunded";
+  method: PaymentMethod;
+  status: PaymentStatus;
   transactionId?: string;
   paidAt?: Date;
   amount: number;
@@ -53,23 +56,6 @@ export interface IBookingStatusHistory {
   changedBy: Types.ObjectId;
   notes?: string;
 }
-
-export type BookingStatus =
-  | "pending"
-  | "confirmed"
-  | "payment_pending"
-  | "payment_completed"
-  | "processing"
-  | "ready_for_delivery"
-  | "out_for_delivery"
-  | "delivered"
-  | "ready_for_collection"
-  | "collected"
-  | "completed"
-  | "cancelled"
-  | "refunded";
-
-export type InvoiceType = "regular" | "corporate";
 
 export interface IBooking {
   _id?: Types.ObjectId;
@@ -85,8 +71,6 @@ export interface IBooking {
   taxAmount: number;
   deliveryFee: number;
   securityDeposit?: number;
-  depositPaid?: boolean;
-  depositAmount?: number;
   invoiceType: InvoiceType;
   bankDetails?: {
     accountName?: string;
@@ -94,7 +78,6 @@ export interface IBooking {
     sortCode?: string;
     bankName?: string;
   };
-  termsAccepted: boolean;
   estimatedDeliveryDate?: Date;
   actualDeliveryDate?: Date;
   estimatedCollectionDate?: Date;
@@ -110,8 +93,7 @@ export interface IBooking {
 
 export interface CreateBookingData {
   shippingAddress: IShippingAddress;
-  paymentMethod: "cash_on_delivery" | "bank_transfer" | "card" | "paypal";
-  termsAccepted: boolean;
+  paymentMethod: PaymentMethod;
   invoiceType?: InvoiceType;
   bankDetails?: {
     accountName?: string;
