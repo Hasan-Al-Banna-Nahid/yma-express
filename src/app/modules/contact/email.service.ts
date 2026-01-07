@@ -1,6 +1,7 @@
 import nodemailer from "nodemailer";
 import dotenv from "dotenv";
 dotenv.config();
+
 export interface ContactEmailData {
   firstName: string;
   lastName: string;
@@ -13,26 +14,36 @@ export interface ContactEmailData {
 const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST || "smtp.gmail.com",
   port: parseInt(process.env.EMAIL_PORT || "587"),
-  secure: true,
+  secure: false, // Changed from true to false for port 587
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
 });
 
+// Test transporter connection
+transporter.verify((error) => {
+  if (error) {
+    console.error("❌ Email transporter error:", error);
+  } else {
+    console.log("✅ Email transporter is ready");
+  }
+});
+
 export const sendContactEmail = async (
   contactData: ContactEmailData
 ): Promise<void> => {
-  const logoUrl =
-    "https://res.cloudinary.com/dj785gqtu/image/upload/v1767711924/logo2_xos8xa.png";
-  const currentDate = new Date().toLocaleDateString("en-US", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+  try {
+    const logoUrl =
+      "https://res.cloudinary.com/dj785gqtu/image/upload/v1767711924/logo2_xos8xa.png";
+    const currentDate = new Date().toLocaleDateString("en-US", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
 
-  const emailHtml = `
+    const emailHtml = `
 <!DOCTYPE html>
 <html>
 <head>
@@ -130,8 +141,8 @@ export const sendContactEmail = async (
             <div class="info-item">
                 <div class="label">Full Name</div>
                 <div class="value">${contactData.firstName} ${
-    contactData.lastName
-  }</div>
+      contactData.lastName
+    }</div>
             </div>
             <div class="info-item">
                 <div class="label">Email Address</div>
@@ -177,14 +188,15 @@ export const sendContactEmail = async (
 </html>
   `;
 
-  const mailOptions = {
-    from: `"YMA Contact System" <${
-      process.env.SMTP_FROM || process.env.SMTP_USER
-    }>`,
-    to: process.env.CONTACT_EMAIL_TO || process.env.SMTP_USER,
-    subject: `📧 New Contact Message from ${contactData.firstName} ${contactData.lastName}`,
-    html: emailHtml,
-    text: `
+    const mailOptions = {
+      from: `"${process.env.EMAIL_FROM_NAME || "YMA Contact System"}" <${
+        process.env.EMAIL_FROM || process.env.EMAIL_USER
+      }>`,
+      to: process.env.EMAIL_USER, // Send to your own email
+      replyTo: contactData.email, // So you can reply directly to the customer
+      subject: `📧 New Contact Message from ${contactData.firstName} ${contactData.lastName}`,
+      html: emailHtml,
+      text: `
 New Contact Message from YMA Website
 ====================================
 
@@ -198,8 +210,17 @@ ${contactData.message}
 
 ---
 Please respond to this inquiry promptly.
-    `.trim(),
-  };
+      `.trim(),
+    };
 
-  await transporter.sendMail(mailOptions);
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`✅ Email sent: ${info.messageId}`);
+  } catch (error) {
+    console.error("❌ Error sending email:", error);
+    throw new Error(
+      `Failed to send email: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`
+    );
+  }
 };
