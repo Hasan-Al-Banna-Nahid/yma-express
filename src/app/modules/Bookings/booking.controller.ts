@@ -1,3 +1,4 @@
+// booking.controller.ts
 import { Request, Response } from "express";
 import asyncHandler from "../../utils/asyncHandler";
 import ApiError from "../../utils/apiError";
@@ -5,43 +6,28 @@ import { ApiResponse } from "../../utils/apiResponse";
 import BookingService from "./booking.service";
 import { AuthenticatedRequest } from "../../middlewares/auth.middleware";
 import { BookingFilter } from "./booking.interface";
-import mongoose from "mongoose";
 
-/**
- * @desc    Create booking from cart
- * @route   POST /api/v1/bookings
- * @access  Private
- */
 export const createBooking = asyncHandler(
   async (req: Request, res: Response) => {
     const userId = (req as AuthenticatedRequest).user._id;
-
     const {
       shippingAddress,
       paymentMethod,
-      termsAccepted,
       invoiceType,
       bankDetails,
       customerNotes,
     } = req.body;
 
-    // Validate required fields
-    if (!shippingAddress) {
-      throw new ApiError("Shipping address is required", 400);
-    }
-
-    if (!paymentMethod) {
-      throw new ApiError("Payment method is required", 400);
-    }
-
-    if (!termsAccepted) {
-      throw new ApiError("You must accept terms & conditions", 400);
+    if (!shippingAddress || !paymentMethod) {
+      throw new ApiError(
+        "Shipping address and payment method are required",
+        400
+      );
     }
 
     const booking = await BookingService.createBookingFromCart(userId, {
       shippingAddress,
       paymentMethod,
-      termsAccepted,
       invoiceType,
       bankDetails,
       customerNotes,
@@ -51,49 +37,27 @@ export const createBooking = asyncHandler(
   }
 );
 
-/**
- * @desc    Get user's bookings
- * @route   GET /api/v1/bookings/my-bookings
- * @access  Private
- */
 export const getMyBookings = asyncHandler(
   async (req: Request, res: Response) => {
     const userId = (req as AuthenticatedRequest).user._id;
-    const bookings = await BookingService.getUserBookings(userId.toString());
-
-    ApiResponse(res, 200, "Bookings retrieved successfully", { bookings });
+    const result = await BookingService.getAllBookings(
+      { userId: userId.toString() },
+      1,
+      100
+    );
+    ApiResponse(res, 200, "Bookings retrieved successfully", {
+      bookings: result.bookings,
+    });
   }
 );
 
-/**
- * @desc    Get booking by ID
- * @route   GET /api/v1/bookings/:id
- * @access  Private
- */
 export const getBookingById = asyncHandler(
   async (req: Request, res: Response) => {
-    const bookingId = req.params.id;
-    const userId = (req as AuthenticatedRequest).user._id;
-    const userRole = (req as AuthenticatedRequest).user.role;
-
-    const booking = await BookingService.getBookingById(bookingId);
-
-    // Check ownership (unless admin)
-    if (userRole !== "admin" && userRole !== "superadmin") {
-      if (booking.user._id.toString() !== userId.toString()) {
-        throw new ApiError("You can only view your own bookings", 403);
-      }
-    }
-
+    const booking = await BookingService.getBookingById(req.params.id);
     ApiResponse(res, 200, "Booking retrieved successfully", { booking });
   }
 );
 
-/**
- * @desc    Cancel booking
- * @route   POST /api/v1/bookings/:id/cancel
- * @access  Private
- */
 export const cancelBooking = asyncHandler(
   async (req: Request, res: Response) => {
     const bookingId = req.params.id;
@@ -109,16 +73,11 @@ export const cancelBooking = asyncHandler(
       userId,
       reason
     );
-
     ApiResponse(res, 200, "Booking cancelled successfully", { booking });
   }
 );
 
-/**
- * @desc    Get all bookings (Admin)
- * @route   GET /api/v1/admin/bookings
- * @access  Private/Admin
- */
+// Admin controllers
 export const getAllBookings = asyncHandler(
   async (req: Request, res: Response) => {
     const {
@@ -146,6 +105,7 @@ export const getAllBookings = asyncHandler(
     if (startDate) filters.startDate = new Date(startDate as string);
     if (endDate) filters.endDate = new Date(endDate as string);
 
+    // CORRECT: Use getAllBookings, not getBookingById
     const result = await BookingService.getAllBookings(
       filters,
       Number(page),
@@ -164,11 +124,6 @@ export const getAllBookings = asyncHandler(
   }
 );
 
-/**
- * @desc    Update booking status (Admin)
- * @route   PATCH /api/v1/admin/bookings/:id
- * @access  Private/Admin
- */
 export const updateBookingStatus = asyncHandler(
   async (req: Request, res: Response) => {
     const bookingId = req.params.id;
@@ -185,60 +140,9 @@ export const updateBookingStatus = asyncHandler(
   }
 );
 
-/**
- * @desc    Get booking statistics (Admin)
- * @route   GET /api/v1/admin/bookings/stats
- * @access  Private/Admin
- */
 export const getBookingStats = asyncHandler(
   async (req: Request, res: Response) => {
     const stats = await BookingService.getBookingStats();
-
     ApiResponse(res, 200, "Booking statistics retrieved", { stats });
-  }
-);
-
-/**
- * @desc    Get upcoming deliveries (Admin)
- * @route   GET /api/v1/admin/bookings/upcoming-deliveries
- * @access  Private/Admin
- */
-export const getUpcomingDeliveries = asyncHandler(
-  async (req: Request, res: Response) => {
-    const days = req.query.days ? Number(req.query.days) : 7;
-    const deliveries = await BookingService.getUpcomingDeliveries(days);
-
-    ApiResponse(res, 200, "Upcoming deliveries retrieved", { deliveries });
-  }
-);
-
-/**
- * @desc    Search bookings (Admin)
- * @route   GET /api/v1/admin/bookings/search
- * @access  Private/Admin
- */
-export const searchBookings = asyncHandler(
-  async (req: Request, res: Response) => {
-    const { q: query, page = 1, limit = 20 } = req.query;
-
-    if (!query) {
-      throw new ApiError("Search query is required", 400);
-    }
-
-    const result = await BookingService.searchBookings(
-      query as string,
-      Number(page),
-      Number(limit)
-    );
-
-    ApiResponse(res, 200, "Search results retrieved", {
-      bookings: result.bookings,
-      pagination: {
-        page: Number(page),
-        limit: Number(limit),
-        total: result.total,
-        pages: result.pages,
-      },
-    });
   }
 );

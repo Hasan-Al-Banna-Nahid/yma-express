@@ -1,3 +1,4 @@
+// booking.routes.ts
 import express from "express";
 import {
   createBooking,
@@ -7,28 +8,21 @@ import {
   getAllBookings,
   updateBookingStatus,
   getBookingStats,
-  getUpcomingDeliveries,
-  searchBookings,
 } from "./booking.controller";
 import { protectRoute } from "../../middlewares/auth.middleware";
 import { restrictTo } from "../../middlewares/authorization.middleware";
 
 const router = express.Router();
 
-// Public routes (none)
-
-// Protected routes (User)
-router.use(protectRoute);
-
-// User booking routes
-router.post("/", createBooking);
-router.get("/my-bookings", getMyBookings);
-router.get("/:id", getBookingById);
-router.post("/:id/cancel", cancelBooking);
+// User routes
+router.post("/", protectRoute, createBooking);
+router.get("/my-bookings", protectRoute, getMyBookings);
+router.get("/:id", protectRoute, getBookingById);
+router.post("/:id/cancel", protectRoute, cancelBooking);
 
 // Admin routes
 router.get(
-  "/admin",
+  "/admin/all",
   protectRoute,
   restrictTo("admin", "superadmin"),
   getAllBookings
@@ -44,18 +38,6 @@ router.get(
   protectRoute,
   restrictTo("admin", "superadmin"),
   getBookingStats
-);
-router.get(
-  "/admin/upcoming-deliveries",
-  protectRoute,
-  restrictTo("admin", "superadmin"),
-  getUpcomingDeliveries
-);
-router.get(
-  "/admin/search",
-  protectRoute,
-  restrictTo("admin", "superadmin"),
-  searchBookings
 );
 
 export default router;
