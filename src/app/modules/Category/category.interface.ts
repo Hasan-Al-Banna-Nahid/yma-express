@@ -26,3 +26,20 @@ export interface UpdateCategoryData {
   image?: string;
   isActive?: boolean;
 }
+// Add to your existing category.interface.ts
+export interface HardcodedCategory {
+  id: string;
+  name: string;
+  slug?: string;
+  description?: string;
+  image?: string | null; // Optional photo from Cloudinary
+  isActive?: boolean;
+}
+
+export interface SeedCategoriesResponse {
+  success: boolean;
+  message: string;
+  data: {
+    categories: ICategory[];
+  };
+}

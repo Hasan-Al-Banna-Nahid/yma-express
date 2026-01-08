@@ -1,18 +1,20 @@
-// src/routes/category.routes.ts
 import express from "express";
 import * as categoryController from "./category.controller";
-import { protectRoute } from "../../middlewares/auth.middleware"; // Correct import
+import { protectRoute } from "../../middlewares/auth.middleware";
 import { restrictTo } from "../../middlewares/authorization.middleware";
 import { upload } from "../../utils/cloudinary.util";
 
 const router = express.Router();
 
-router.route("/").get(categoryController.getCategories); // Public GET for all categories
-router.route("/:id").get(categoryController.getCategory); // Public GET for single category
+// Public routes
+router.route("/").get(categoryController.getCategories);
+router.route("/hardcoded").get(categoryController.getHardcodedCategories); // Add this line
+router.route("/:id").get(categoryController.getCategory);
 
-// Routes below this point require authentication and specific roles
+// Protected routes (admin only)
 router.use(protectRoute);
 
+// Admin routes for managing all categories
 router
   .route("/")
   .post(
@@ -20,6 +22,14 @@ router
     upload.single("image"),
     categoryController.createCategory
   );
+
+// Add seed route (admin only)
+router.post(
+  "/seed/hardcoded",
+  protectRoute,
+  restrictTo("admin", "superadmin"),
+  categoryController.seedCategories
+);
 
 router
   .route("/:id")
@@ -32,4 +42,5 @@ router
     restrictTo("admin", "superadmin", "editor"),
     categoryController.deleteCategory
   );
+
 export default router;
