@@ -59,6 +59,22 @@ export interface IOrder {
   orderNumber?: string;
   estimatedDeliveryDate?: Date;
 }
+export interface StockCheckItem {
+  productId: Types.ObjectId;
+  name: string;
+  requested: number;
+  available: number;
+  inStock: boolean;
+}
 
+export interface StockCheckResponse {
+  allInStock: boolean;
+  items: StockCheckItem[];
+  summary?: {
+    totalItems: number;
+    inStock: number;
+    outOfStock: number;
+  };
+}
 export interface IOrderItemDocument extends IOrderItem, Document {}
 export interface IOrderDocument extends IOrder, Document {}

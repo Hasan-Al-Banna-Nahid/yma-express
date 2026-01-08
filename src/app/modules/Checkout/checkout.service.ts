@@ -259,3 +259,52 @@ export const createOrderFromCart = async (
     session.endSession();
   }
 };
+// Add this function to your existing checkout.service.ts
+export const checkCartStock = async (
+  userId: Types.ObjectId
+): Promise<{
+  allInStock: boolean;
+  items: Array<{
+    productId: Types.ObjectId;
+    name: string;
+    requested: number;
+    available: number;
+    inStock: boolean;
+  }>;
+}> => {
+  const cart = await Cart.findOne({ user: userId }).populate("items.product");
+
+  if (!cart || cart.items.length === 0) {
+    throw new ApiError("Cart is empty", 400);
+  }
+
+  const stockChecks = [];
+
+  for (const item of cart.items) {
+    const product = await Product.findById(item.product);
+
+    if (!product) {
+      stockChecks.push({
+        productId: item.product,
+        name: "Product not found",
+        requested: item.quantity,
+        available: 0,
+        inStock: false,
+      });
+      continue;
+    }
+
+    stockChecks.push({
+      productId: product._id,
+      name: product.name,
+      requested: item.quantity,
+      available: product.stock,
+      inStock: product.stock >= item.quantity,
+    });
+  }
+
+  return {
+    allInStock: stockChecks.every((item) => item.inStock),
+    items: stockChecks,
+  };
+};
