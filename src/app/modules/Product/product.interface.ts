@@ -48,6 +48,9 @@ export interface IProduct {
   };
   createdAt?: Date;
   updatedAt?: Date;
+  isTopPick?: boolean;
+  topPickRank?: number;
+  topPickUpdatedAt?: Date;
 }
 
 export interface CreateProductData {

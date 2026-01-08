@@ -5,6 +5,18 @@ export type IProductModel = IProduct & mongoose.Document;
 
 const productSchema: Schema = new Schema(
   {
+    isTopPick: {
+      type: Boolean,
+      default: false,
+    },
+    topPickRank: {
+      type: Number,
+      min: 1,
+      max: 100,
+    },
+    topPickUpdatedAt: {
+      type: Date,
+    },
     isTopSelling: {
       type: Boolean,
       default: false,
@@ -235,6 +247,7 @@ const productSchema: Schema = new Schema(
     toObject: { virtuals: true },
   }
 );
+productSchema.index({ isTopPick: 1, topPickRank: 1 });
 
 productSchema.virtual("dimensions.area").get(function (this: IProductModel) {
   return this.dimensions.length * this.dimensions.width;

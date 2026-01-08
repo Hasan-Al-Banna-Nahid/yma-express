@@ -909,3 +909,67 @@ export const markAsTopSelling = async (
 
   return product;
 };
+// Add to your existing product.service.ts
+
+export interface TopPicksParams {
+  limit?: number;
+  category?: string;
+}
+
+export const getTopPicks = async (
+  limit: number = 8
+): Promise<IProductModel[]> => {
+  // Get products marked as top picks first
+  const topPicks = await Product.find({
+    active: true,
+    stock: { $gt: 0 },
+    isTopPick: true, // New field we'll add
+  })
+    .populate("categories", "name slug")
+    .sort({ topPickRank: 1, createdAt: -1 })
+    .limit(limit);
+
+  // If we don't have enough top picks, fill with featured products
+  if (topPicks.length < limit) {
+    const featuredProducts = await Product.find({
+      active: true,
+      stock: { $gt: 0 },
+      isTopPick: false,
+      _id: { $nin: topPicks.map((p) => p._id) },
+    })
+      .populate("categories", "name slug")
+      .sort({ createdAt: -1 })
+      .limit(limit - topPicks.length);
+
+    return [...topPicks, ...featuredProducts];
+  }
+
+  return topPicks;
+};
+
+export const markAsTopPick = async (
+  productId: string,
+  isTopPick: boolean = true,
+  rank?: number
+): Promise<IProductModel> => {
+  if (!Types.ObjectId.isValid(productId)) {
+    throw new ApiError("Invalid product ID", 400);
+  }
+
+  const updateData: any = {
+    isTopPick,
+    topPickRank: rank,
+    topPickUpdatedAt: new Date(),
+  };
+
+  const product = await Product.findByIdAndUpdate(productId, updateData, {
+    new: true,
+    runValidators: true,
+  }).populate("categories", "name slug");
+
+  if (!product) {
+    throw new ApiError("Product not found", 404);
+  }
+
+  return product;
+};

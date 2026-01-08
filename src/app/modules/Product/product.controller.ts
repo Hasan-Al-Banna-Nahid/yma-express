@@ -670,3 +670,34 @@ export const getProductsByCategory = asyncHandler(
     });
   }
 );
+// Add these to your existing product.controller.ts
+
+// Get top picks (simplified version)
+export const getTopPicks = asyncHandler(async (req: Request, res: Response) => {
+  const limit = parseInt(req.query.limit as string) || 8;
+
+  const topPicks = await productService.getTopPicks(limit);
+
+  res.status(200).json({
+    success: true,
+    data: {
+      topPicks,
+    },
+  });
+});
+
+// Admin: Mark/unmark as top pick
+export const markAsTopPick = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { productId } = req.params;
+    const { isTopPick = true } = req.body;
+
+    const product = await productService.markAsTopPick(productId, isTopPick);
+
+    res.status(200).json({
+      success: true,
+      message: `Product ${isTopPick ? "marked" : "unmarked"} as top pick`,
+      data: { product },
+    });
+  }
+);
