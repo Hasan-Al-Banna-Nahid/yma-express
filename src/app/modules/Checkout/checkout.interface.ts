@@ -76,5 +76,35 @@ export interface StockCheckResponse {
     outOfStock: number;
   };
 }
+// Add to your existing checkout.interface.ts
+export interface DateAvailabilityRequest {
+  productId: string;
+  startDate: Date;
+  endDate: Date;
+  quantity?: number;
+}
+
+export interface DateAvailabilityResponse {
+  isAvailable: boolean;
+  productId: string;
+  productName: string;
+  requestedQuantity: number;
+  availableQuantity: number;
+  startDate: Date;
+  endDate: Date;
+  totalDays: number;
+  message?: string;
+}
+
+export interface AvailableDatesResponse {
+  productId: string;
+  productName: string;
+  availableDates: string[]; // ISO date strings (YYYY-MM-DD)
+  unavailableDates: string[];
+  range: {
+    start: Date;
+    end: Date;
+  };
+}
 export interface IOrderItemDocument extends IOrderItem, Document {}
 export interface IOrderDocument extends IOrder, Document {}

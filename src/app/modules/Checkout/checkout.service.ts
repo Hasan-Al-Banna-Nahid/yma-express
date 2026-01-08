@@ -15,6 +15,10 @@ import {
   sendOrderNotificationToAdmin,
   sendOrderReceivedEmail,
 } from "./email.service";
+import {
+  AvailableDatesResponse,
+  DateAvailabilityResponse,
+} from "../../modules/Checkout/checkout.interface";
 
 export interface CreateOrderData {
   shippingAddress: {
@@ -306,5 +310,222 @@ export const checkCartStock = async (
   return {
     allInStock: stockChecks.every((item) => item.inStock),
     items: stockChecks,
+  };
+};
+// Add to your existing checkout.service.ts
+export const checkDateAvailability = async (
+  productId: string,
+  startDate: Date,
+  endDate: Date,
+  quantity: number = 1
+): Promise<DateAvailabilityResponse> => {
+  if (!Types.ObjectId.isValid(productId)) {
+    throw new ApiError("Invalid product ID", 400);
+  }
+
+  const product = await Product.findById(productId);
+
+  if (!product) {
+    throw new ApiError("Product not found", 404);
+  }
+
+  // Check basic availability
+  if (!product.active) {
+    return {
+      isAvailable: false,
+      productId: product._id.toString(),
+      productName: product.name,
+      requestedQuantity: quantity,
+      availableQuantity: 0,
+      startDate,
+      endDate,
+      totalDays: Math.ceil(
+        (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
+      ),
+      message: "Product is not active",
+    };
+  }
+
+  // Check stock
+  if (product.stock < quantity) {
+    return {
+      isAvailable: false,
+      productId: product._id.toString(),
+      productName: product.name,
+      requestedQuantity: quantity,
+      availableQuantity: product.stock,
+      startDate,
+      endDate,
+      totalDays: Math.ceil(
+        (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
+      ),
+      message: `Insufficient stock. Available: ${product.stock}`,
+    };
+  }
+
+  // Check date range against product availability dates
+  const now = new Date();
+  if (startDate < now) {
+    return {
+      isAvailable: false,
+      productId: product._id.toString(),
+      productName: product.name,
+      requestedQuantity: quantity,
+      availableQuantity: product.stock,
+      startDate,
+      endDate,
+      totalDays: Math.ceil(
+        (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
+      ),
+      message: "Start date cannot be in the past",
+    };
+  }
+
+  if (startDate < product.availableFrom || endDate > product.availableUntil) {
+    return {
+      isAvailable: false,
+      productId: product._id.toString(),
+      productName: product.name,
+      requestedQuantity: quantity,
+      availableQuantity: product.stock,
+      startDate,
+      endDate,
+      totalDays: Math.ceil(
+        (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
+      ),
+      message: `Product only available from ${product.availableFrom.toDateString()} to ${product.availableUntil.toDateString()}`,
+    };
+  }
+
+  // Check for overlapping orders
+  const existingOrders = await UserOrder.find({
+    "items.product": productId,
+    status: { $in: ["pending", "confirmed", "shipped"] },
+  });
+
+  let bookedQuantity = 0;
+
+  for (const order of existingOrders) {
+    for (const item of order.items) {
+      if (item.product.toString() === productId) {
+        // Check if dates overlap
+        const itemStart = item.startDate || new Date();
+        const itemEnd = item.endDate || new Date();
+
+        if (startDate <= itemEnd && endDate >= itemStart) {
+          bookedQuantity += item.quantity;
+        }
+      }
+    }
+  }
+
+  const finalAvailable = product.stock - bookedQuantity;
+
+  if (finalAvailable < quantity) {
+    return {
+      isAvailable: false,
+      productId: product._id.toString(),
+      productName: product.name,
+      requestedQuantity: quantity,
+      availableQuantity: finalAvailable,
+      startDate,
+      endDate,
+      totalDays: Math.ceil(
+        (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
+      ),
+      message: `Not enough available during selected dates. Available: ${finalAvailable}`,
+    };
+  }
+
+  return {
+    isAvailable: true,
+    productId: product._id.toString(),
+    productName: product.name,
+    requestedQuantity: quantity,
+    availableQuantity: finalAvailable,
+    startDate,
+    endDate,
+    totalDays: Math.ceil(
+      (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
+    ),
+    message: "Available for booking",
+  };
+};
+
+export const getAvailableDates = async (
+  productId: string,
+  startDate?: Date,
+  endDate?: Date,
+  quantity: number = 1
+): Promise<AvailableDatesResponse> => {
+  if (!Types.ObjectId.isValid(productId)) {
+    throw new ApiError("Invalid product ID", 400);
+  }
+
+  const product = await Product.findById(productId);
+
+  if (!product) {
+    throw new ApiError("Product not found", 404);
+  }
+
+  // Default to next 30 days
+  const start = startDate || new Date();
+  const end = endDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+  // Get existing orders for this product
+  const existingOrders = await UserOrder.find({
+    "items.product": productId,
+    status: { $in: ["pending", "confirmed", "shipped"] },
+  });
+
+  const availableDates: string[] = [];
+  const unavailableDates: string[] = [];
+
+  const currentDate = new Date(start);
+  const lastDate = new Date(end);
+
+  while (currentDate <= lastDate) {
+    const dateStr = currentDate.toISOString().split("T")[0];
+    const date = new Date(dateStr);
+
+    // Check if date is within product availability range
+    if (date < product.availableFrom || date > product.availableUntil) {
+      unavailableDates.push(dateStr);
+    } else {
+      // Check for existing bookings on this date
+      let bookedOnDate = 0;
+
+      for (const order of existingOrders) {
+        for (const item of order.items) {
+          if (item.product.toString() === productId) {
+            const itemStart = item.startDate || new Date(0);
+            const itemEnd = item.endDate || new Date(0);
+
+            if (date >= itemStart && date <= itemEnd) {
+              bookedOnDate += item.quantity;
+            }
+          }
+        }
+      }
+
+      if (product.stock - bookedOnDate >= quantity) {
+        availableDates.push(dateStr);
+      } else {
+        unavailableDates.push(dateStr);
+      }
+    }
+
+    currentDate.setDate(currentDate.getDate() + 1);
+  }
+
+  return {
+    productId: product._id.toString(),
+    productName: product.name,
+    availableDates,
+    unavailableDates,
+    range: {
+      start: start,
+      end: end,
+    },
   };
 };
