@@ -3,7 +3,7 @@ import { Request, Response } from "express";
 import asyncHandler from "../../utils/asyncHandler";
 import { AuthenticatedRequest } from "../../middlewares/auth.middleware";
 import ApiError from "../../utils/apiError";
-import { checkCartStock, createOrderFromCart } from "./checkout.service";
+import { checkCartStock, createOrderFromCart, checkDateAvailability as checkDateAvailabilityService, getAvailableDates as getAvailableDatesService } from "./checkout.service";
 import Product from "../../modules/Product/product.model";
 import Cart from "../../modules/Cart/cart.model";
 
@@ -106,5 +106,55 @@ export const checkStock = asyncHandler(async (req: Request, res: Response) => {
         outOfStock: stockCheck.items.filter((item) => !item.inStock).length,
       },
     },
+  });
+});
+// Add to your existing checkout.controller.ts
+
+// Check date availability for checkout
+export const checkDateAvailability = asyncHandler(async (req: Request, res: Response) => {
+  const { productId, startDate, endDate, quantity = 1 } = req.body;
+
+  if (!productId || !startDate || !endDate) {
+    throw new ApiError("productId, startDate, and endDate are required", 400);
+  }
+
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+
+  if (start > end) {
+    throw new ApiError("Start date cannot be after end date", 400);
+  }
+
+  const availability = await checkDateAvailabilityService(
+    productId,
+    start,
+    end,
+    parseInt(quantity as string)
+  );
+
+  res.status(200).json({
+    success: true,
+    data: availability,
+  });
+});
+
+// Get available dates for checkout
+export const getAvailableDates = asyncHandler(async (req: Request, res: Response) => {
+  const { productId } = req.params;
+  const { startDate, endDate, quantity = 1 } = req.query;
+
+  const start = startDate ? new Date(startDate as string) : undefined;
+  const end = endDate ? new Date(endDate as string) : undefined;
+
+  const availableDates = await getAvailableDatesService(
+    productId,
+    start,
+    end,
+    parseInt(quantity as string)
+  );
+
+  res.status(200).json({
+    success: true,
+    data: availableDates,
   });
 });

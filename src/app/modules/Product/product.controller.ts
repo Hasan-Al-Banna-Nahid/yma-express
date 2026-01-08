@@ -701,3 +701,135 @@ export const markAsTopPick = asyncHandler(
     });
   }
 );
+
+// ... all your existing controller functions remain
+
+/* =========================
+   GET FREQUENTLY BOUGHT TOGETHER
+========================= */
+export const getFrequentlyBoughtTogether = asyncHandler(
+  async (req: Request, res: Response, next: NextFunction) => {
+    const { productIds } = req.body;
+    const limit = parseInt(req.query.limit as string) || 5;
+
+    // Validate input
+    if (!productIds || !Array.isArray(productIds)) {
+      throw new ApiError("Product IDs array is required", 400);
+    }
+
+    if (productIds.length === 0) {
+      return res.status(200).json({
+        status: "success",
+        message: "No products provided",
+        data: {
+          recommendations: [],
+          count: 0,
+        },
+      });
+    }
+
+    // Validate each product ID
+    for (const id of productIds) {
+      if (!Types.ObjectId.isValid(id)) {
+        throw new ApiError(`Invalid product ID: ${id}`, 400);
+      }
+    }
+
+    const recommendations = await productService.getFrequentlyBoughtTogether(
+      productIds,
+      limit
+    );
+
+    res.status(200).json({
+      status: "success",
+      message: "Frequently bought together products",
+      data: {
+        recommendations,
+        count: recommendations.length,
+      },
+    });
+  }
+);
+
+/* =========================
+   GET CART RECOMMENDATIONS
+========================= */
+export const getCartRecommendations = asyncHandler(
+  async (req: Request, res: Response, next: NextFunction) => {
+    const { cartItems } = req.body;
+    const limit = parseInt(req.query.limit as string) || 8;
+
+    // Validate input
+    if (!cartItems || !Array.isArray(cartItems)) {
+      throw new ApiError("Cart items array is required", 400);
+    }
+
+    // Validate cart items
+    const validCartItems = cartItems
+      .filter((item) => item && typeof item === "object")
+      .map((item) => ({
+        productId: item.productId,
+        quantity: typeof item.quantity === "number" ? item.quantity : 1,
+      }))
+      .filter((item) => item.productId);
+
+    const recommendations = await productService.getCartRecommendations(
+      validCartItems,
+      limit
+    );
+
+    res.status(200).json({
+      status: "success",
+      message: "Cart recommendations",
+      data: {
+        recommendations,
+        count: recommendations.length,
+      },
+    });
+  }
+);
+
+/* =========================
+   RECORD PURCHASE FOR ANALYTICS
+========================= */
+export const recordPurchase = asyncHandler(
+  async (req: Request, res: Response, next: NextFunction) => {
+    const { orderItems } = req.body;
+
+    // Validate input
+    if (!orderItems || !Array.isArray(orderItems)) {
+      throw new ApiError("Order items array is required", 400);
+    }
+
+    // Extract product IDs
+    const productIds: string[] = [];
+
+    for (const item of orderItems) {
+      if (!item || !item.productId) {
+        continue;
+      }
+
+      if (!Types.ObjectId.isValid(item.productId)) {
+        throw new ApiError(`Invalid product ID: ${item.productId}`, 400);
+      }
+
+      productIds.push(item.productId);
+    }
+
+    // Need at least 2 products for meaningful recommendations
+    if (productIds.length < 2) {
+      return res.status(200).json({
+        status: "success",
+        message: "Purchase recorded (insufficient data for recommendations)",
+      });
+    }
+
+    // Record purchase
+    await productService.recordPurchase(productIds);
+
+    res.status(200).json({
+      status: "success",
+      message: "Purchase recorded for recommendation analytics",
+    });
+  }
+);

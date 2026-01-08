@@ -1,4 +1,3 @@
-// src/models/user.model.ts
 import mongoose, { Schema } from "mongoose";
 import jwt, { Secret, SignOptions } from "jsonwebtoken";
 import crypto from "crypto";
@@ -30,7 +29,6 @@ const userSchema = new Schema<IUser, IUserModel, IUserMethods>(
       default: "user",
       required: true,
       index: true,
-      // REMOVED: select: false - This was causing the issue!
     },
     password: { type: String, minlength: 8, select: false },
     passwordChangedAt: { type: Date, index: true },
@@ -40,6 +38,30 @@ const userSchema = new Schema<IUser, IUserModel, IUserMethods>(
     refreshTokenHash: { type: String, select: false },
     refreshTokenExpiresAt: { type: Date, select: false },
     active: { type: Boolean, default: true, select: false, index: true },
+
+    // NEW FIELDS for email verification
+    isEmailVerified: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    emailVerificationToken: {
+      type: String,
+      select: false,
+    },
+    emailVerificationExpires: {
+      type: Date,
+      select: false,
+    },
+    verificationAttempts: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 5,
+    },
+    lastVerificationAttempt: {
+      type: Date,
+    },
   },
   {
     timestamps: true,
@@ -51,12 +73,13 @@ const userSchema = new Schema<IUser, IUserModel, IUserMethods>(
           delete ret._id;
         }
         delete ret.__v;
-        // Also remove sensitive fields from JSON output
         delete ret.password;
         delete ret.refreshTokenHash;
         delete ret.refreshTokenExpiresAt;
         delete ret.passwordResetToken;
         delete ret.passwordResetExpires;
+        delete ret.emailVerificationToken; // Hide from JSON output
+        delete ret.emailVerificationExpires;
       },
     },
     toObject: { virtuals: true },
@@ -66,6 +89,7 @@ const userSchema = new Schema<IUser, IUserModel, IUserMethods>(
 // Indexes
 userSchema.index({ createdAt: -1 });
 userSchema.index({ name: "text", email: "text" });
+userSchema.index({ isEmailVerified: 1, active: 1 });
 
 // Hash password if modified
 userSchema.pre("save", async function (next) {
@@ -132,6 +156,18 @@ userSchema.method("createPasswordResetToken", function (): string {
     .digest("hex");
   this.passwordResetExpires = new Date(Date.now() + 10 * 60 * 1000);
   return resetToken;
+});
+
+// NEW METHOD: Create email verification token
+userSchema.method("createEmailVerificationToken", function (): string {
+  const verificationToken = crypto.randomBytes(32).toString("hex");
+  this.emailVerificationToken = crypto
+    .createHash("sha256")
+    .update(verificationToken)
+    .digest("hex");
+  this.emailVerificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+  this.verificationAttempts = 0;
+  return verificationToken;
 });
 
 const User = mongoose.model<IUser, IUserModel>("User", userSchema);

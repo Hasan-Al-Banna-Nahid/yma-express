@@ -240,6 +240,42 @@ const productSchema: Schema = new Schema(
         trim: true,
       },
     },
+    purchaseHistory: [
+      {
+        productId: {
+          type: Schema.Types.ObjectId,
+          ref: "Product",
+        },
+        count: {
+          type: Number,
+          default: 0,
+        },
+        lastPurchased: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
+    frequentlyBoughtTogether: [
+      {
+        productId: {
+          type: Schema.Types.ObjectId,
+          ref: "Product",
+        },
+        frequency: {
+          type: Number,
+          default: 0,
+          min: 0,
+          max: 1,
+        },
+        confidence: {
+          type: Number,
+          default: 0,
+          min: 0,
+          max: 1,
+        },
+      },
+    ],
   },
   {
     timestamps: true,
@@ -247,11 +283,11 @@ const productSchema: Schema = new Schema(
     toObject: { virtuals: true },
   }
 );
-productSchema.index({ isTopPick: 1, topPickRank: 1 });
 
 productSchema.virtual("dimensions.area").get(function (this: IProductModel) {
   return this.dimensions.length * this.dimensions.width;
 });
+productSchema.index({ "frequentlyBoughtTogether.frequency": -1 });
 
 productSchema
   .virtual("formattedDimensions")

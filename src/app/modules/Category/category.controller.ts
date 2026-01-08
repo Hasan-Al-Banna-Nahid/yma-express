@@ -1,12 +1,11 @@
-// src/controllers/category.controller.ts
-import { Request, Response, NextFunction } from "express";
+import { Request, Response } from "express";
 import asyncHandler from "../../utils/asyncHandler";
 import * as categoryService from "./category.service";
 import { uploadToCloudinary } from "../../utils/cloudinary.util";
 import Category from "../../modules/Category/category.model";
 
 export const createCategory = asyncHandler(
-  async (req: Request, res: Response, next: NextFunction) => {
+  async (req: Request, res: Response) => {
     let imageUrl;
 
     if (req.file) {
@@ -21,43 +20,34 @@ export const createCategory = asyncHandler(
     const category = await categoryService.createCategory(categoryData);
 
     res.status(201).json({
-      status: "success",
-      data: {
-        category,
-      },
+      success: true,
+      data: { category },
     });
   }
 );
 
 export const getCategories = asyncHandler(
-  async (req: Request, res: Response, next: NextFunction) => {
+  async (req: Request, res: Response) => {
     const categories = await categoryService.getAllCategories();
 
     res.status(200).json({
-      status: "success",
-      results: categories.length,
-      data: {
-        categories,
-      },
+      success: true,
+      data: { categories },
     });
   }
 );
 
-export const getCategory = asyncHandler(
-  async (req: Request, res: Response, next: NextFunction) => {
-    const category = await categoryService.getCategoryById(req.params.id);
+export const getCategory = asyncHandler(async (req: Request, res: Response) => {
+  const category = await categoryService.getCategoryById(req.params.id);
 
-    res.status(200).json({
-      status: "success",
-      data: {
-        category,
-      },
-    });
-  }
-);
+  res.status(200).json({
+    success: true,
+    data: { category },
+  });
+});
 
 export const updateCategory = asyncHandler(
-  async (req: Request, res: Response, next: NextFunction) => {
+  async (req: Request, res: Response) => {
     let imageUrl;
 
     if (req.file) {
@@ -75,25 +65,23 @@ export const updateCategory = asyncHandler(
     );
 
     res.status(200).json({
-      status: "success",
-      data: {
-        category,
-      },
+      success: true,
+      data: { category },
     });
   }
 );
 
 export const deleteCategory = asyncHandler(
-  async (req: Request, res: Response, next: NextFunction) => {
+  async (req: Request, res: Response) => {
     await categoryService.deleteCategory(req.params.id);
 
-    res.status(204).json({
-      status: "success",
-      data: null,
+    res.status(200).json({
+      success: true,
+      message: "Category deleted successfully",
     });
   }
 );
-// Add this function to your existing category.controller.ts
+
 export const seedCategories = asyncHandler(
   async (req: Request, res: Response) => {
     const hardcodedCategories = [
@@ -122,33 +110,25 @@ export const seedCategories = asyncHandler(
     const createdCategories = [];
 
     for (const categoryData of hardcodedCategories) {
-      // Check if category already exists
-      const existingCategory = await Category.findOne({
-        name: categoryData.name,
-      });
+      let category = await Category.findOne({ name: categoryData.name });
 
-      if (!existingCategory) {
-        const category = await Category.create({
+      if (!category) {
+        category = await Category.create({
           ...categoryData,
           isActive: true,
         });
-        createdCategories.push(category);
-      } else {
-        createdCategories.push(existingCategory);
       }
+
+      createdCategories.push(category);
     }
 
     res.status(200).json({
       success: true,
-      message: "Categories seeded successfully",
-      data: {
-        categories: createdCategories,
-      },
+      data: { categories: createdCategories },
     });
   }
 );
 
-// Add this function to get all categories with optional photo
 export const getHardcodedCategories = asyncHandler(
   async (req: Request, res: Response) => {
     const categories = await Category.find({
@@ -165,16 +145,7 @@ export const getHardcodedCategories = asyncHandler(
 
     res.status(200).json({
       success: true,
-      data: {
-        categories: categories.map((cat) => ({
-          id: cat._id,
-          name: cat.name,
-          slug: cat.slug,
-          description: cat.description,
-          image: cat.image || null, // Optional photo from Cloudinary
-          isActive: cat.isActive,
-        })),
-      },
+      data: { categories },
     });
   }
 );

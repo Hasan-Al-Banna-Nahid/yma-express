@@ -12,7 +12,11 @@ import {
   sendPasswordResetEmail,
   sendResetSuccessEmail,
 } from "../Email/email.service";
-
+import {
+  sendWelcomeVerificationEmail,
+  sendVerificationSuccessEmail,
+  generateRandomPassword,
+} from "./email.service";
 // ----- JWT config (typed) -----
 
 const JWT_SECRET_ENV = process.env.JWT_SECRET;
@@ -249,4 +253,184 @@ export const protect = async (token: string): Promise<IUser> => {
   // }
 
   return currentUser as unknown as IUser;
+};
+
+// ... existing code remains ...
+
+// NEW FUNCTION: Email verification registration
+// In auth.service.ts - UPDATE the registerWithEmailVerification function:
+export const registerWithEmailVerification = async (
+  name: string,
+  email: string,
+  password?: string, // Make password optional
+  photo?: Express.Multer.File
+): Promise<{ user: IUser; temporaryPassword?: string }> => {
+  // Check if user already exists
+  const existingUser = await User.findOne({ email });
+  if (existingUser) {
+    throw new ApiError("Email already registered", 400);
+  }
+
+  // If password provided, use it. Otherwise generate temporary one
+  let userPassword: string;
+  let temporaryPassword: string | undefined;
+
+  if (password && password.trim().length >= 6) {
+    userPassword = password;
+  } else {
+    temporaryPassword = generateRandomPassword();
+    userPassword = temporaryPassword;
+  }
+
+  // Create user
+  let photoUrl: string | undefined;
+  if (photo) {
+    photoUrl = await uploadToCloudinary(photo);
+  }
+
+  const newUser = await User.create({
+    name,
+    email,
+    password: userPassword,
+    role: "user",
+    photo: photoUrl,
+    isEmailVerified: false,
+    verificationAttempts: 0,
+    active: false, // Not active until verified
+  });
+
+  // Generate email verification token
+  const verificationToken = (newUser as any).createEmailVerificationToken();
+  await newUser.save({ validateBeforeSave: false });
+
+  // Send verification email
+  const verificationLink = `${process.env.API_PUBLIC_URL}/api/v1/auth/verify-email/${verificationToken}`;
+
+  await sendWelcomeVerificationEmail(
+    email,
+    name,
+    verificationLink,
+    temporaryPassword || "Use the password you set during registration"
+  );
+
+  return {
+    user: newUser,
+    temporaryPassword: temporaryPassword,
+  };
+};
+
+// NEW FUNCTION: Verify email token
+// In auth.service.ts - REPLACE the verifyEmailToken function:
+export const verifyEmailToken = async (token: string): Promise<IUser> => {
+  console.log("Verifying token:", token); // Debug log
+
+  if (!token || token.trim().length === 0) {
+    throw new ApiError("Verification token is required", 400);
+  }
+
+  try {
+    // Hash the token
+    const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+    console.log("Hashed token:", hashedToken); // Debug log
+
+    // Find user with valid verification token
+    const user = await User.findOne({
+      emailVerificationToken: hashedToken,
+      emailVerificationExpires: { $gt: Date.now() },
+    });
+
+    console.log("Found user:", user ? user.email : "No user found"); // Debug log
+
+    if (!user) {
+      // Try to find if token expired
+      const expiredUser = await User.findOne({
+        emailVerificationToken: hashedToken,
+      });
+
+      if (expiredUser) {
+        throw new ApiError(
+          "Verification link has expired. Please request a new one.",
+          400
+        );
+      }
+      throw new ApiError("Invalid verification token", 400);
+    }
+
+    // Check if already verified
+    if (user.isEmailVerified) {
+      throw new ApiError("Email is already verified", 400);
+    }
+
+    // Update user
+    user.isEmailVerified = true;
+    user.emailVerificationToken = undefined as any;
+    user.emailVerificationExpires = undefined as any;
+    user.verificationAttempts = 0;
+    user.active = true;
+
+    await user.save();
+
+    // Send success email
+    sendVerificationSuccessEmail(user.email, user.name).catch(console.error);
+
+    return user;
+  } catch (error: any) {
+    console.error("Token verification error:", error.message);
+    throw error;
+  }
+};
+
+// NEW FUNCTION: Resend verification email
+// In auth.service.ts - UPDATE the resendVerificationEmail function:
+export const resendVerificationEmail = async (email: string): Promise<void> => {
+  const user = await User.findOne({ email });
+
+  if (!user) {
+    // For security, don't reveal if user exists
+    console.log(
+      `Resend verification requested for non-existent email: ${email}`
+    );
+    return;
+  }
+
+  // If already verified, throw error
+  if (user.isEmailVerified) {
+    throw new ApiError(
+      "Email is already verified. You can login directly.",
+      400
+    );
+  }
+
+  // Check rate limiting
+  const now = new Date();
+  if (user.lastVerificationAttempt && user.verificationAttempts >= 5) {
+    const timeDiff = now.getTime() - user.lastVerificationAttempt.getTime();
+    const hoursDiff = timeDiff / (1000 * 60 * 60);
+
+    if (hoursDiff < 24) {
+      throw new ApiError(
+        "Too many verification requests. Please try again tomorrow.",
+        429
+      );
+    } else {
+      // Reset attempts if more than 24 hours passed
+      user.verificationAttempts = 0;
+    }
+  }
+
+  // Generate new verification token
+  const verificationToken = (user as any).createEmailVerificationToken();
+  user.verificationAttempts += 1;
+  user.lastVerificationAttempt = now;
+  await user.save({ validateBeforeSave: false });
+
+  // Send verification email
+  const verificationLink = `${process.env.API_PUBMENT_URL}/api/v1/auth/verify-email/${verificationToken}`;
+
+  await sendWelcomeVerificationEmail(
+    user.email,
+    user.name,
+    verificationLink,
+    "Use your existing password to login"
+  );
 };
