@@ -51,6 +51,9 @@ export interface IProduct {
   isTopPick?: boolean;
   topPickRank?: number;
   topPickUpdatedAt?: Date;
+  purchaseHistory?: PurchaseHistoryItem[];
+  frequentlyBoughtTogether?: FrequentlyBoughtItem[];
+  similarProducts?: SimilarProductItem[];
 }
 
 export interface CreateProductData {
@@ -97,4 +100,22 @@ export interface CreateProductData {
     warrantyPeriod?: string;
     warrantyDetails?: string;
   };
+}
+// Add to your existing interfaces
+export interface PurchaseHistoryItem {
+  productId: Types.ObjectId;
+  count: number;
+  lastPurchased: Date;
+}
+
+export interface FrequentlyBoughtItem {
+  productId: Types.ObjectId;
+  frequency: number;
+  confidence: number;
+}
+
+export interface SimilarProductItem {
+  productId: Types.ObjectId;
+  similarityScore: number;
+  basedOn: string[];
 }
