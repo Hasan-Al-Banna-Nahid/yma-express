@@ -18,6 +18,14 @@ export interface IUser extends mongoose.Document {
   active?: boolean;
   lastLogoutAt?: Date;
 
+  // NEW FIELDS for email verification
+  isEmailVerified: boolean;
+  emailVerificationToken?: string;
+  emailVerificationExpires?: Date;
+  verificationAttempts: number;
+  lastVerificationAttempt?: Date;
+  createdAt?: Date;
+  updatedAt?: Date;
   // methods
   correctPassword(candidate: string, hashed: string): Promise<boolean>;
   changedPasswordAfter(JWTTimestamp: number): boolean;
@@ -25,6 +33,7 @@ export interface IUser extends mongoose.Document {
   signRefreshToken(): string;
   setRefreshToken(refreshToken: string): Promise<void>;
   createPasswordResetToken(): string;
+  createEmailVerificationToken(): string;
   generateAuthToken(): string;
 }
 
@@ -35,6 +44,7 @@ export interface IUserMethods {
   signRefreshToken(): string;
   setRefreshToken(refreshToken: string): Promise<void>;
   createPasswordResetToken(): string;
+  createEmailVerificationToken(): string; // NEW METHOD
   generateAuthToken(): string;
 }
 
