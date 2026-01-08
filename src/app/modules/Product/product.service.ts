@@ -1,7 +1,7 @@
 import Category from "../Category/category.model";
 import Product, { IProductModel } from "./product.model";
 import ApiError from "../../utils/apiError";
-import { Types } from "mongoose";
+import { ObjectId, Types } from "mongoose";
 import { CreateProductData } from "./product.interface";
 
 /**
@@ -972,4 +972,325 @@ export const markAsTopPick = async (
   }
 
   return product;
+};
+
+// ... all your existing imports and functions remain
+
+// Add these new interfaces at the top
+interface CartItem {
+  productId: string;
+  quantity: number;
+}
+
+/* =========================
+   GET FREQUENTLY BOUGHT TOGETHER
+========================= */
+export const getFrequentlyBoughtTogether = async (
+  productIds: string[],
+  limit: number = 5
+): Promise<IProductModel[]> => {
+  if (!productIds || productIds.length === 0) {
+    return getPopularProducts(limit);
+  }
+
+  const objectIds = productIds.map(id => new Types.ObjectId(id));
+
+  // For single product
+  if (objectIds.length === 1) {
+    const product = await Product.findById(objectIds[0])
+      .populate({
+        path: 'frequentlyBoughtTogether.productId',
+        match: { active: true, stock: { $gt: 0 } },
+        select: 'name price imageCover categories material description'
+      })
+      .exec();
+
+    if (!product || !product.frequentlyBoughtTogether) {
+      return getPopularProducts(limit);
+    }
+
+    // Filter and sort recommendations
+    const recommendations = product.frequentlyBoughtTogether
+      .filter(item => item.productId && item.productId !== null)
+      .sort((a, b) => (b.frequency || 0) - (a.frequency || 0))
+      .slice(0, limit)
+      .map(item => {
+        // Type guard to ensure productId is populated
+        if (item.productId && typeof item.productId !== 'string') {
+          return item.productId as unknown as IProductModel;
+        }
+        return null;
+      })
+      .filter((item): item is IProductModel => item !== null);
+
+    return recommendations;
+  }
+
+  // For multiple products, find common recommendations
+  const products = await Product.find({
+    _id: { $in: objectIds }
+  })
+  .select('frequentlyBoughtTogether')
+  .exec();
+
+  if (products.length === 0) {
+    return getPopularProducts(limit);
+  }
+
+  // Aggregate recommendations
+  const recommendationScores = new Map<string, number>();
+
+  products.forEach(product => {
+    if (product.frequentlyBoughtTogether) {
+      product.frequentlyBoughtTogether.forEach(item => {
+        const itemId = item.productId.toString();
+        
+        // Skip if already in cart
+        if (objectIds.some(id => id.toString() === itemId)) {
+          return;
+        }
+
+        const currentScore = recommendationScores.get(itemId) || 0;
+        recommendationScores.set(itemId, currentScore + (item.frequency || 0));
+      });
+    }
+  });
+
+  // Sort by score and get top recommendations
+  const sortedIds = Array.from(recommendationScores.entries())
+    .sort(([, scoreA], [, scoreB]) => scoreB - scoreA)
+    .slice(0, limit)
+    .map(([id]) => new Types.ObjectId(id));
+
+  if (sortedIds.length === 0) {
+    return getSimilarProducts(objectIds, limit);
+  }
+
+  // Fetch recommended products
+  const recommendedProducts = await Product.find({
+    _id: { $in: sortedIds },
+    active: true,
+    stock: { $gt: 0 }
+  })
+  .populate('categories', 'name slug')
+  .select('name price imageCover categories material description')
+  .exec();
+
+  return recommendedProducts;
+};
+
+/* =========================
+   GET CART RECOMMENDATIONS
+========================= */
+export const getCartRecommendations = async (
+  cartItems: CartItem[],
+  limit: number = 8
+): Promise<IProductModel[]> => {
+  if (!cartItems || cartItems.length === 0) {
+    return getPopularProducts(limit);
+  }
+
+  // Convert to ObjectIds
+  const productIds = cartItems
+    .map(item => {
+      try {
+        return new Types.ObjectId(item.productId);
+      } catch {
+        return null;
+      }
+    })
+    .filter((id): id is Types.ObjectId => id !== null);
+
+  if (productIds.length === 0) {
+    return getPopularProducts(limit);
+  }
+
+  // Get recommendations
+  const recommendations = await getFrequentlyBoughtTogether(
+    productIds.map(id => id.toString()),
+    limit * 2
+  );
+
+  // Filter out products already in cart
+  const cartIdSet = new Set(productIds.map(id => id.toString()));
+  const filtered = recommendations.filter(
+    product => product._id && typeof product._id !== 'string' && !cartIdSet.has(product._id.toString())
+  );
+
+  // If not enough recommendations, add similar products
+  if (filtered.length < limit) {
+    const similar = await getSimilarProducts(productIds, limit - filtered.length);
+    
+    // Add unique similar products
+    const filteredIds = new Set(filtered.map(p => p._id?.toString()).filter((id): id is string => id !== undefined));
+    const uniqueSimilar = similar.filter(
+      product => product._id && !cartIdSet.has(product._id.toString()) && 
+                !filteredIds.has(product._id.toString())
+    );
+    
+    filtered.push(...uniqueSimilar);
+  }
+
+  return filtered.slice(0, limit);
+};
+
+/* =========================
+   RECORD PURCHASE FOR ANALYTICS
+========================= */
+export const recordPurchase = async (
+  productIds: string[]
+): Promise<void> => {
+  if (productIds.length < 2) {
+    return; // Need at least 2 products for correlations
+  }
+
+  const objectIds = productIds.map(id => new Types.ObjectId(id));
+  const batchUpdates: Promise<any>[] = [];
+
+  // Update each product's purchase history with others
+  for (let i = 0; i < objectIds.length; i++) {
+    for (let j = i + 1; j < objectIds.length; j++) {
+      const productA = objectIds[i];
+      const productB = objectIds[j];
+
+      // Update both directions
+      batchUpdates.push(updatePurchasePair(productA, productB));
+      batchUpdates.push(updatePurchasePair(productB, productA));
+    }
+  }
+
+  await Promise.all(batchUpdates);
+
+  // Recalculate frequently bought (async)
+  setTimeout(() => {
+    objectIds.forEach(id => recalculateFrequentlyBought(id).catch(console.error));
+  }, 0);
+};
+
+/* =========================
+   HELPER FUNCTIONS
+========================= */
+
+// Get popular products
+const getPopularProducts = async (limit: number): Promise<IProductModel[]> => {
+  return Product.find({
+    active: true,
+    stock: { $gt: 0 }
+  })
+  .populate('categories', 'name slug')
+  .sort({ 
+    createdAt: -1,
+    price: -1 
+  })
+  .limit(limit)
+  .select('name price imageCover categories material description')
+  .exec();
+};
+
+// Get similar products
+const getSimilarProducts = async (
+  productIds: Types.ObjectId[],
+  limit: number
+): Promise<IProductModel[]> => {
+  // Get categories from products
+  const products = await Product.find({
+    _id: { $in: productIds }
+  })
+  .select('categories price material')
+  .exec();
+
+  const categoryIds = products.flatMap(p => p.categories);
+  const uniqueCategoryIds = [...new Set(categoryIds.map(id => id.toString()))]
+    .map(id => new Types.ObjectId(id));
+
+  if (uniqueCategoryIds.length === 0) {
+    return [];
+  }
+
+  // Find products in same categories
+  return Product.find({
+    _id: { $nin: productIds },
+    categories: { $in: uniqueCategoryIds },
+    active: true,
+    stock: { $gt: 0 }
+  })
+  .populate('categories', 'name slug')
+  .limit(limit)
+  .select('name price imageCover categories material description')
+  .exec();
+};
+
+// Update purchase pair
+const updatePurchasePair = async (
+  productId: Types.ObjectId,
+  relatedId: Types.ObjectId
+): Promise<void> => {
+  await Product.updateOne(
+    { _id: productId },
+    {
+      $push: {
+        purchaseHistory: {
+          $each: [{
+            productId: relatedId,
+            count: 1,
+            lastPurchased: new Date()
+          }],
+          $sort: { lastPurchased: -1 },
+          $slice: 100
+        }
+      }
+    }
+  ).exec();
+};
+
+// Recalculate frequently bought together
+const recalculateFrequentlyBought = async (
+  productId: Types.ObjectId
+): Promise<void> => {
+  const product = await Product.findById(productId)
+    .select('purchaseHistory')
+    .exec();
+
+  if (!product || !product.purchaseHistory) {
+    return;
+  }
+
+  // Count frequencies
+  const frequencyMap = new Map<string, number>();
+  let totalCount = 0;
+
+  product.purchaseHistory.forEach(item => {
+    const id = item.productId.toString();
+    const current = frequencyMap.get(id) || 0;
+    frequencyMap.set(id, current + item.count);
+    totalCount += item.count;
+  });
+
+  // Convert to array and calculate frequencies
+  const frequentlyBought = Array.from(frequencyMap.entries())
+    .map(([id, count]) => {
+      const frequency = totalCount > 0 ? count / totalCount : 0;
+      const confidence = calculateConfidence(count, totalCount);
+      
+      return {
+        productId: new Types.ObjectId(id),
+        frequency,
+        confidence
+      };
+    })
+    .sort((a, b) => b.frequency - a.frequency)
+    .slice(0, 10);
+
+  // Update product
+  await Product.updateOne(
+    { _id: productId },
+    { frequentlyBoughtTogether: frequentlyBought }
+  ).exec();
+};
+
+// Calculate confidence score
+const calculateConfidence = (count: number, total: number): number => {
+  if (total < 5) return 0.3;
+  if (total < 20) return 0.6;
+  return Math.min(0.95, (count / total) * 1.2);
 };

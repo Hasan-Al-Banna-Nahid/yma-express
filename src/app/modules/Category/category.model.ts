@@ -39,8 +39,23 @@ const categorySchema: Schema = new Schema(
   },
   {
     timestamps: true,
-    toJSON: { virtuals: true },
-    toObject: { virtuals: true },
+    toJSON: {
+      virtuals: true,
+      transform: function (doc, ret: any) {
+        // Add type annotation
+        delete ret.id; // Remove the duplicate id field
+        return ret;
+      },
+    },
+    toObject: {
+      virtuals: true,
+      transform: function (doc, ret: any) {
+        // Add type annotation
+        delete ret.id; // Remove the duplicate id field
+        return ret;
+      },
+    },
+    id: false, // Disable the default virtual id field
   }
 );
 
