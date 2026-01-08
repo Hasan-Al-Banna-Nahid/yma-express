@@ -6,7 +6,7 @@ import path from "path";
 import fs from "fs";
 
 dotenv.config();
-
+//
 // ---- Env checks ----
 const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY!;
 const SENDGRID_FROM_EMAIL = process.env.SENDGRID_FROM_EMAIL!;
