@@ -15,6 +15,10 @@ import {
   clientSearchProducts,
   adminSearchProducts,
   getAvailableFilters,
+  getTopSellingProducts,
+  markAsTopSelling,
+  markAsTopPick,
+  getTopPicks,
 } from "./product.controller";
 import { protectRoute } from "../../middlewares/auth.middleware";
 import { restrictTo } from "../../middlewares/authorization.middleware";
@@ -22,10 +26,25 @@ import { restrictTo } from "../../middlewares/authorization.middleware";
 const router = express.Router();
 
 // ==================== PUBLIC ROUTES ====================
+router.patch(
+  "/:productId/top-selling",
+  protectRoute,
+  restrictTo("superadmin", "admin", "editor"),
+  markAsTopSelling
+);
+router.get("/top-selling", getTopSellingProducts);
 
 // Get all products with basic filtering
 router.get("/", getAllProducts);
+router.get("/top-picks", getTopPicks);
 
+// Admin route to mark as top pick (protected)
+router.patch(
+  "/:productId/top-pick",
+  protectRoute,
+  restrictTo("superadmin", "admin", "editor"),
+  markAsTopPick
+);
 // Get available states
 router.get("/states", getAvailableStates);
 

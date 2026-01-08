@@ -93,10 +93,12 @@ export const login = async (email: string, password: string) => {
 
 // --- FORGOT PASSWORD ---
 // In auth.service.ts - forgotPassword function
+// In auth.service.ts - forgotPassword function
+// In auth.service.ts - forgotPassword function
 export const forgotPassword = async (email: string) => {
   const user = await User.findOne({ email });
   if (!user) {
-    // Don't reveal that email doesn't exist (security)
+    // For security, don't reveal if email exists
     console.log(`Password reset requested for non-existent email: ${email}`);
     return; // Silent success for security
   }
@@ -104,46 +106,30 @@ export const forgotPassword = async (email: string) => {
   const resetToken = user.createPasswordResetToken();
   await user.save({ validateBeforeSave: false });
 
-  const resetURL = `${process.env.BASE_URL}/auth/reset-password/${resetToken}`;
+  // Create BACKEND URL for password reset
+  const resetURL = `${process.env.API_PUBLIC_URL}/api/v1/auth/reset-password/${resetToken}`;
 
   try {
     await sendPasswordResetEmail(
       user.email,
-      (user as any).name || "there",
+      (user as any).name || "Customer",
       resetURL
     );
+
     console.log(`Password reset email sent to: ${user.email}`);
     return resetToken;
-  } catch (err: any) {
-    console.error("🔴 SendGrid Email Error Details:", {
-      message: err.message,
-      code: err.code,
-      response: err.response?.body,
-      stack: err.stack,
-    });
+  } catch (error: any) {
+    console.error("Email sending error:", error);
 
     // Reset the token since email failed
     user.passwordResetToken = undefined;
     user.passwordResetExpires = undefined;
     await user.save({ validateBeforeSave: false });
 
-    // More specific error messages
-    if (err.code === 401 || err.response?.statusCode === 401) {
-      throw new ApiError(
-        "Email service configuration error. Please contact support.",
-        500
-      );
-    } else if (err.code === 403) {
-      throw new ApiError(
-        "Email sending permission denied. Please contact support.",
-        500
-      );
-    } else {
-      throw new ApiError(
-        "There was an error sending the email. Try again later!",
-        500
-      );
-    }
+    throw new ApiError(
+      "There was an error sending the email. Try again later!",
+      500
+    );
   }
 };
 

@@ -18,6 +18,8 @@ import cartRoutes from "./app/modules/Cart/cart.routes";
 import checkoutRoutes from "./app/modules/Checkout/checkout.routes";
 import userOrderRoutes from "./app/modules/UserOrder/user.order.routes";
 import locationRoutes from "./app/modules/Location/location.routes";
+import contactRoutes from "./app/modules/contact/contact.routes";
+import newsletterRoutes from "./app/modules/newsletter/newsletter.routes"; // Add this line
 
 const app = express();
 
@@ -27,6 +29,8 @@ const allowedOrigins = [
   "http://localhost:7000",
   "https://yma-eight.vercel.app",
   "https://yma-frontend.vercel.app",
+  process.env.FRONTEND_URL, // From environment
+  "http://localhost:8001",
 ];
 
 app.use(
@@ -64,7 +68,9 @@ app.use("/api/v1/categories", categoryRoutes);
 app.use("/api/v1/products", productRoutes);
 app.use("/api/v1/cart", cartRoutes);
 app.use("/api/v1/checkout", checkoutRoutes);
-app.use("/api/v1/orders", userOrderRoutes); // User order routes
+app.use("/api/v1/orders", userOrderRoutes);
+app.use("/api/v1", contactRoutes);
+app.use("/api/v1", newsletterRoutes);
 
 // Health check
 app.get("/healthz", (_req, res) => res.json({ ok: true }));

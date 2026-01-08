@@ -3,7 +3,9 @@ import { Request, Response } from "express";
 import asyncHandler from "../../utils/asyncHandler";
 import { AuthenticatedRequest } from "../../middlewares/auth.middleware";
 import ApiError from "../../utils/apiError";
-import { createOrderFromCart } from "./checkout.service";
+import { checkCartStock, createOrderFromCart } from "./checkout.service";
+import Product from "../../modules/Product/product.model";
+import Cart from "../../modules/Cart/cart.model";
 
 export const createOrder = asyncHandler(async (req: Request, res: Response) => {
   const userId = (req as AuthenticatedRequest).user._id;
@@ -83,6 +85,25 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
         estimatedDeliveryDate: order.estimatedDeliveryDate,
         createdAt: order.createdAt,
         itemsCount: order.items.length,
+      },
+    },
+  });
+});
+
+// Update the controller to use the service
+export const checkStock = asyncHandler(async (req: Request, res: Response) => {
+  const userId = (req as AuthenticatedRequest).user._id;
+
+  const stockCheck = await checkCartStock(userId);
+
+  res.status(200).json({
+    success: true,
+    data: {
+      ...stockCheck,
+      summary: {
+        totalItems: stockCheck.items.length,
+        inStock: stockCheck.items.filter((item) => item.inStock).length,
+        outOfStock: stockCheck.items.filter((item) => !item.inStock).length,
       },
     },
   });

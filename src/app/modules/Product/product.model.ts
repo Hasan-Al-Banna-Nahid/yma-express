@@ -5,6 +5,44 @@ export type IProductModel = IProduct & mongoose.Document;
 
 const productSchema: Schema = new Schema(
   {
+    isTopPick: {
+      type: Boolean,
+      default: false,
+    },
+    topPickRank: {
+      type: Number,
+      min: 1,
+      max: 100,
+    },
+    topPickUpdatedAt: {
+      type: Date,
+    },
+    isTopSelling: {
+      type: Boolean,
+      default: false,
+    },
+    topSellingRank: {
+      type: Number,
+      min: 1,
+      max: 100,
+    },
+    topSellingNotes: {
+      type: String,
+      trim: true,
+      maxlength: [200, "Notes cannot exceed 200 characters"],
+    },
+    topSellingMarkedAt: {
+      type: Date,
+    },
+    salesCount: {
+      // You can update this based on actual bookings
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    lastSoldAt: {
+      type: Date,
+    },
     name: {
       type: String,
       required: [true, "Product name is required"],
@@ -209,6 +247,7 @@ const productSchema: Schema = new Schema(
     toObject: { virtuals: true },
   }
 );
+productSchema.index({ isTopPick: 1, topPickRank: 1 });
 
 productSchema.virtual("dimensions.area").get(function (this: IProductModel) {
   return this.dimensions.length * this.dimensions.width;
