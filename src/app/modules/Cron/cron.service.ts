@@ -16,6 +16,11 @@ export function setupDeliveryReminders(): void {
 
       for (const order of orders) {
         const deliveryDate = order.estimatedDeliveryDate;
+        
+        if (!deliveryDate) {
+          continue;
+        }
+        
         const today = new Date();
         const daysUntilDelivery = Math.ceil(
           (deliveryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
