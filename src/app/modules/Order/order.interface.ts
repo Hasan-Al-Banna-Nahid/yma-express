@@ -49,6 +49,7 @@ export interface IOrder {
   subtotalAmount: number;
   deliveryFee: number;
   overnightFee: number;
+  discountAmount: number;
   totalAmount: number;
   paymentMethod: "cash_on_delivery" | "credit_card" | "online";
   status: "pending" | "confirmed" | "shipped" | "delivered" | "cancelled";
@@ -56,6 +57,8 @@ export interface IOrder {
   termsAccepted: boolean;
   invoiceType: "regular" | "corporate";
   bankDetails?: string;
+  promoCode?: string;
+  promoDiscount?: number;
   createdAt: Date;
   updatedAt: Date;
   orderNumber?: string;
@@ -84,6 +87,7 @@ export interface CreateOrderInput {
   subtotalAmount: number;
   deliveryFee?: number;
   overnightFee?: number;
+  discountAmount?: number;
   totalAmount: number;
   paymentMethod: "cash_on_delivery" | "credit_card" | "online";
   shippingAddress: IShippingAddress;
@@ -91,6 +95,8 @@ export interface CreateOrderInput {
   invoiceType?: "regular" | "corporate";
   bankDetails?: string;
   estimatedDeliveryDate?: Date;
+  promoCode?: string;
+  promoDiscount?: number;
 }
 
 export interface UpdateOrderInput {
@@ -134,9 +140,6 @@ export interface FilterOptions {
 }
 
 // ==================== DELIVERY TIME SYSTEM ====================
-
-// ==================== DELIVERY TIME SYSTEM ====================
-// Types
 export type DeliveryTimeOption = {
   value: string;
   label: string;
@@ -159,13 +162,11 @@ export const DELIVERY_TIME_VALUES = DELIVERY_TIME_OPTIONS.map(
 
 // SIMPLE Delivery Time Manager
 export class DeliveryTimeManager {
-  // Normalize input to valid enum value
   static normalizeForDatabase(input: string): string {
     if (!input) return "8am-12pm";
 
     const cleaned = input.toLowerCase().trim();
 
-    // Map common variations to standard values
     const mappings: Record<string, string> = {
       "8 am - 12 pm (free)": "8am-12pm",
       "8-12": "8am-12pm",
@@ -186,7 +187,6 @@ export class DeliveryTimeManager {
     return mappings[cleaned] || "8am-12pm";
   }
 
-  // Get display label
   static getDisplayLabel(value: string): string {
     const option = DELIVERY_TIME_OPTIONS.find((opt) => opt.value === value);
     if (!option) return "8 AM - 12 PM (Free)";
@@ -194,19 +194,17 @@ export class DeliveryTimeManager {
     return `${option.label}${option.isFree ? " (Free)" : ` (£${option.fee})`}`;
   }
 
-  // Get fee
   static getFee(value: string): number {
     const option = DELIVERY_TIME_OPTIONS.find((opt) => opt.value === value);
     return option?.fee || 0;
   }
 
-  // Validate if value is valid
   static isValid(value: string): boolean {
     return DELIVERY_TIME_VALUES.includes(value);
   }
 }
 
-// Other constants (unchanged)
+// Other constants
 export const COLLECTION_TIME_OPTIONS = [
   { value: "before_5pm", label: "Before 5 PM (Free)", fee: 0 },
   { value: "after_5pm", label: "After 5 PM (£10)", fee: 10 },

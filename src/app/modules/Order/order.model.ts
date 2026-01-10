@@ -5,7 +5,6 @@ import {
   IShippingAddress,
   DeliveryTimeManager,
   DELIVERY_TIME_VALUES,
-  COLLECTION_TIME_OPTIONS,
   HIRE_OCCASION_OPTIONS,
   ORDER_STATUS,
   PAYMENT_METHODS,
@@ -29,6 +28,16 @@ const orderItemSchema = new Schema<IOrderItem>(
   },
   { _id: false }
 );
+
+// Define collection time options locally
+const COLLECTION_TIME_OPTIONS = [
+  { value: "before_5pm", label: "Before 5 PM (Free)", fee: 0 },
+  { value: "after_5pm", label: "After 5 PM (£10)", fee: 10 },
+  { value: "next_day", label: "Next Day (£10)", fee: 10 },
+] as const;
+
+// Get only the values for enum
+const COLLECTION_TIME_VALUES = COLLECTION_TIME_OPTIONS.map((opt) => opt.value);
 
 // Shipping Address Schema
 const shippingAddressSchema = new Schema<IShippingAddress>(
@@ -58,8 +67,8 @@ const shippingAddressSchema = new Schema<IShippingAddress>(
     },
     collectionTime: {
       type: String,
-      enum: COLLECTION_TIME_OPTIONS.map((opt) => opt.value),
-      default: COLLECTION_TIME_OPTIONS[0].value,
+      enum: [...COLLECTION_TIME_VALUES, ""], // Add empty string to valid enum values
+      default: "",
     },
     floorType: { type: String, default: "" },
     userType: { type: String, default: "" },
@@ -89,6 +98,7 @@ const orderSchema = new Schema<IOrderDocument>(
     subtotalAmount: { type: Number, required: true, default: 0 },
     deliveryFee: { type: Number, required: true, default: 0 },
     overnightFee: { type: Number, required: true, default: 0 },
+    discountAmount: { type: Number, default: 0 },
     totalAmount: { type: Number, required: true },
     paymentMethod: {
       type: String,
@@ -118,6 +128,8 @@ const orderSchema = new Schema<IOrderDocument>(
       required: true,
     },
     bankDetails: { type: String, default: "" },
+    promoCode: { type: String },
+    promoDiscount: { type: Number, default: 0 },
     orderNumber: { type: String, unique: true },
     estimatedDeliveryDate: { type: Date },
     deliveryDate: { type: Date },
@@ -167,8 +179,25 @@ orderSchema.pre("save", async function (next) {
     );
   }
 
-  // Calculate total
-  this.totalAmount = this.subtotalAmount + this.deliveryFee + this.overnightFee;
+  // Calculate collection fee if collectionTime is provided and not empty
+  if (
+    this.shippingAddress?.collectionTime &&
+    this.shippingAddress.collectionTime.trim() !== ""
+  ) {
+    const collectionOption = COLLECTION_TIME_OPTIONS.find(
+      (opt) => opt.value === this.shippingAddress.collectionTime
+    );
+    if (collectionOption) {
+      this.deliveryFee += collectionOption.fee;
+    }
+  }
+
+  // Calculate total with discount
+  this.totalAmount =
+    this.subtotalAmount +
+    this.deliveryFee +
+    this.overnightFee -
+    this.discountAmount;
 
   next();
 });
@@ -178,3 +207,4 @@ const Order =
   mongoose.models.Order || mongoose.model<IOrderDocument>("Order", orderSchema);
 
 export default Order;
+export { COLLECTION_TIME_OPTIONS };

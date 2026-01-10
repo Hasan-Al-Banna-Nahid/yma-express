@@ -1,4 +1,3 @@
-// src/controllers/checkout.controller.ts
 import { Request, Response } from "express";
 import asyncHandler from "../../utils/asyncHandler";
 import { AuthenticatedRequest } from "../../middlewares/auth.middleware";
@@ -12,6 +11,7 @@ import {
 import Product from "../../modules/Product/product.model";
 import Cart from "../../modules/Cart/cart.model";
 import mongoose from "mongoose";
+import { PromoService } from "../../modules/promos/promos.service"; // Add this import
 
 export const createOrder = asyncHandler(async (req: Request, res: Response) => {
   const userId = (req as AuthenticatedRequest).user._id;
@@ -22,6 +22,7 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
     termsAccepted,
     invoiceType = "regular",
     bankDetails,
+    promoCode, // Add promoCode to destructuring
   } = req.body;
 
   // Validate required fields
@@ -67,13 +68,23 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
     throw new ApiError("Bank details are required for corporate invoices", 400);
   }
 
-  // Create order
+  // Validate promo code if provided
+  if (promoCode) {
+    const promoService = new PromoService();
+    const promo = await promoService.getPromoByName(promoCode);
+    if (!promo) {
+      throw new ApiError("Invalid promo code", 400);
+    }
+  }
+
+  // Create order with promoCode
   const order = await createOrderFromCart(userId, {
     shippingAddress,
     paymentMethod,
     termsAccepted,
     invoiceType,
     bankDetails,
+    promoCode, // Pass promoCode
   });
 
   // Return response
@@ -85,6 +96,8 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
         id: order._id,
         orderNumber: order.orderNumber,
         totalAmount: order.totalAmount,
+        discountAmount: order.discountAmount, // Add discount amount
+        promoCode: order.promoCode, // Add promo code
         status: order.status,
         paymentMethod: order.paymentMethod,
         invoiceType: order.invoiceType,
@@ -96,7 +109,6 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
   });
 });
 
-// Update the controller to use the service
 export const checkStock = asyncHandler(async (req: Request, res: Response) => {
   const userId = (req as AuthenticatedRequest).user._id;
 
@@ -107,9 +119,7 @@ export const checkStock = asyncHandler(async (req: Request, res: Response) => {
     data: stockCheck,
   });
 });
-// Add to your existing checkout.controller.ts
 
-// Check date availability for checkout
 export const checkDateAvailability = asyncHandler(
   async (req: Request, res: Response) => {
     const { productId, startDate, endDate, quantity = 1 } = req.body;
@@ -138,7 +148,6 @@ export const checkDateAvailability = asyncHandler(
   }
 );
 
-// Get available dates for checkout
 export const getAvailableDates = asyncHandler(
   async (req: Request, res: Response) => {
     const { productId } = req.params;
@@ -156,6 +165,189 @@ export const getAvailableDates = asyncHandler(
     res.status(200).json({
       success: true,
       data: availableDates,
+    });
+  }
+);
+
+// ============ PROMO CODE ENDPOINTS ============
+
+// Validate promo code for checkout
+export const validatePromoCode = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { promoCode, orderAmount } = req.body;
+    const userId = (req as AuthenticatedRequest).user._id;
+
+    if (!promoCode) {
+      throw new ApiError("Promo code is required", 400);
+    }
+
+    if (!orderAmount || orderAmount <= 0) {
+      throw new ApiError("Valid order amount is required", 400);
+    }
+
+    const promoService = new PromoService();
+
+    // First find promo by name
+    const promo = await promoService.getPromoByName(promoCode);
+
+    if (!promo) {
+      return res.status(200).json({
+        success: false,
+        valid: false,
+        message: "Invalid promo code",
+        discount: 0,
+      });
+    }
+
+    // Validate promo
+    const validation = await promoService.validatePromo(promoCode, orderAmount);
+
+    if (!validation.valid) {
+      return res.status(200).json({
+        success: false,
+        valid: false,
+        message: validation.message,
+        discount: 0,
+      });
+    }
+
+    // Calculate discount
+    let discount = 0;
+    if (promo.discountType === "percentage") {
+      discount = (orderAmount * promo.discountPercentage) / 100;
+      if (promo.maxDiscountValue && discount > promo.maxDiscountValue) {
+        discount = promo.maxDiscountValue;
+      }
+    } else if (promo.discountType === "fixed_amount") {
+      discount = promo.discount;
+    } else if (promo.discountType === "free_shipping") {
+      discount = promo.discount;
+    }
+
+    res.status(200).json({
+      success: true,
+      valid: true,
+      message: "Promo code is valid",
+      data: {
+        promoName: promo.promoName,
+        discount,
+        discountType: promo.discountType,
+        discountPercentage: promo.discountPercentage,
+        maxDiscountValue: promo.maxDiscountValue,
+        minimumOrderValue: promo.minimumOrderValue,
+        finalAmount: orderAmount - discount,
+      },
+    });
+  }
+);
+
+// Get all active promos for checkout
+export const getActivePromos = asyncHandler(
+  async (req: Request, res: Response) => {
+    const promoService = new PromoService();
+    const promos = await promoService.getActivePromos();
+
+    const simplifiedPromos = promos.map((promo) => ({
+      promoName: promo.promoName,
+      discountPercentage: promo.discountPercentage,
+      discountType: promo.discountType,
+      discount: promo.discount,
+      maxDiscountValue: promo.maxDiscountValue,
+      minimumOrderValue: promo.minimumOrderValue,
+      validityPeriod: promo.validityPeriod,
+      totalUsageLimit: promo.totalUsageLimit,
+      usage: promo.usage,
+      totalUsage: promo.totalUsage,
+      availability: promo.availability,
+      status: promo.status,
+    }));
+
+    res.status(200).json({
+      success: true,
+      count: promos.length,
+      data: simplifiedPromos,
+    });
+  }
+);
+
+// Apply promo code to cart (pre-checkout)
+export const applyPromoToCart = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { promoCode } = req.body;
+    const userId = (req as AuthenticatedRequest).user._id;
+
+    if (!promoCode) {
+      throw new ApiError("Promo code is required", 400);
+    }
+
+    // Get cart to calculate order amount
+    const cart = await Cart.findOne({ user: userId }).populate("items.product");
+    if (!cart || cart.items.length === 0) {
+      throw new ApiError("Cart is empty", 400);
+    }
+
+    // Calculate cart total
+    let cartTotal = 0;
+    for (const item of cart.items) {
+      const product = await Product.findById(item.product);
+      if (product) {
+        cartTotal += item.quantity * item.price;
+      }
+    }
+
+    const promoService = new PromoService();
+
+    // Find promo by name
+    const promo = await promoService.getPromoByName(promoCode);
+
+    if (!promo) {
+      return res.status(200).json({
+        success: false,
+        valid: false,
+        message: "Invalid promo code",
+        discount: 0,
+      });
+    }
+
+    // Validate promo
+    const validation = await promoService.validatePromo(promoCode, cartTotal);
+
+    if (!validation.valid) {
+      return res.status(200).json({
+        success: false,
+        valid: false,
+        message: validation.message,
+        discount: 0,
+      });
+    }
+
+    // Calculate discount
+    let discount = 0;
+    if (promo.discountType === "percentage") {
+      discount = (cartTotal * promo.discountPercentage) / 100;
+      if (promo.maxDiscountValue && discount > promo.maxDiscountValue) {
+        discount = promo.maxDiscountValue;
+      }
+    } else if (promo.discountType === "fixed_amount") {
+      discount = promo.discount;
+    } else if (promo.discountType === "free_shipping") {
+      discount = promo.discount;
+    }
+
+    res.status(200).json({
+      success: true,
+      valid: true,
+      message: "Promo code applied to cart",
+      data: {
+        promoName: promo.promoName,
+        discount,
+        cartTotal,
+        finalAmount: cartTotal - discount,
+        discountType: promo.discountType,
+        discountPercentage: promo.discountPercentage,
+        maxDiscountValue: promo.maxDiscountValue,
+        minimumOrderValue: promo.minimumOrderValue,
+      },
     });
   }
 );

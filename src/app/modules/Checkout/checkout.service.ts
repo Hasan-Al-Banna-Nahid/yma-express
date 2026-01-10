@@ -1,4 +1,3 @@
-// src/services/checkout/checkout.service.ts
 import mongoose, { Types } from "mongoose";
 import Cart from "../../modules/Cart/cart.model";
 import Order from "../../modules/Order/order.model";
@@ -17,6 +16,7 @@ import {
   ORDER_STATUS,
   INVOICE_TYPES,
 } from "../../modules/Order/order.interface";
+import { PromoService } from "../../modules/promos/promos.service";
 
 export interface CreateOrderData {
   shippingAddress: {
@@ -51,6 +51,7 @@ export interface CreateOrderData {
   termsAccepted: boolean;
   invoiceType?: "regular" | "corporate";
   bankDetails?: string;
+  promoCode?: string;
 }
 
 export interface DateAvailabilityResponse {
@@ -120,31 +121,26 @@ export const checkDateAvailability = async (
   // Check if the dates overlap with existing orders for this product
   const overlappingOrders = await Order.find({
     "items.product": productId,
-    status: { $nin: ["cancelled", "refunded"] }, // Exclude cancelled/refunded orders
+    status: { $nin: ["cancelled", "refunded"] },
     $or: [
-      // Existing order's start date is within requested range
       {
         "items.startDate": { $lte: endDate },
         "items.endDate": { $gte: startDate },
       },
-      // Requested dates are within existing order's range
       {
         "items.startDate": { $gte: startDate, $lte: endDate },
       },
     ],
   });
 
-  // Count total quantity booked for this date range
   let totalBooked = 0;
   overlappingOrders.forEach((order) => {
     order.items.forEach((item: any) => {
       if (item.product.toString() === productId.toString()) {
-        // Check if dates overlap
         const existingStart = item.startDate ? new Date(item.startDate) : null;
         const existingEnd = item.endDate ? new Date(item.endDate) : null;
 
         if (existingStart && existingEnd) {
-          // Check for date overlap
           if (
             (startDate <= existingEnd && endDate >= existingStart) ||
             (existingStart <= endDate && existingEnd >= startDate)
@@ -186,7 +182,6 @@ export const getAvailableDates = async (
     };
   }
 
-  // Get all orders for this product in the date range
   const orders = await Order.find({
     "items.product": productId,
     status: { $nin: ["cancelled", "refunded"] },
@@ -194,10 +189,8 @@ export const getAvailableDates = async (
     "items.endDate": { $gte: startDate },
   });
 
-  // Create a map to track booked quantities per day
   const bookedQuantities = new Map<string, number>();
 
-  // Initialize all days in the range with 0 booked
   const currentDate = new Date(startDate);
   while (currentDate <= endDate) {
     const dateKey = currentDate.toISOString().split("T")[0];
@@ -205,7 +198,6 @@ export const getAvailableDates = async (
     currentDate.setDate(currentDate.getDate() + 1);
   }
 
-  // Calculate booked quantities for each day
   orders.forEach((order) => {
     order.items.forEach((item: any) => {
       if (
@@ -216,7 +208,6 @@ export const getAvailableDates = async (
         const itemStart = new Date(item.startDate);
         const itemEnd = new Date(item.endDate);
 
-        // Mark all days in this item's range as booked
         const checkDate = new Date(itemStart);
         while (checkDate <= itemEnd) {
           const dateKey = checkDate.toISOString().split("T")[0];
@@ -228,7 +219,6 @@ export const getAvailableDates = async (
     });
   });
 
-  // Generate available dates array
   const availableDates = [];
   const checkDate = new Date(startDate);
 
@@ -249,6 +239,48 @@ export const getAvailableDates = async (
   return {
     availableDates,
     productStock: product.stock,
+  };
+};
+
+// Function to apply promo code and calculate discount
+const applyPromoToOrder = async (
+  promoCode: string,
+  orderAmount: number,
+  userId: string
+): Promise<{ discount: number; promoId: string }> => {
+  const promoService = new PromoService();
+
+  // First, find the promo by name
+  const promo = await promoService.getPromoByName(promoCode);
+
+  if (!promo) {
+    throw new ApiError("Invalid promo code", 400);
+  }
+
+  // Validate promo
+  const validation = await promoService.validatePromo(promoCode, orderAmount);
+
+  if (!validation.valid) {
+    throw new ApiError(validation.message || "Promo code is not valid", 400);
+  }
+
+  // Apply promo and get discount
+  const applyResult = await promoService.applyPromo(
+    (promo._id as string).toString(),
+    orderAmount,
+    userId
+  );
+
+  if (!applyResult.success) {
+    throw new ApiError(
+      applyResult.message || "Failed to apply promo code",
+      400
+    );
+  }
+
+  return {
+    discount: applyResult.discount,
+    promoId: (promo._id as string).toString(),
   };
 };
 
@@ -307,7 +339,7 @@ export const createOrderFromCart = async (
       throw new ApiError("You must accept the terms and conditions", 400);
     }
 
-    // Check stock availability before proceeding
+    // Check stock availability
     const stockCheck = await checkCartStock(userId);
     if (!stockCheck.available) {
       throw new ApiError(`Stock issues: ${stockCheck.issues.join(", ")}`, 400);
@@ -341,7 +373,6 @@ export const createOrderFromCart = async (
         throw new ApiError(`Product not found: ${item.product}`, 404);
       }
 
-      // Double-check stock (in case it changed since initial check)
       if (product.stock < item.quantity) {
         throw new ApiError(
           `Insufficient stock for ${product.name}. Available: ${product.stock}, Requested: ${item.quantity}`,
@@ -353,7 +384,7 @@ export const createOrderFromCart = async (
       product.stock -= item.quantity;
       await product.save({ session });
 
-      // Add to order items - matching the orderItemSchema structure
+      // Add to order items
       orderItems.push({
         product: product._id,
         quantity: item.quantity,
@@ -397,28 +428,51 @@ export const createOrderFromCart = async (
       overnightFee = 30; // £30 for overnight keeping
     }
 
-    // Calculate total amount
-    const totalAmount = subtotalAmount + deliveryFee + overnightFee;
+    // Calculate initial total (before discount)
+    const initialTotal = subtotalAmount + deliveryFee + overnightFee;
+    let discountAmount = 0;
+    let promoCode = "";
+    let promoDiscount = 0;
 
-    // Map payment method to match PAYMENT_METHODS enum
+    // Apply promo code if provided
+    if (data.promoCode) {
+      try {
+        const promoResult = await applyPromoToOrder(
+          data.promoCode,
+          initialTotal,
+          userId.toString()
+        );
+        discountAmount = promoResult.discount;
+        promoCode = data.promoCode;
+        promoDiscount = promoResult.discount;
+      } catch (promoError: any) {
+        throw new ApiError(promoError.message, 400);
+      }
+    }
+
+    // Calculate final total with discount
+    const totalAmount = initialTotal - discountAmount;
+
+    // Map payment method
     const paymentMethod =
       data.paymentMethod === "online"
         ? PAYMENT_METHODS.CREDIT_CARD
         : PAYMENT_METHODS.CASH_ON_DELIVERY;
 
-    // Map invoice type to match INVOICE_TYPES enum
+    // Map invoice type
     const invoiceType =
       data.invoiceType === "corporate"
         ? INVOICE_TYPES.CORPORATE
         : INVOICE_TYPES.REGULAR;
 
-    // Prepare order data matching the Order schema
+    // Prepare order data
     const orderData = {
       user: userId,
       items: orderItems,
       subtotalAmount,
       deliveryFee,
       overnightFee,
+      discountAmount,
       totalAmount,
       paymentMethod,
       status: ORDER_STATUS.PENDING,
@@ -454,10 +508,12 @@ export const createOrderFromCart = async (
       termsAccepted: data.termsAccepted,
       invoiceType,
       bankDetails: data.bankDetails || "",
-      estimatedDeliveryDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days from now
+      promoCode: promoCode || undefined,
+      promoDiscount,
+      estimatedDeliveryDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     };
 
-    // Create order using the Order model
+    // Create order
     const createdOrder = new Order(orderData);
     await createdOrder.save({ session });
 
@@ -472,14 +528,13 @@ export const createOrderFromCart = async (
       `✅ Order created successfully: ${createdOrder._id}, Order Number: ${createdOrder.orderNumber}`
     );
 
-    // Send emails (outside transaction)
+    // Send emails
     try {
       await sendOrderReceivedEmail(createdOrder);
       await sendOrderNotificationToAdmin(createdOrder);
       console.log(`📧 Emails sent for order: ${createdOrder.orderNumber}`);
     } catch (emailError) {
       console.error("⚠️ Email sending failed:", emailError);
-      // Don't throw - order was already created successfully
     }
 
     return createdOrder;
