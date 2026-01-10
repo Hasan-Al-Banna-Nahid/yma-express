@@ -8,10 +8,7 @@ import ApiError from "../../utils/apiError";
 import User from "./user.model";
 import { IUser } from "./user.interface";
 import { uploadToCloudinary } from "../../utils/cloudinary.util";
-import {
-  sendPasswordResetEmail,
-  sendResetSuccessEmail,
-} from "../Email/email.service";
+import { sendPasswordResetEmail, sendResetSuccessEmail } from "./email.service";
 import {
   sendWelcomeVerificationEmail,
   sendVerificationSuccessEmail,

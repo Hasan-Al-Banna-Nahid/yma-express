@@ -1,7 +1,7 @@
 // src/controllers/admin/order.controller.ts
 import { Request, Response } from "express";
 import asyncHandler from "../../utils/asyncHandler";
-import * as orderService from "../UserOrder/order.service";
+import * as orderService from "../Order/order.service";
 import ApiError from "../../utils/apiError";
 import { sendDeliveryReminderEmail } from "../Email/email.service";
 

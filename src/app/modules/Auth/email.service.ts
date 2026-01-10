@@ -718,3 +718,847 @@ export const sendVerificationSuccessEmail = async (
     console.error(`Failed to send verification success email:`, error);
   }
 };
+export const sendPasswordResetEmail = async (
+  email: string,
+  name: string,
+  resetLink: string
+): Promise<void> => {
+  const logoUrl =
+    "https://res.cloudinary.com/dj785gqtu/image/upload/v1767711924/logo2_xos8xa.png";
+  const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+  const supportEmail =
+    process.env.SUPPORT_EMAIL || "support@ymabouncycastle.com";
+
+  const html = `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Reset Your Password - YMA Bouncy Castle</title>
+      <style>
+        * {
+          margin: 0;
+          padding: 0;
+          box-sizing: border-box;
+          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+          background-color: #f7f9fc;
+          color: #333;
+          line-height: 1.6;
+        }
+        
+        .email-container {
+          max-width: 600px;
+          margin: 0 auto;
+          background: #ffffff;
+          border-radius: 16px;
+          overflow: hidden;
+          box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+        }
+        
+        .header {
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          padding: 40px 30px;
+          text-align: center;
+          color: white;
+        }
+        
+        .logo {
+          max-width: 180px;
+          height: auto;
+          margin-bottom: 20px;
+        }
+        
+        .header h1 {
+          font-size: 28px;
+          font-weight: 700;
+          margin-bottom: 10px;
+          letter-spacing: -0.5px;
+        }
+        
+        .header p {
+          font-size: 16px;
+          opacity: 0.9;
+          max-width: 500px;
+          margin: 0 auto;
+        }
+        
+        .content {
+          padding: 40px 30px;
+        }
+        
+        .greeting-section {
+          text-align: center;
+          margin-bottom: 30px;
+        }
+        
+        .greeting-section h2 {
+          color: #2d3748;
+          font-size: 24px;
+          margin-bottom: 15px;
+          font-weight: 600;
+        }
+        
+        .greeting-section p {
+          color: #4a5568;
+          font-size: 16px;
+          margin-bottom: 10px;
+        }
+        
+        .reset-card {
+          background: #f8fafc;
+          border-radius: 12px;
+          padding: 30px;
+          margin: 25px 0;
+          border-left: 4px solid #667eea;
+          text-align: center;
+        }
+        
+        .reset-card h3 {
+          color: #2d3748;
+          margin-bottom: 20px;
+          font-size: 20px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
+        }
+        
+        .reset-card h3 i {
+          color: #667eea;
+        }
+        
+        .reset-link-box {
+          background: #ebf4ff;
+          border: 2px dashed #667eea;
+          border-radius: 8px;
+          padding: 25px;
+          margin: 25px 0;
+          word-break: break-all;
+        }
+        
+        .reset-link-box a {
+          color: #667eea;
+          text-decoration: none;
+          font-size: 16px;
+          font-weight: 500;
+        }
+        
+        .reset-link-box a:hover {
+          text-decoration: underline;
+        }
+        
+        .cta-button {
+          display: inline-block;
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          color: white;
+          text-decoration: none;
+          padding: 18px 40px;
+          border-radius: 10px;
+          text-align: center;
+          font-size: 18px;
+          font-weight: 600;
+          margin: 20px 0;
+          transition: all 0.3s ease;
+          box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+        
+        .cta-button:hover {
+          background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%);
+          transform: translateY(-2px);
+          box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        .security-note {
+          background: #fff5f5;
+          border-radius: 8px;
+          padding: 20px;
+          margin: 25px 0;
+          border-left: 4px solid #fc8181;
+        }
+        
+        .security-note h4 {
+          color: #c53030;
+          margin-bottom: 10px;
+          font-size: 16px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        
+        .security-note ul {
+          margin-left: 20px;
+          margin-top: 10px;
+        }
+        
+        .security-note li {
+          margin-bottom: 8px;
+          color: #4a5568;
+        }
+        
+        .link-expiry {
+          background: #fffaf0;
+          border: 1px solid #fbd38d;
+          border-radius: 8px;
+          padding: 15px;
+          margin: 20px 0;
+          font-size: 14px;
+          color: #975a16;
+          text-align: center;
+        }
+        
+        .link-expiry i {
+          margin-right: 8px;
+        }
+        
+        .didnt-request {
+          background: #f0fff4;
+          border: 1px solid #9ae6b4;
+          border-radius: 8px;
+          padding: 15px;
+          margin: 20px 0;
+          font-size: 14px;
+          color: #276749;
+          text-align: center;
+        }
+        
+        .footer {
+          background: #2d3748;
+          color: #cbd5e0;
+          padding: 30px;
+          text-align: center;
+          border-radius: 0 0 16px 16px;
+        }
+        
+        .footer-links {
+          margin: 20px 0;
+        }
+        
+        .footer-links a {
+          color: #90cdf4;
+          text-decoration: none;
+          margin: 0 10px;
+          font-size: 14px;
+        }
+        
+        .footer-links a:hover {
+          text-decoration: underline;
+        }
+        
+        .footer p {
+          font-size: 14px;
+          margin-top: 20px;
+          opacity: 0.8;
+        }
+        
+        .social-icons {
+          margin: 20px 0;
+        }
+        
+        .social-icons a {
+          display: inline-block;
+          margin: 0 10px;
+          color: #cbd5e0;
+          font-size: 18px;
+          transition: color 0.3s ease;
+        }
+        
+        .social-icons a:hover {
+          color: #667eea;
+        }
+        
+        @media (max-width: 600px) {
+          .content {
+            padding: 25px 20px;
+          }
+          
+          .header {
+            padding: 30px 20px;
+          }
+          
+          .header h1 {
+            font-size: 24px;
+          }
+          
+          .greeting-section h2 {
+            font-size: 20px;
+          }
+          
+          .reset-card {
+            padding: 20px;
+          }
+          
+          .cta-button {
+            padding: 16px 30px;
+            font-size: 16px;
+            width: 100%;
+          }
+          
+          .reset-link-box {
+            padding: 15px;
+            font-size: 14px;
+          }
+        }
+      </style>
+      <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    </head>
+    <body>
+      <div class="email-container">
+        <!-- Header -->
+        <div class="header">
+          <img src="${logoUrl}" alt="YMA Bouncy Castle" class="logo">
+          <h1>Password Reset Request</h1>
+          <p>Secure your YMA Bouncy Castle account</p>
+        </div>
+        
+        <!-- Content -->
+        <div class="content">
+          <div class="greeting-section">
+            <h2>Hello ${name},</h2>
+            <p>We received a request to reset your password for your YMA Bouncy Castle account.</p>
+            <p>Click the button below to create a new secure password.</p>
+          </div>
+          
+          <div class="reset-card">
+            <h3><i class="fas fa-key"></i> Reset Your Password</h3>
+            <p>This link will take you to a secure page where you can set a new password for your account.</p>
+            
+            <a href="${resetLink}" class="cta-button">
+              <i class="fas fa-redo-alt"></i> Reset Password
+            </a>
+            
+            <p style="margin: 15px 0; color: #718096;">Or copy and paste this link in your browser:</p>
+            
+            <div class="reset-link-box">
+              <a href="${resetLink}">${resetLink}</a>
+            </div>
+          </div>
+          
+          <div class="link-expiry">
+            <i class="fas fa-clock"></i>
+            <strong>Important:</strong> This password reset link expires in 1 hour for security reasons.
+          </div>
+          
+          <div class="security-note">
+            <h4><i class="fas fa-shield-alt"></i> Security Notice</h4>
+            <p>To keep your account secure:</p>
+            <ul>
+              <li>Never share your password with anyone</li>
+              <li>Use a strong password with letters, numbers, and symbols</li>
+              <li>Don't use the same password across multiple sites</li>
+              <li>Our team will never ask for your password</li>
+            </ul>
+          </div>
+          
+          <div class="didnt-request">
+            <i class="fas fa-question-circle"></i>
+            <strong>Didn't request this?</strong> If you didn't ask to reset your password, you can safely ignore this email. Your account remains secure.
+          </div>
+          
+          <p style="text-align: center; color: #718096; margin-top: 30px;">
+            If you continue to have issues, please contact our support team.
+          </p>
+        </div>
+        
+        <!-- Footer -->
+        <div class="footer">
+          <div class="social-icons">
+            <a href="#"><i class="fab fa-facebook"></i></a>
+            <a href="#"><i class="fab fa-twitter"></i></a>
+            <a href="#"><i class="fab fa-instagram"></i></a>
+            <a href="#"><i class="fab fa-linkedin"></i></a>
+          </div>
+          
+          <div class="footer-links">
+            <a href="${frontendUrl}/contact">Contact Us</a>
+            <a href="${frontendUrl}/privacy">Privacy Policy</a>
+            <a href="${frontendUrl}/terms">Terms of Service</a>
+            <a href="${frontendUrl}/help">Help Center</a>
+          </div>
+          
+          <p>
+            YMA Bouncy Castle &copy; ${new Date().getFullYear()}<br>
+            Premium Party Equipment Rental Services<br>
+            <small>Email: ${supportEmail}</small>
+          </p>
+          
+          <p style="font-size: 12px; opacity: 0.6; margin-top: 20px;">
+            This email was sent to ${email}. Please do not reply to this automated message.
+          </p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  const mailOptions = {
+    from: `"YMA Bouncy Castle" <${
+      process.env.EMAIL_FROM || process.env.EMAIL_USER
+    }>`,
+    to: email,
+    subject: "Reset Your Password - YMA Bouncy Castle",
+    html: html,
+    text: `
+Password Reset Request - YMA Bouncy Castle
+
+Hello ${name},
+
+We received a request to reset your password for your YMA Bouncy Castle account.
+
+To reset your password, click the link below:
+${resetLink}
+
+This link expires in 1 hour.
+
+If you didn't request a password reset, you can safely ignore this email.
+Your account remains secure.
+
+Need help? Contact our support team: ${supportEmail}
+
+Best regards,
+YMA Bouncy Castle Team
+    `,
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    console.log(`Password reset email sent to: ${email}`);
+  } catch (error: any) {
+    console.error(`Failed to send password reset email to ${email}:`, error);
+    throw new Error(`Email sending failed: ${error.message}`);
+  }
+};
+
+export const sendResetSuccessEmail = async (
+  email: string,
+  name: string
+): Promise<void> => {
+  const logoUrl =
+    "https://res.cloudinary.com/dj785gqtu/image/upload/v1767711924/logo2_xos8xa.png";
+  const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+  const loginUrl = `${frontendUrl}/login`;
+  const supportEmail =
+    process.env.SUPPORT_EMAIL || "support@ymabouncycastle.com";
+
+  const html = `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Password Reset Successful - YMA Bouncy Castle</title>
+      <style>
+        * {
+          margin: 0;
+          padding: 0;
+          box-sizing: border-box;
+          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+          background-color: #f7f9fc;
+          color: #333;
+          line-height: 1.6;
+        }
+        
+        .email-container {
+          max-width: 600px;
+          margin: 0 auto;
+          background: #ffffff;
+          border-radius: 16px;
+          overflow: hidden;
+          box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+        }
+        
+        .header {
+          background: linear-gradient(135deg, #38a169 0%, #2f855a 100%);
+          padding: 40px 30px;
+          text-align: center;
+          color: white;
+        }
+        
+        .logo {
+          max-width: 180px;
+          height: auto;
+          margin-bottom: 20px;
+        }
+        
+        .success-icon {
+          font-size: 60px;
+          margin-bottom: 20px;
+        }
+        
+        .header h1 {
+          font-size: 28px;
+          font-weight: 700;
+          margin-bottom: 10px;
+          letter-spacing: -0.5px;
+        }
+        
+        .header p {
+          font-size: 16px;
+          opacity: 0.9;
+          max-width: 500px;
+          margin: 0 auto;
+        }
+        
+        .content {
+          padding: 40px 30px;
+        }
+        
+        .success-section {
+          text-align: center;
+          margin-bottom: 40px;
+        }
+        
+        .success-section h2 {
+          color: #2d3748;
+          font-size: 24px;
+          margin-bottom: 15px;
+          font-weight: 600;
+        }
+        
+        .success-section p {
+          color: #4a5568;
+          font-size: 16px;
+          margin-bottom: 10px;
+        }
+        
+        .success-card {
+          background: linear-gradient(135deg, #f0fff4 0%, #e6fffa 100%);
+          border-radius: 12px;
+          padding: 30px;
+          margin: 25px 0;
+          border: 2px solid #9ae6b4;
+          text-align: center;
+        }
+        
+        .success-card h3 {
+          color: #276749;
+          margin-bottom: 15px;
+          font-size: 20px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
+        }
+        
+        .confirmation-icon {
+          font-size: 48px;
+          color: #38a169;
+          margin-bottom: 20px;
+        }
+        
+        .cta-button {
+          display: inline-block;
+          background: linear-gradient(135deg, #38a169 0%, #2f855a 100%);
+          color: white;
+          text-decoration: none;
+          padding: 18px 40px;
+          border-radius: 10px;
+          text-align: center;
+          font-size: 18px;
+          font-weight: 600;
+          margin: 20px 0;
+          transition: all 0.3s ease;
+          box-shadow: 0 4px 15px rgba(56, 161, 105, 0.3);
+        }
+        
+        .cta-button:hover {
+          background: linear-gradient(135deg, #2f855a 0%, #276749 100%);
+          transform: translateY(-2px);
+          box-shadow: 0 6px 20px rgba(56, 161, 105, 0.4);
+        }
+        
+        .account-info {
+          background: #f8fafc;
+          border-radius: 12px;
+          padding: 25px;
+          margin: 25px 0;
+          text-align: left;
+        }
+        
+        .account-info h4 {
+          color: #2d3748;
+          margin-bottom: 15px;
+          font-size: 18px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+        
+        .account-info ul {
+          list-style: none;
+          margin-left: 10px;
+        }
+        
+        .account-info li {
+          margin-bottom: 12px;
+          padding-left: 30px;
+          position: relative;
+          color: #4a5568;
+        }
+        
+        .account-info li:before {
+          content: "✓";
+          position: absolute;
+          left: 0;
+          color: #38a169;
+          font-weight: bold;
+          font-size: 18px;
+        }
+        
+        .security-tips {
+          background: #fff5f5;
+          border-radius: 12px;
+          padding: 25px;
+          margin: 25px 0;
+          border-left: 4px solid #fc8181;
+        }
+        
+        .security-tips h4 {
+          color: #c53030;
+          margin-bottom: 15px;
+          font-size: 18px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+        
+        .security-tips ul {
+          margin-left: 20px;
+          margin-top: 10px;
+        }
+        
+        .security-tips li {
+          margin-bottom: 8px;
+          color: #4a5568;
+        }
+        
+        .suspicious-activity {
+          background: #fffaf0;
+          border: 1px solid #fbd38d;
+          border-radius: 8px;
+          padding: 20px;
+          margin: 20px 0;
+          text-align: center;
+        }
+        
+        .suspicious-activity h5 {
+          color: #975a16;
+          margin-bottom: 10px;
+          font-size: 16px;
+        }
+        
+        .footer {
+          background: #2d3748;
+          color: #cbd5e0;
+          padding: 30px;
+          text-align: center;
+          border-radius: 0 0 16px 16px;
+        }
+        
+        .footer-links {
+          margin: 20px 0;
+        }
+        
+        .footer-links a {
+          color: #90cdf4;
+          text-decoration: none;
+          margin: 0 10px;
+          font-size: 14px;
+        }
+        
+        .footer-links a:hover {
+          text-decoration: underline;
+        }
+        
+        .footer p {
+          font-size: 14px;
+          margin-top: 20px;
+          opacity: 0.8;
+        }
+        
+        .social-icons {
+          margin: 20px 0;
+        }
+        
+        .social-icons a {
+          display: inline-block;
+          margin: 0 10px;
+          color: #cbd5e0;
+          font-size: 18px;
+          transition: color 0.3s ease;
+        }
+        
+        .social-icons a:hover {
+          color: #38a169;
+        }
+        
+        @media (max-width: 600px) {
+          .content {
+            padding: 25px 20px;
+          }
+          
+          .header {
+            padding: 30px 20px;
+          }
+          
+          .header h1 {
+            font-size: 24px;
+          }
+          
+          .success-section h2 {
+            font-size: 20px;
+          }
+          
+          .success-card {
+            padding: 20px;
+          }
+          
+          .cta-button {
+            padding: 16px 30px;
+            font-size: 16px;
+            width: 100%;
+          }
+          
+          .account-info, .security-tips {
+            padding: 20px;
+          }
+        }
+      </style>
+      <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    </head>
+    <body>
+      <div class="email-container">
+        <!-- Header -->
+        <div class="header">
+          <img src="${logoUrl}" alt="YMA Bouncy Castle" class="logo">
+          <div class="success-icon">✅</div>
+          <h1>Password Reset Successful!</h1>
+          <p>Your account security has been updated</p>
+        </div>
+        
+        <!-- Content -->
+        <div class="content">
+          <div class="success-section">
+            <h2>Great news, ${name}!</h2>
+            <p>Your YMA Bouncy Castle account password has been successfully reset.</p>
+          </div>
+          
+          <div class="success-card">
+            <div class="confirmation-icon">
+              <i class="fas fa-check-circle"></i>
+            </div>
+            <h3><i class="fas fa-shield-alt"></i> Password Updated Successfully</h3>
+            <p>You can now log in to your account using your new password.</p>
+            
+            <a href="${loginUrl}" class="cta-button">
+              <i class="fas fa-sign-in-alt"></i> Login to Your Account
+            </a>
+          </div>
+          
+          <div class="account-info">
+            <h4><i class="fas fa-user-circle"></i> Your Account Status</h4>
+            <ul>
+              <li>Your password has been successfully changed</li>
+              <li>Your account is secure and active</li>
+              <li>All your booking history is preserved</li>
+              <li>You can now access all features with your new password</li>
+            </ul>
+          </div>
+          
+          <div class="security-tips">
+            <h4><i class="fas fa-exclamation-triangle"></i> Security Recommendations</h4>
+            <p>To keep your account secure:</p>
+            <ul>
+              <li>Use a unique password that you don't use elsewhere</li>
+              <li>Enable two-factor authentication if available</li>
+              <li>Regularly update your password (every 3-6 months)</li>
+              <li>Log out from shared or public computers</li>
+              <li>Monitor your account for any unusual activity</li>
+            </ul>
+          </div>
+          
+          <div class="suspicious-activity">
+            <h5><i class="fas fa-question-circle"></i> Didn't reset your password?</h5>
+            <p>If you didn't reset your password, please contact our support team immediately at <strong>${supportEmail}</strong> so we can secure your account.</p>
+          </div>
+          
+          <p style="text-align: center; color: #718096; margin-top: 30px;">
+            If you need any assistance, our support team is always here to help.
+          </p>
+        </div>
+        
+        <!-- Footer -->
+        <div class="footer">
+          <div class="social-icons">
+            <a href="#"><i class="fab fa-facebook"></i></a>
+            <a href="#"><i class="fab fa-twitter"></i></a>
+            <a href="#"><i class="fab fa-instagram"></i></a>
+            <a href="#"><i class="fab fa-linkedin"></i></a>
+          </div>
+          
+          <div class="footer-links">
+            <a href="${frontendUrl}/contact">Contact Us</a>
+            <a href="${frontendUrl}/privacy">Privacy Policy</a>
+            <a href="${frontendUrl}/terms">Terms of Service</a>
+            <a href="${frontendUrl}/help">Help Center</a>
+          </div>
+          
+          <p>
+            YMA Bouncy Castle &copy; ${new Date().getFullYear()}<br>
+            Premium Party Equipment Rental Services<br>
+            <small>Email: ${supportEmail}</small>
+          </p>
+          
+          <p style="font-size: 12px; opacity: 0.6; margin-top: 20px;">
+            This password reset confirmation was sent to ${email}
+          </p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  const mailOptions = {
+    from: `"YMA Bouncy Castle" <${
+      process.env.EMAIL_FROM || process.env.EMAIL_USER
+    }>`,
+    to: email,
+    subject: "Password Reset Successful - YMA Bouncy Castle",
+    html: html,
+    text: `
+Password Reset Successful - YMA Bouncy Castle
+
+Hello ${name},
+
+Your password has been successfully reset for your YMA Bouncy Castle account.
+
+You can now log in to your account using your new password.
+
+Login: ${loginUrl}
+
+If you did not reset your password, please contact our support team immediately at ${supportEmail}.
+
+Security Tips:
+- Use a unique password for each online account
+- Regularly update your passwords
+- Never share your password with anyone
+- Log out from shared devices
+
+Best regards,
+YMA Bouncy Castle Team
+    `,
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    console.log(`Password reset success email sent to: ${email}`);
+  } catch (error: any) {
+    console.error(`Failed to send reset success email to ${email}:`, error);
+  }
+};

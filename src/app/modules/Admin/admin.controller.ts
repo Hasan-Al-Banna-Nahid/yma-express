@@ -5,7 +5,7 @@ import ApiError from "../../utils/apiError";
 import { ApiResponse } from "../../utils/apiResponse";
 import User from "../Auth/user.model";
 import { uploadToCloudinary } from "../../utils/cloudinary.util";
-import Order from "../../modules/UserOrder/order.model"; // Import your Order model
+import Order from "../Order/order.model"; // Import your Order model
 
 type AuthenticatedRequest = Request & { user: any };
 
