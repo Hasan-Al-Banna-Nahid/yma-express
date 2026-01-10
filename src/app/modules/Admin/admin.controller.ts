@@ -5,11 +5,197 @@ import ApiError from "../../utils/apiError";
 import { ApiResponse } from "../../utils/apiResponse";
 import User from "../Auth/user.model";
 import { uploadToCloudinary } from "../../utils/cloudinary.util";
+import Order from "../../modules/UserOrder/order.model"; // Import your Order model
 
 type AuthenticatedRequest = Request & { user: any };
 
 // ==================== ADMIN USER MANAGEMENT ====================
+// ==================== ORDER STATISTICS ====================
 
+export const getOrderStatistics = asyncHandler(
+  async (req: Request, res: Response) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    // Execute all queries in parallel
+    const [
+      totalPendingOrders,
+      todayRevenueResult,
+      totalDeliveriesResult,
+      highestDemandProducts,
+    ] = await Promise.all([
+      // 1. Total pending orders
+      Order.countDocuments({
+        status: { $in: ["pending", "processing", "confirmed"] },
+      }),
+
+      // 2. Revenue generated today
+      Order.aggregate([
+        {
+          $match: {
+            status: "delivered",
+            updatedAt: { $gte: today, $lt: tomorrow },
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            totalRevenue: { $sum: "$totalAmount" },
+            totalOrders: { $sum: 1 },
+          },
+        },
+      ]),
+
+      // 3. Total deliveries (completed orders)
+      Order.countDocuments({ status: "delivered" }),
+
+      // 4. Highest demand products (top 5)
+      Order.aggregate([
+        { $match: { status: { $ne: "cancelled" } } },
+        { $unwind: "$items" },
+        {
+          $group: {
+            _id: "$items.productId",
+            productName: { $first: "$items.name" },
+            totalQuantity: { $sum: "$items.quantity" },
+            totalOrders: { $sum: 1 },
+          },
+        },
+        { $sort: { totalQuantity: -1 } },
+        { $limit: 5 },
+      ]),
+    ]);
+
+    // Process results
+    const todayRevenue = todayRevenueResult[0] || {
+      totalRevenue: 0,
+      totalOrders: 0,
+    };
+    const totalDeliveries = totalDeliveriesResult || 0;
+
+    ApiResponse(res, 200, "Order statistics retrieved", {
+      statistics: {
+        totalPendingOrders,
+        todayRevenue: {
+          amount: todayRevenue.totalRevenue,
+          currency: "POUNDS",
+          orders: todayRevenue.totalOrders,
+        },
+        totalDeliveries,
+        highestDemandProducts: highestDemandProducts.map((product) => ({
+          productId: product._id,
+          productName: product.productName,
+          totalQuantity: product.totalQuantity,
+          totalOrders: product.totalOrders,
+        })),
+      },
+      timestamp: new Date(),
+    });
+  }
+);
+
+// ==================== DASHBOARD SUMMARY ====================
+export const getDashboardSummary = asyncHandler(
+  async (req: Request, res: Response) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    const [todayStats, yesterdayStats, pendingOrders, recentOrders] =
+      await Promise.all([
+        // Today's revenue and orders
+        Order.aggregate([
+          {
+            $match: {
+              status: "delivered",
+              updatedAt: { $gte: today },
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              revenue: { $sum: "$totalAmount" },
+              orders: { $sum: 1 },
+            },
+          },
+        ]),
+
+        // Yesterday's revenue and orders (for comparison)
+        Order.aggregate([
+          {
+            $match: {
+              status: "delivered",
+              updatedAt: { $gte: yesterday, $lt: today },
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              revenue: { $sum: "$totalAmount" },
+              orders: { $sum: 1 },
+            },
+          },
+        ]),
+
+        // Pending orders with count
+        Order.countDocuments({
+          status: { $in: ["pending", "processing"] },
+        }),
+
+        // Recent orders (last 5)
+        Order.find()
+          .select("orderNumber status totalAmount createdAt")
+          .sort({ createdAt: -1 })
+          .limit(5)
+          .lean(),
+      ]);
+
+    const todayData = todayStats[0] || { revenue: 0, orders: 0 };
+    const yesterdayData = yesterdayStats[0] || { revenue: 0, orders: 0 };
+
+    // Calculate percentage change
+    const revenueChange =
+      yesterdayData.revenue === 0
+        ? 100
+        : ((todayData.revenue - yesterdayData.revenue) /
+            yesterdayData.revenue) *
+          100;
+
+    const ordersChange =
+      yesterdayData.orders === 0
+        ? 100
+        : ((todayData.orders - yesterdayData.orders) / yesterdayData.orders) *
+          100;
+
+    ApiResponse(res, 200, "Dashboard summary retrieved", {
+      summary: {
+        revenue: {
+          today: todayData.revenue,
+          yesterday: yesterdayData.revenue,
+          change: parseFloat(revenueChange.toFixed(2)),
+        },
+        orders: {
+          today: todayData.orders,
+          yesterday: yesterdayData.orders,
+          change: parseFloat(ordersChange.toFixed(2)),
+        },
+        pendingOrders,
+        recentOrders: recentOrders.map((order) => ({
+          id: order._id,
+          orderNumber: order.orderNumber,
+          status: order.status,
+          totalAmount: order.totalAmount,
+          createdAt: order.createdAt,
+        })),
+      },
+    });
+  }
+);
 // Get all users with pagination
 export const getAllUsers = asyncHandler(async (req: Request, res: Response) => {
   const { page = 1, limit = 10, role, search } = req.query;

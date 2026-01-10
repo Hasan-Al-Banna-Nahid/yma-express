@@ -28,5 +28,7 @@ router.get("/stats/roles", adminController.getRoleStats);
 // ==================== STATISTICS ====================
 router.get("/stats", adminController.getSystemStats);
 router.get("/stats/activity", adminController.getUserActivity);
-
+// ==================== ORDER STATISTICS ====================
+router.get("/stats/orders", adminController.getOrderStatistics);
+router.get("/dashboard/summary", adminController.getDashboardSummary);
 export default router;

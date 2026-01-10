@@ -8,6 +8,7 @@ export interface IOrderItem {
   name: string;
   startDate?: Date;
   endDate?: Date;
+  customerName?: string;
 }
 
 export interface IShippingAddress {
@@ -64,5 +65,8 @@ export type OrderStatus =
   | "shipped"
   | "delivered"
   | "cancelled";
-export type PaymentMethod = "cash_on_delivery" | "bank_transfer" | "credit_card"; // Updated enum
+export type PaymentMethod =
+  | "cash_on_delivery"
+  | "bank_transfer"
+  | "credit_card"; // Updated enum
 export type InvoiceType = "regular" | "corporate";
