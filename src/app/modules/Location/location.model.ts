@@ -1,9 +1,91 @@
-import mongoose, { Document, Schema } from "mongoose";
-import { ILocation } from "./location.interface";
+import mongoose, { Schema } from "mongoose";
+import {
+  ILocation,
+  IDeliveryArea,
+  IDeliveryOptions,
+} from "./location.interface";
 
-export interface ILocationModel extends ILocation, Document {}
+// Sub-schema for delivery areas
+const DeliveryAreaSchema = new Schema<IDeliveryArea>(
+  {
+    name: {
+      type: String,
+      required: [true, "Delivery area name is required"],
+      trim: true,
+      maxlength: [100, "Area name cannot exceed 100 characters"],
+    },
+    postcode: {
+      type: String,
+      required: [true, "Postcode is required"],
+      trim: true,
+      uppercase: true,
+    },
+    deliveryFee: {
+      type: Number,
+      required: [true, "Delivery fee is required"],
+      min: [0, "Delivery fee cannot be negative"],
+      default: 0,
+    },
+    isFree: {
+      type: Boolean,
+      default: false,
+    },
+    minOrder: {
+      type: Number,
+      required: [true, "Minimum order is required"],
+      min: [0, "Minimum order cannot be negative"],
+      default: 0,
+    },
+    estimatedTime: {
+      type: Number,
+      required: [true, "Estimated delivery time is required"],
+      min: [0, "Estimated time cannot be negative"],
+      default: 60,
+    },
+    isActive: {
+      type: Boolean,
+      default: true,
+    },
+  },
+  { _id: true, timestamps: false }
+);
 
-const locationSchema: Schema = new Schema(
+// Sub-schema for delivery options
+const DeliveryOptionsSchema = new Schema<IDeliveryOptions>(
+  {
+    isAvailable: {
+      type: Boolean,
+      default: true,
+    },
+    isFree: {
+      type: Boolean,
+      default: false,
+    },
+    fee: {
+      type: Number,
+      min: [0, "Fee cannot be negative"],
+      default: 0,
+    },
+    minOrder: {
+      type: Number,
+      min: [0, "Minimum order cannot be negative"],
+      default: 0,
+    },
+    estimatedTime: {
+      type: Number,
+      min: [0, "Estimated time cannot be negative"],
+      default: 60,
+    },
+    radius: {
+      type: Number,
+      min: [0, "Radius cannot be negative"],
+      default: 5000,
+    },
+  },
+  { _id: false, timestamps: false }
+);
+
+const LocationSchema = new Schema<ILocation>(
   {
     name: {
       type: String,
@@ -14,7 +96,10 @@ const locationSchema: Schema = new Schema(
     type: {
       type: String,
       required: [true, "Location type is required"],
-      enum: ["country", "region", "city", "area", "postcode"],
+      enum: {
+        values: ["country", "state", "city", "area", "postcode"],
+        message: "Type must be one of: country, state, city, area, postcode",
+      },
       index: true,
     },
     parent: {
@@ -23,46 +108,42 @@ const locationSchema: Schema = new Schema(
       default: null,
       index: true,
     },
-
-    // Optional location fields
-    country: { type: String, trim: true },
-    state: { type: String, trim: true },
-    city: { type: String, trim: true },
-    area: { type: String, trim: true },
-    postcode: { type: String, trim: true, uppercase: true },
-
-    // Delivery options
-    deliveryOptions: {
-      isAvailable: {
-        type: Boolean,
-        default: true,
-      },
-      isFree: {
-        type: Boolean,
-        default: false,
-      },
-      fee: {
-        type: Number,
-        min: 0,
-        default: 0,
-      },
-      minOrder: {
-        type: Number,
-        min: 0,
-        default: 0,
-      },
-      radius: {
-        type: Number,
-        min: 0,
-        default: 5000, // 5km default
-      },
-      estimatedTime: {
-        type: Number,
-        min: 0,
-        default: 60, // 60 minutes default
-      },
+    country: {
+      type: String,
+      trim: true,
     },
-
+    state: {
+      type: String,
+      trim: true,
+    },
+    city: {
+      type: String,
+      trim: true,
+    },
+    area: {
+      type: String,
+      trim: true,
+    },
+    postcode: {
+      type: String,
+      trim: true,
+      uppercase: true,
+    },
+    deliveryAreas: {
+      type: [DeliveryAreaSchema],
+      default: [],
+    },
+    deliveryOptions: {
+      type: DeliveryOptionsSchema,
+      default: () => ({
+        isAvailable: true,
+        isFree: false,
+        fee: 0,
+        minOrder: 0,
+        estimatedTime: 60,
+        radius: 5000,
+      }),
+    },
     description: {
       type: String,
       trim: true,
@@ -86,34 +167,38 @@ const locationSchema: Schema = new Schema(
 );
 
 // Indexes
-locationSchema.index({ type: 1, isActive: 1 });
-locationSchema.index({ postcode: 1 });
-locationSchema.index({ "deliveryOptions.isAvailable": 1 });
-locationSchema.index({ name: "text", area: "text", postcode: "text" });
+LocationSchema.index({ type: 1, isActive: 1 });
+LocationSchema.index({ state: 1, city: 1, area: 1 });
+LocationSchema.index({ "deliveryAreas.postcode": 1 });
+LocationSchema.index({ "deliveryAreas.isActive": 1 });
 
-// Virtual for children
-locationSchema.virtual("children", {
+// Virtual for children locations
+LocationSchema.virtual("children", {
   ref: "Location",
   foreignField: "parent",
   localField: "_id",
 });
 
 // Virtual for delivery summary
-locationSchema.virtual("deliverySummary").get(function (this: ILocationModel) {
+LocationSchema.virtual("deliverySummary").get(function (this: ILocation) {
+  const activeAreas = this.deliveryAreas.filter((area) => area.isActive);
+  const deliveryFees = activeAreas.map((area) => area.deliveryFee);
+
   return {
-    location: `${this.name} ${this.postcode ? `(${this.postcode})` : ""}`,
-    deliveryAvailable: this.deliveryOptions.isAvailable,
-    deliveryFee: this.deliveryOptions.isFree
-      ? "Free"
-      : `£${this.deliveryOptions.fee}`,
-    estimatedTime: `${this.deliveryOptions.estimatedTime} mins`,
-    minOrder:
-      this.deliveryOptions.minOrder > 0
-        ? `£${this.deliveryOptions.minOrder}`
-        : "None",
+    totalAreas: this.deliveryAreas.length,
+    activeAreas: activeAreas.length,
+    freeDeliveryAreas: activeAreas.filter((area) => area.isFree).length,
+    minDeliveryFee:
+      deliveryFees.length > 0
+        ? Math.min(...deliveryFees)
+        : this.deliveryOptions?.fee || 0,
+    maxDeliveryFee:
+      deliveryFees.length > 0
+        ? Math.max(...deliveryFees)
+        : this.deliveryOptions?.fee || 0,
   };
 });
 
-const Location = mongoose.model<ILocationModel>("Location", locationSchema);
+const Location = mongoose.model<ILocation>("Location", LocationSchema);
 
 export default Location;

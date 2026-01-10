@@ -5,33 +5,29 @@ import {
   getLocationHandler,
   updateLocationHandler,
   deleteLocationHandler,
+  addDeliveryAreaHandler,
+  updateDeliveryAreaHandler,
+  deleteDeliveryAreaHandler,
+  getDeliveryAreaHandler,
   checkDeliveryHandler,
-  getDeliveryAreasTreeHandler,
+  getDeliveryHierarchyHandler,
 } from "./location.controller";
-import { restrictTo } from "../../middlewares/authorization.middleware";
-import { protectRoute } from "../../middlewares/auth.middleware";
 
 const router = express.Router();
 
 // Public routes
-router.get("/", getLocationsHandler); // Get all locations with filters
-router.get("/delivery/check", checkDeliveryHandler); // Check delivery availability
-router.get("/delivery/tree", getDeliveryAreasTreeHandler); // Get delivery areas tree
-router.get("/:id", getLocationHandler); // Get location by ID
+router.get("/", getLocationsHandler);
+router.get("/hierarchy", getDeliveryHierarchyHandler);
+router.get("/delivery/check", checkDeliveryHandler);
+router.get("/:id", getLocationHandler);
+router.get("/:id/delivery-areas/:areaId", getDeliveryAreaHandler);
 
-// Protected routes
-router.use(protectRoute);
-
-router.post(
-  "/",
-  restrictTo("superadmin", "admin", "editor"),
-  createLocationHandler
-);
-router.patch(
-  "/:id",
-  restrictTo("superadmin", "admin", "editor"),
-  updateLocationHandler
-);
-router.delete("/:id", restrictTo("superadmin", "admin"), deleteLocationHandler);
+// Protected routes (add your auth middleware here)
+router.post("/", createLocationHandler);
+router.patch("/:id", updateLocationHandler);
+router.delete("/:id", deleteLocationHandler);
+router.post("/:id/delivery-areas", addDeliveryAreaHandler);
+router.patch("/:id/delivery-areas/:areaId", updateDeliveryAreaHandler);
+router.delete("/:id/delivery-areas/:areaId", deleteDeliveryAreaHandler);
 
 export default router;
