@@ -20,6 +20,7 @@ import locationRoutes from "./app/modules/Location/location.routes";
 import contactRoutes from "./app/modules/contact/contact.routes";
 import newsletterRoutes from "./app/modules/newsletter/newsletter.routes"; // Add this line
 import blogRoutes from "./app/modules/Blog/blog.routes"; // Add this line
+import promoRoutes from "./app/modules/promos/promos.routes";
 
 const app = express();
 
@@ -71,6 +72,7 @@ app.use("/api/v1/orders", userOrderRoutes);
 app.use("/api/v1", contactRoutes);
 app.use("/api/v1", newsletterRoutes);
 app.use("/api/v1/blogs", blogRoutes);
+app.use("/api/v1", promoRoutes);
 
 // Health check
 app.get("/healthz", (_req, res) => res.json({ ok: true }));
