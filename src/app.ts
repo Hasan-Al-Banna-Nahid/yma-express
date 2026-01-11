@@ -3,7 +3,9 @@ import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import path from "path";
+import dotenv from "dotenv";
 
+dotenv.config();
 // Import routes
 import authRouter from "./app/modules/Auth/auth.route";
 import bookingRouter from "./app/modules/Bookings/booking.route";
@@ -33,17 +35,24 @@ const allowedOrigins = [
   "https://yma-frontend.vercel.app",
   process.env.FRONTEND_URL, // From environment
   "http://localhost:8001",
-];
+  "https://ymaback.vercel.app",
+  process.env.API_PUBLIC_URL, // From environment
+].filter(Boolean);
 
 app.use(
   cors({
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) return callback(null, true);
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      console.error("Blocked by CORS:", origin);
       return callback(new Error("Not allowed by CORS"));
     },
     credentials: true,
-    methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS", "PUT"],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
