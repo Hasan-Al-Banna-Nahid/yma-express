@@ -5,48 +5,80 @@ import ApiError from "../utils/apiError";
 import { IUser } from "../modules/Auth/user.interface";
 import { protect as verifyAccessToken } from "../modules/Auth/auth.service";
 import jwt from "jsonwebtoken";
+import User from "../modules/Auth/user.model";
 
 export type AuthenticatedRequest = Request & { user: IUser };
 
-export const protectRoute = asyncHandler(
-  async (req: Request, _res: Response, next: NextFunction) => {
-    const cookieToken = (req as any).cookies?.accessToken as string | undefined;
-    const headerToken = req.headers.authorization?.startsWith("Bearer ")
-      ? req.headers.authorization.split(" ")[1]
-      : undefined;
+declare global {
+  namespace Express {
+    interface Request {
+      user?: any;
+    }
+  }
+}
 
-    let tokenToUse: string | undefined = cookieToken || headerToken;
+export const protectRoute = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    // 1. Get token from header
+    let token;
+    const authHeader = req.headers.authorization;
 
-    // Debug logging
-    console.log("🔐 Auth Debug:", {
-      hasCookieToken: !!cookieToken,
-      hasHeaderToken: !!headerToken,
-      tokenToUse: tokenToUse ? "Present" : "Missing",
-    });
-
-    if (!tokenToUse) throw new ApiError("No token provided", 401);
-
-    const currentUser = await verifyAccessToken(tokenToUse);
-
-    // Debug user info - check if role is present
-    console.log("👤 User Debug:", {
-      userId: currentUser._id,
-      email: currentUser.email,
-      role: currentUser.role,
-      hasRole: !!currentUser.role,
-      isActive: currentUser.active,
-    });
-
-    // Ensure role exists
-    if (!currentUser.role) {
-      console.error("❌ User role is missing!");
-      throw new ApiError("User role not found", 401);
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      token = authHeader.split(" ")[1];
     }
 
-    (req as AuthenticatedRequest).user = currentUser;
+    // Check if token exists
+    if (!token) {
+      return next(
+        new ApiError("You are not logged in. Please log in to get access.", 401)
+      );
+    }
+
+    // 2. Verify token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as {
+      id: string;
+      iat: number;
+      exp: number;
+    };
+
+    // 3. Check if user still exists
+    const user = await User.findById(decoded.id).select("+active");
+
+    if (!user) {
+      return next(
+        new ApiError("The user belonging to this token no longer exists.", 401)
+      );
+    }
+
+    // 4. Check if user changed password after token was issued
+    if (user.changedPasswordAfter(decoded.iat)) {
+      return next(
+        new ApiError(
+          "User recently changed password. Please log in again.",
+          401
+        )
+      );
+    }
+
+    // 5. Grant access to protected route
+    req.user = user;
     next();
+  } catch (error: any) {
+    if (error.name === "JsonWebTokenError") {
+      return next(new ApiError("Invalid token. Please log in again!", 401));
+    }
+    if (error.name === "TokenExpiredError") {
+      return next(
+        new ApiError("Your token has expired. Please log in again!", 401)
+      );
+    }
+    next(error);
   }
-);
+};
 
 export function restrictTo(...roles: Array<IUser["role"]>) {
   return (req: Request, _res: Response, next: NextFunction) => {

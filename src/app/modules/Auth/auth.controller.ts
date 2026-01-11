@@ -157,21 +157,6 @@ export const refreshTokenHandler = asyncHandler(
   }
 );
 
-// ---------------- public: logout ----------------
-export const logout = asyncHandler(async (_req: Request, res: Response) => {
-  const aReq = _req as AuthenticatedRequest;
-  if (aReq.user?.id) {
-    // Update lastLogoutAt to invalidate existing tokens
-    await User.findByIdAndUpdate(aReq.user.id, {
-      lastLogoutAt: new Date(),
-      refreshTokenHash: null,
-      refreshTokenExpiresAt: null,
-    });
-  }
-  clearAuthCookies(res);
-  ApiResponse(res, 200, "Logged out", {});
-});
-
 // ---------------- public: forgot password ----------------
 export const forgotPasswordHandler = asyncHandler(
   async (req: Request, res: Response) => {
@@ -869,309 +854,403 @@ export const registerWithVerification = asyncHandler(
 /* =========================
    VERIFY EMAIL TOKEN
 ========================= */
-export const verifyEmail = asyncHandler(async (req: Request, res: Response) => {
+/* =========================
+   VERIFY EMAIL TOKEN
+========================= */
+export const verifyEmail = async (req: Request, res: Response) => {
   const { token } = req.params;
 
   if (!token) {
-    throw new ApiError("Verification token is required", 400);
+    // Return HTML error page
+    res.setHeader("Content-Type", "text/html");
+    return res.status(400).send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Verification Error - YMA Bouncy Castle</title>
+        <style>
+          body { 
+            font-family: Arial, sans-serif; 
+            text-align: center; 
+            padding: 50px; 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+          }
+          .error { 
+            background: white; 
+            padding: 40px; 
+            border-radius: 10px; 
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 500px;
+            margin: 0 auto;
+            color: #333;
+          }
+          h1 { color: #e74c3c; }
+          .btn { 
+            background: #4299e1; 
+            color: white; 
+            padding: 12px 24px; 
+            text-decoration: none; 
+            border-radius: 5px; 
+            display: inline-block;
+            margin: 20px 0;
+          }
+          .logo {
+            max-width: 150px;
+            margin-bottom: 20px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="error">
+          <img src="https://res.cloudinary.com/dj785gqtu/image/upload/v1767711924/logo2_xos8xa.png" alt="YMA Bouncy Castle" class="logo">
+          <h1>❌ Verification Token Missing</h1>
+          <p>Please use the complete verification link from your email.</p>
+        </div>
+      </body>
+      </html>
+    `);
   }
 
-  // Verify token and update user
-  const user = await verifyEmailToken(token);
+  try {
+    // Verify token and update user
+    const user = await verifyEmailToken(token);
 
-  // Check if request is HTML (browser) or JSON (API)
-  const acceptsHtml = req.accepts("html");
-  const isJson = req.accepts("json");
-
-  if (acceptsHtml && !isJson) {
-    // Return beautiful HTML success page
-    const html = `
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Email Verified - YMA Bouncy Castle</title>
-          <style>
-            * {
-              margin: 0;
-              padding: 0;
-              box-sizing: border-box;
-              font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            }
-            
-            body {
-              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-              min-height: 100vh;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              padding: 20px;
-            }
-            
-            .container {
-              background: white;
-              border-radius: 20px;
-              box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-              overflow: hidden;
-              max-width: 500px;
-              width: 100%;
-              text-align: center;
-            }
-            
+    // ALWAYS return HTML (since this is called from email link click)
+    res.setHeader("Content-Type", "text/html");
+    res.send(`
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Email Verified - YMA Bouncy Castle</title>
+        <style>
+          * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+          }
+          
+          body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+          }
+          
+          .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+            max-width: 500px;
+            width: 100%;
+            text-align: center;
+          }
+          
+          .header {
+            background: linear-gradient(135deg, #38a169 0%, #2f855a 100%);
+            padding: 40px 30px;
+            color: white;
+          }
+          
+          .logo {
+            max-width: 150px;
+            margin-bottom: 20px;
+          }
+          
+          .success-icon {
+            font-size: 80px;
+            margin-bottom: 20px;
+            animation: bounce 1s ease infinite;
+          }
+          
+          @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+          }
+          
+          .header h1 {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 10px;
+          }
+          
+          .header p {
+            opacity: 0.9;
+            font-size: 16px;
+          }
+          
+          .content {
+            padding: 40px 30px;
+          }
+          
+          .content h2 {
+            color: #2d3748;
+            margin-bottom: 20px;
+            font-size: 24px;
+          }
+          
+          .content p {
+            color: #4a5568;
+            margin-bottom: 15px;
+            line-height: 1.6;
+          }
+          
+          .user-info {
+            background: #f8fafc;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 25px 0;
+            text-align: left;
+          }
+          
+          .info-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #e2e8f0;
+          }
+          
+          .info-row:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+          }
+          
+          .info-label {
+            color: #718096;
+            font-weight: 500;
+          }
+          
+          .info-value {
+            color: #2d3748;
+            font-weight: 600;
+          }
+          
+          .actions {
+            margin: 30px 0;
+          }
+          
+          .btn {
+            display: inline-block;
+            padding: 16px 32px;
+            border-radius: 10px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 16px;
+            margin: 10px;
+            transition: all 0.3s ease;
+            min-width: 180px;
+          }
+          
+          .btn-primary {
+            background: linear-gradient(135deg, #4299e1 0%, #3182ce 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(66, 153, 225, 0.3);
+          }
+          
+          .btn-primary:hover {
+            background: linear-gradient(135deg, #3182ce 0%, #2c5282 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(66, 153, 225, 0.4);
+          }
+          
+          .btn-secondary {
+            background: #e2e8f0;
+            color: #4a5568;
+          }
+          
+          .btn-secondary:hover {
+            background: #cbd5e0;
+            transform: translateY(-2px);
+          }
+          
+          .footer {
+            background: #2d3748;
+            color: #cbd5e0;
+            padding: 25px;
+            font-size: 14px;
+          }
+          
+          .auto-redirect {
+            background: #fffaf0;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 20px 0;
+            border: 1px solid #fbd38d;
+            color: #975a16;
+          }
+          
+          .countdown {
+            font-weight: 700;
+            font-size: 18px;
+            color: #4299e1;
+          }
+          
+          @media (max-width: 480px) {
             .header {
-              background: linear-gradient(135deg, #38a169 0%, #2f855a 100%);
-              padding: 40px 30px;
-              color: white;
-            }
-            
-            .logo {
-              max-width: 150px;
-              margin-bottom: 20px;
-            }
-            
-            .success-icon {
-              font-size: 80px;
-              margin-bottom: 20px;
-              animation: bounce 1s ease infinite;
-            }
-            
-            @keyframes bounce {
-              0%, 100% { transform: translateY(0); }
-              50% { transform: translateY(-10px); }
-            }
-            
-            .header h1 {
-              font-size: 28px;
-              font-weight: 700;
-              margin-bottom: 10px;
-            }
-            
-            .header p {
-              opacity: 0.9;
-              font-size: 16px;
+              padding: 30px 20px;
             }
             
             .content {
-              padding: 40px 30px;
-            }
-            
-            .content h2 {
-              color: #2d3748;
-              margin-bottom: 20px;
-              font-size: 24px;
-            }
-            
-            .content p {
-              color: #4a5568;
-              margin-bottom: 15px;
-              line-height: 1.6;
-            }
-            
-            .user-info {
-              background: #f8fafc;
-              border-radius: 12px;
-              padding: 20px;
-              margin: 25px 0;
-              text-align: left;
-            }
-            
-            .info-row {
-              display: flex;
-              justify-content: space-between;
-              margin-bottom: 10px;
-              padding-bottom: 10px;
-              border-bottom: 1px solid #e2e8f0;
-            }
-            
-            .info-row:last-child {
-              border-bottom: none;
-              margin-bottom: 0;
-              padding-bottom: 0;
-            }
-            
-            .info-label {
-              color: #718096;
-              font-weight: 500;
-            }
-            
-            .info-value {
-              color: #2d3748;
-              font-weight: 600;
-            }
-            
-            .actions {
-              margin: 30px 0;
+              padding: 30px 20px;
             }
             
             .btn {
-              display: inline-block;
-              padding: 16px 32px;
-              border-radius: 10px;
-              text-decoration: none;
-              font-weight: 600;
-              font-size: 16px;
-              margin: 10px;
-              transition: all 0.3s ease;
-              min-width: 180px;
+              display: block;
+              width: 100%;
+              margin: 10px 0;
             }
+          }
+        </style>
+        <script>
+          let countdown = 10;
+          const countdownElement = document.getElementById('countdown');
+          const countdownInterval = setInterval(() => {
+            countdown--;
+            countdownElement.textContent = countdown;
             
-            .btn-primary {
-              background: linear-gradient(135deg, #4299e1 0%, #3182ce 100%);
-              color: white;
-              box-shadow: 0 4px 15px rgba(66, 153, 225, 0.3);
+            if (countdown <= 0) {
+              clearInterval(countdownInterval);
+              window.location.href = '${
+                process.env.FRONTEND_URL || "http://localhost:3000"
+              }/login?verified=true';
             }
-            
-            .btn-primary:hover {
-              background: linear-gradient(135deg, #3182ce 0%, #2c5282 100%);
-              transform: translateY(-2px);
-              box-shadow: 0 6px 20px rgba(66, 153, 225, 0.4);
-            }
-            
-            .btn-secondary {
-              background: #e2e8f0;
-              color: #4a5568;
-            }
-            
-            .btn-secondary:hover {
-              background: #cbd5e0;
-              transform: translateY(-2px);
-            }
-            
-            .footer {
-              background: #2d3748;
-              color: #cbd5e0;
-              padding: 25px;
-              font-size: 14px;
-            }
-            
-            .auto-redirect {
-              background: #fffaf0;
-              border-radius: 10px;
-              padding: 15px;
-              margin: 20px 0;
-              border: 1px solid #fbd38d;
-              color: #975a16;
-            }
-            
-            .countdown {
-              font-weight: 700;
-              font-size: 18px;
-              color: #4299e1;
-            }
-            
-            @media (max-width: 480px) {
-              .header {
-                padding: 30px 20px;
-              }
-              
-              .content {
-                padding: 30px 20px;
-              }
-              
-              .btn {
-                display: block;
-                width: 100%;
-                margin: 10px 0;
-              }
-            }
-          </style>
-          <script>
-            let countdown = 10;
-            const countdownElement = document.getElementById('countdown');
-            const countdownInterval = setInterval(() => {
-              countdown--;
-              countdownElement.textContent = countdown;
-              
-              if (countdown <= 0) {
-                clearInterval(countdownInterval);
-                window.location.href = '${
-                  process.env.FRONTEND_URL || "http://localhost:3000"
-                }/login?verified=true';
-              }
-            }, 1000);
-          </script>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header">
-              <div class="success-icon">✅</div>
-              <h1>Email Verified Successfully!</h1>
-              <p>Your YMA Bouncy Castle account is now active</p>
-            </div>
-            
-            <div class="content">
-              <h2>Welcome aboard, ${user.name}!</h2>
-              <p>Your email address <strong>${
-                user.email
-              }</strong> has been successfully verified.</p>
-              
-              <div class="user-info">
-                <div class="info-row">
-                  <span class="info-label">Name:</span>
-                  <span class="info-value">${user.name}</span>
-                </div>
-                <div class="info-row">
-                  <span class="info-label">Email:</span>
-                  <span class="info-value">${user.email}</span>
-                </div>
-                <div class="info-row">
-                  <span class="info-label">Verified:</span>
-                  <span class="info-value" style="color: #38a169;">✅ Yes</span>
-                </div>
-                <div class="info-row">
-                  <span class="info-label">Account Created:</span>
-                  <span class="info-value">${new Date().toLocaleDateString()}</span>
-                </div>
-              </div>
-              
-              <div class="auto-redirect">
-                <p>You will be automatically redirected to login in <span id="countdown" class="countdown">10</span> seconds...</p>
-              </div>
-              
-              <div class="actions">
-                <a href="${
-                  process.env.FRONTEND_URL || "http://localhost:3000"
-                }/login?verified=true" class="btn btn-primary">
-                  Go to Login
-                </a>
-                <a href="${
-                  process.env.FRONTEND_URL || "http://localhost:3000"
-                }" class="btn btn-secondary">
-                  Visit Homepage
-                </a>
-              </div>
-              
-              <p style="color: #718096; font-size: 14px; margin-top: 30px;">
-                Check your email for login instructions and temporary password.
-              </p>
-            </div>
-            
-            <div class="footer">
-              <p>YMA Bouncy Castle &copy; ${new Date().getFullYear()}</p>
-              <p style="opacity: 0.6; margin-top: 10px; font-size: 12px;">
-                Premium Party Equipment Rental Services
-              </p>
-            </div>
+          }, 1000);
+        </script>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <div class="success-icon">✅</div>
+            <h1>Email Verified Successfully!</h1>
+            <p>Your YMA Bouncy Castle account is now active</p>
           </div>
-        </body>
-        </html>
-      `;
-
-    return res.send(html);
+          
+          <div class="content">
+            <h2>Welcome aboard, ${user.name}!</h2>
+            <p>Your email address <strong>${
+              user.email
+            }</strong> has been successfully verified.</p>
+            
+            <div class="user-info">
+              <div class="info-row">
+                <span class="info-label">Name:</span>
+                <span class="info-value">${user.name}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">Email:</span>
+                <span class="info-value">${user.email}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">Verified:</span>
+                <span class="info-value" style="color: #38a169;">✅ Yes</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">Account Created:</span>
+                <span class="info-value">${new Date().toLocaleDateString()}</span>
+              </div>
+            </div>
+            
+            <div class="auto-redirect">
+              <p>You will be automatically redirected to login in <span id="countdown" class="countdown">10</span> seconds...</p>
+            </div>
+            
+            <div class="actions">
+              <a href="${
+                process.env.FRONTEND_URL || "http://localhost:3000"
+              }/login?verified=true" class="btn btn-primary">
+                Go to Login
+              </a>
+              <a href="${
+                process.env.FRONTEND_URL || "http://localhost:3000"
+              }" class="btn btn-secondary">
+                Visit Homepage
+              </a>
+            </div>
+            
+            <p style="color: #718096; font-size: 14px; margin-top: 30px;">
+              Check your email for login instructions and temporary password.
+            </p>
+          </div>
+          
+          <div class="footer">
+            <p>YMA Bouncy Castle &copy; ${new Date().getFullYear()}</p>
+            <p style="opacity: 0.6; margin-top: 10px; font-size: 12px;">
+              Premium Party Equipment Rental Services
+            </p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `);
+  } catch (error: any) {
+    // Handle error with HTML page
+    res.setHeader("Content-Type", "text/html");
+    res.status(400).send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Verification Error - YMA Bouncy Castle</title>
+        <style>
+          body { 
+            font-family: Arial, sans-serif; 
+            text-align: center; 
+            padding: 50px; 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+          }
+          .error { 
+            background: white; 
+            padding: 40px; 
+            border-radius: 10px; 
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 500px;
+            margin: 0 auto;
+            color: #333;
+          }
+          h1 { color: #e74c3c; }
+          .btn { 
+            background: #4299e1; 
+            color: white; 
+            padding: 12px 24px; 
+            text-decoration: none; 
+            border-radius: 5px; 
+            display: inline-block;
+            margin: 20px 0;
+          }
+          .logo {
+            max-width: 150px;
+            margin-bottom: 20px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="error">
+          <img src="https://res.cloudinary.com/dj785gqtu/image/upload/v1767711924/logo2_xos8xa.png" alt="YMA Bouncy Castle" class="logo">
+          <h1>❌ ${error.message || "Verification Failed"}</h1>
+          <p>The verification link is invalid or has expired.</p>
+          <a href="${
+            process.env.FRONTEND_URL || "http://localhost:3000"
+          }/resend-verification" class="btn">
+            Request New Verification Link
+          </a>
+        </div>
+      </body>
+      </html>
+    `);
   }
-
-  // For API requests, return JSON
-  ApiResponse(res, 200, "Email verified successfully", {
-    success: true,
-    user: sanitizeUser(user),
-    message:
-      "Your email has been verified successfully. Please check your email for login instructions.",
-    redirectTo: `${
-      process.env.FRONTEND_URL || "http://localhost:3000"
-    }/login?verified=true`,
-  });
-});
+};
 
 /* =========================
    RESEND VERIFICATION EMAIL
@@ -1239,3 +1318,303 @@ export const checkVerificationStatus = asyncHandler(
     });
   }
 );
+// ---------------- public: logout ----------------
+export const logout = asyncHandler(async (req: Request, res: Response) => {
+  const aReq = req as AuthenticatedRequest;
+
+  // Clear refresh token from database if user is authenticated
+  if (aReq.user?.id) {
+    await User.findByIdAndUpdate(aReq.user.id, {
+      refreshTokenHash: null,
+      refreshTokenExpiresAt: null,
+      lastLogoutAt: new Date(),
+    });
+  }
+
+  // Clear cookies
+  res.clearCookie("accessToken", {
+    httpOnly: true,
+    secure: true,
+    sameSite: "none",
+    path: "/",
+  });
+
+  res.clearCookie("refreshToken", {
+    httpOnly: true,
+    secure: true,
+    sameSite: "none",
+    path: "/",
+  });
+
+  // Also clear any other auth cookies you might have
+  res.clearCookie("userId");
+  res.clearCookie("userSession");
+
+  // Check if request wants HTML or JSON
+  const acceptsHtml = req.accepts("html");
+  const isJson = req.accepts("json");
+
+  if (acceptsHtml && !isJson) {
+    // Return HTML logout success page
+    res.setHeader("Content-Type", "text/html");
+    return res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Logged Out - YMA Bouncy Castle</title>
+        <style>
+          * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+          }
+          
+          body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+          }
+          
+          .logout-container {
+            background: white;
+            border-radius: 20px;
+            padding: 50px 40px;
+            max-width: 500px;
+            width: 100%;
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            animation: slideUp 0.5s ease-out;
+          }
+          
+          @keyframes slideUp {
+            from {
+              opacity: 0;
+              transform: translateY(30px);
+            }
+            to {
+              opacity: 1;
+              transform: translateY(0);
+            }
+          }
+          
+          .logo {
+            max-width: 120px;
+            height: auto;
+            margin-bottom: 20px;
+          }
+          
+          .logout-icon {
+            width: 80px;
+            height: 80px;
+            background: #4299e1;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 25px;
+          }
+          
+          .logout-icon i {
+            font-size: 40px;
+            color: white;
+          }
+          
+          h1 {
+            color: #2d3748;
+            margin-bottom: 15px;
+            font-size: 28px;
+          }
+          
+          p {
+            color: #4a5568;
+            margin-bottom: 25px;
+            font-size: 16px;
+            line-height: 1.6;
+          }
+          
+          .security-info {
+            background: #f7fafc;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 25px 0;
+            text-align: left;
+            border-left: 4px solid #48bb78;
+          }
+          
+          .security-info h3 {
+            color: #2b6cb0;
+            margin-bottom: 15px;
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+          }
+          
+          .security-list {
+            list-style: none;
+          }
+          
+          .security-list li {
+            margin-bottom: 10px;
+            padding-left: 25px;
+            position: relative;
+            color: #4a5568;
+            font-size: 14px;
+          }
+          
+          .security-list li:before {
+            content: "✓";
+            position: absolute;
+            left: 0;
+            color: #48bb78;
+            font-weight: bold;
+          }
+          
+          .button-group {
+            display: flex;
+            gap: 15px;
+            margin-top: 30px;
+          }
+          
+          .btn {
+            flex: 1;
+            padding: 14px;
+            border-radius: 10px;
+            text-decoration: none;
+            font-weight: 600;
+            text-align: center;
+            transition: all 0.3s ease;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+          }
+          
+          .btn-primary {
+            background: #4299e1;
+            color: white;
+          }
+          
+          .btn-primary:hover {
+            background: #3182ce;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(66, 153, 225, 0.4);
+          }
+          
+          .btn-secondary {
+            background: #e2e8f0;
+            color: #4a5568;
+          }
+          
+          .btn-secondary:hover {
+            background: #cbd5e0;
+            transform: translateY(-2px);
+          }
+          
+          .auto-redirect {
+            margin-top: 20px;
+            color: #718096;
+            font-size: 14px;
+            padding: 10px;
+            background: #f7fafc;
+            border-radius: 8px;
+          }
+          
+          .countdown {
+            font-weight: bold;
+            color: #4299e1;
+          }
+          
+          @media (max-width: 600px) {
+            .logout-container {
+              padding: 30px 20px;
+            }
+            
+            .button-group {
+              flex-direction: column;
+            }
+            
+            h1 {
+              font-size: 24px;
+            }
+          }
+        </style>
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+      </head>
+      <body>
+        <div class="logout-container">
+          <img src="https://res.cloudinary.com/dj785gqtu/image/upload/v1767711924/logo2_xos8xa.png" alt="YMA Bouncy Castle" class="logo">
+          
+          <div class="logout-icon">
+            <i class="fas fa-sign-out-alt"></i>
+          </div>
+          
+          <h1>Successfully Logged Out</h1>
+          
+          <p>You have been securely logged out of your YMA Bouncy Castle account.</p>
+          
+          <div class="security-info">
+            <h3><i class="fas fa-shield-alt"></i> Security Confirmed</h3>
+            <ul class="security-list">
+              <li>All active sessions have been terminated</li>
+              <li>Authentication tokens have been invalidated</li>
+              <li>Your account is now secure</li>
+              <li>Browser cookies have been cleared</li>
+            </ul>
+          </div>
+          
+          <div class="button-group">
+            <a href="${
+              process.env.FRONTEND_URL || "http://localhost:3000"
+            }/login" class="btn btn-primary">
+              <i class="fas fa-sign-in-alt"></i> Login Again
+            </a>
+            <a href="${
+              process.env.FRONTEND_URL || "http://localhost:3000"
+            }" class="btn btn-secondary">
+              <i class="fas fa-home"></i> Go to Homepage
+            </a>
+          </div>
+          
+          <div class="auto-redirect">
+            <p>You will be redirected to the homepage in <span class="countdown" id="countdown">10</span> seconds</p>
+          </div>
+          
+          <script>
+            // Auto-redirect countdown
+            let countdown = 10;
+            const countdownElement = document.getElementById('countdown');
+            
+            const countdownInterval = setInterval(() => {
+              countdown--;
+              countdownElement.textContent = countdown;
+              
+              if (countdown <= 0) {
+                clearInterval(countdownInterval);
+                window.location.href = '${
+                  process.env.FRONTEND_URL || "http://localhost:3000"
+                }';
+              }
+            }, 1000);
+          </script>
+        </div>
+      </body>
+      </html>
+    `);
+  }
+
+  // For API requests, return JSON
+  ApiResponse(res, 200, "Logged out successfully", {
+    success: true,
+    message: "You have been logged out successfully",
+    timestamp: new Date().toISOString(),
+    redirectTo: `${process.env.FRONTEND_URL || "http://localhost:3000"}/login`,
+  });
+});

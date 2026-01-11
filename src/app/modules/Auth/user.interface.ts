@@ -17,7 +17,7 @@ export interface IUser extends mongoose.Document {
   refreshTokenExpiresAt?: Date;
   active?: boolean;
   lastLogoutAt?: Date;
-
+  phone?: string;
   // NEW FIELDS for email verification
   isEmailVerified: boolean;
   emailVerificationToken?: string;
