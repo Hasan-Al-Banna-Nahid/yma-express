@@ -3,7 +3,7 @@ import { Request, Response, NextFunction } from "express";
 import asyncHandler from "../../utils/asyncHandler";
 import ApiError from "../../utils/apiError";
 import * as invoiceService from "./invoice.service";
-import * as orderService from "../../modules/UserOrder/order.service";
+import * as orderService from "../Order/order.service";
 import { AuthenticatedRequest } from "../../middlewares/auth.middleware";
 import { IInvoice } from "./invoice.interface";
 import mongoose, { Mongoose } from "mongoose";

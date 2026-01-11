@@ -1,24 +1,22 @@
-// src/services/checkout/checkout.service.ts
 import mongoose, { Types } from "mongoose";
 import Cart from "../../modules/Cart/cart.model";
-import UserOrder, {
-  IOrder as UserOrderInterface,
-  DELIVERY_TIME_OPTIONS,
-  COLLECTION_TIME_OPTIONS,
-  HIRE_OCCASION_OPTIONS,
-  IOrderDocument,
-} from "../../modules/UserOrder/order.model";
+import Order from "../../modules/Order/order.model";
+import { IOrderDocument } from "../../modules/Order/order.interface";
 import Product from "../../modules/Product/product.model";
 import ApiError from "../../utils/apiError";
 import {
-  sendOrderConfirmationEmail,
   sendOrderNotificationToAdmin,
   sendOrderReceivedEmail,
 } from "./email.service";
 import {
-  AvailableDatesResponse,
-  DateAvailabilityResponse,
-} from "../../modules/Checkout/checkout.interface";
+  DELIVERY_TIME_OPTIONS,
+  COLLECTION_TIME_OPTIONS,
+  HIRE_OCCASION_OPTIONS,
+  PAYMENT_METHODS,
+  ORDER_STATUS,
+  INVOICE_TYPES,
+} from "../../modules/Order/order.interface";
+import { PromoService } from "../../modules/promos/promos.service";
 
 export interface CreateOrderData {
   shippingAddress: {
@@ -53,7 +51,238 @@ export interface CreateOrderData {
   termsAccepted: boolean;
   invoiceType?: "regular" | "corporate";
   bankDetails?: string;
+  promoCode?: string;
 }
+
+export interface DateAvailabilityResponse {
+  startDate: Date;
+  endDate: Date;
+  available: boolean;
+  reason?: string;
+}
+
+export const checkCartStock = async (
+  userId: Types.ObjectId
+): Promise<{ available: boolean; issues: string[] }> => {
+  const cart = await Cart.findOne({ user: userId }).populate("items.product");
+
+  if (!cart || cart.items.length === 0) {
+    return { available: false, issues: ["Cart is empty"] };
+  }
+
+  const issues: string[] = [];
+
+  for (const item of cart.items) {
+    const product = await Product.findById(item.product);
+
+    if (!product) {
+      issues.push(`Product "${item.product}" not found`);
+      continue;
+    }
+
+    if (product.stock < item.quantity) {
+      issues.push(
+        `Insufficient stock for ${product.name}. Available: ${product.stock}, Requested: ${item.quantity}`
+      );
+    }
+  }
+
+  return {
+    available: issues.length === 0,
+    issues,
+  };
+};
+
+export const checkDateAvailability = async (
+  productId: Types.ObjectId,
+  startDate: Date,
+  endDate: Date
+): Promise<DateAvailabilityResponse> => {
+  const product = await Product.findById(productId);
+
+  if (!product) {
+    return {
+      startDate,
+      endDate,
+      available: false,
+      reason: "Product not found",
+    };
+  }
+
+  if (product.stock === 0) {
+    return {
+      startDate,
+      endDate,
+      available: false,
+      reason: "Product is out of stock",
+    };
+  }
+
+  // Check if the dates overlap with existing orders for this product
+  const overlappingOrders = await Order.find({
+    "items.product": productId,
+    status: { $nin: ["cancelled", "refunded"] },
+    $or: [
+      {
+        "items.startDate": { $lte: endDate },
+        "items.endDate": { $gte: startDate },
+      },
+      {
+        "items.startDate": { $gte: startDate, $lte: endDate },
+      },
+    ],
+  });
+
+  let totalBooked = 0;
+  overlappingOrders.forEach((order) => {
+    order.items.forEach((item: any) => {
+      if (item.product.toString() === productId.toString()) {
+        const existingStart = item.startDate ? new Date(item.startDate) : null;
+        const existingEnd = item.endDate ? new Date(item.endDate) : null;
+
+        if (existingStart && existingEnd) {
+          if (
+            (startDate <= existingEnd && endDate >= existingStart) ||
+            (existingStart <= endDate && existingEnd >= startDate)
+          ) {
+            totalBooked += item.quantity;
+          }
+        }
+      }
+    });
+  });
+
+  const available = product.stock > totalBooked;
+
+  return {
+    startDate,
+    endDate,
+    available,
+    reason: available
+      ? undefined
+      : `Only ${product.stock - totalBooked} items available for these dates`,
+  };
+};
+
+export const getAvailableDates = async (
+  productId: Types.ObjectId,
+  startDate: Date,
+  endDate: Date,
+  quantity: number = 1
+): Promise<{
+  availableDates: Array<{ date: Date; available: boolean; quantity: number }>;
+  productStock: number;
+}> => {
+  const product = await Product.findById(productId);
+
+  if (!product) {
+    return {
+      availableDates: [],
+      productStock: 0,
+    };
+  }
+
+  const orders = await Order.find({
+    "items.product": productId,
+    status: { $nin: ["cancelled", "refunded"] },
+    "items.startDate": { $lte: endDate },
+    "items.endDate": { $gte: startDate },
+  });
+
+  const bookedQuantities = new Map<string, number>();
+
+  const currentDate = new Date(startDate);
+  while (currentDate <= endDate) {
+    const dateKey = currentDate.toISOString().split("T")[0];
+    bookedQuantities.set(dateKey, 0);
+    currentDate.setDate(currentDate.getDate() + 1);
+  }
+
+  orders.forEach((order) => {
+    order.items.forEach((item: any) => {
+      if (
+        item.product.toString() === productId.toString() &&
+        item.startDate &&
+        item.endDate
+      ) {
+        const itemStart = new Date(item.startDate);
+        const itemEnd = new Date(item.endDate);
+
+        const checkDate = new Date(itemStart);
+        while (checkDate <= itemEnd) {
+          const dateKey = checkDate.toISOString().split("T")[0];
+          const currentBooked = bookedQuantities.get(dateKey) || 0;
+          bookedQuantities.set(dateKey, currentBooked + item.quantity);
+          checkDate.setDate(checkDate.getDate() + 1);
+        }
+      }
+    });
+  });
+
+  const availableDates = [];
+  const checkDate = new Date(startDate);
+
+  while (checkDate <= endDate) {
+    const dateKey = checkDate.toISOString().split("T")[0];
+    const booked = bookedQuantities.get(dateKey) || 0;
+    const available = product.stock - booked >= quantity;
+
+    availableDates.push({
+      date: new Date(checkDate),
+      available,
+      quantity: product.stock - booked,
+    });
+
+    checkDate.setDate(checkDate.getDate() + 1);
+  }
+
+  return {
+    availableDates,
+    productStock: product.stock,
+  };
+};
+
+// Function to apply promo code and calculate discount
+const applyPromoToOrder = async (
+  promoCode: string,
+  orderAmount: number,
+  userId: string
+): Promise<{ discount: number; promoId: string }> => {
+  const promoService = new PromoService();
+
+  // First, find the promo by name
+  const promo = await promoService.getPromoByName(promoCode);
+
+  if (!promo) {
+    throw new ApiError("Invalid promo code", 400);
+  }
+
+  // Validate promo
+  const validation = await promoService.validatePromo(promoCode, orderAmount);
+
+  if (!validation.valid) {
+    throw new ApiError(validation.message || "Promo code is not valid", 400);
+  }
+
+  // Apply promo and get discount
+  const applyResult = await promoService.applyPromo(
+    (promo._id as string).toString(),
+    orderAmount,
+    userId
+  );
+
+  if (!applyResult.success) {
+    throw new ApiError(
+      applyResult.message || "Failed to apply promo code",
+      400
+    );
+  }
+
+  return {
+    discount: applyResult.discount,
+    promoId: (promo._id as string).toString(),
+  };
+};
 
 export const createOrderFromCart = async (
   userId: Types.ObjectId,
@@ -70,7 +299,7 @@ export const createOrderFromCart = async (
       throw new ApiError("Cart is empty", 400);
     }
 
-    // Validate delivery and collection times
+    // Validate delivery time
     if (data.shippingAddress.deliveryTime) {
       const validDeliveryTimes = DELIVERY_TIME_OPTIONS.map((opt) => opt.value);
       if (
@@ -80,6 +309,7 @@ export const createOrderFromCart = async (
       }
     }
 
+    // Validate collection time
     if (data.shippingAddress.collectionTime) {
       const validCollectionTimes = COLLECTION_TIME_OPTIONS.map(
         (opt) => opt.value
@@ -104,17 +334,37 @@ export const createOrderFromCart = async (
       }
     }
 
+    // Validate terms accepted
+    if (!data.termsAccepted) {
+      throw new ApiError("You must accept the terms and conditions", 400);
+    }
+
+    // Check stock availability
+    const stockCheck = await checkCartStock(userId);
+    if (!stockCheck.available) {
+      throw new ApiError(`Stock issues: ${stockCheck.issues.join(", ")}`, 400);
+    }
+
+    // Check date availability for each item with dates
+    for (const item of cart.items) {
+      if (item.startDate && item.endDate) {
+        const dateAvailability = await checkDateAvailability(
+          item.product,
+          new Date(item.startDate),
+          new Date(item.endDate)
+        );
+
+        if (!dateAvailability.available) {
+          throw new ApiError(
+            `Date not available for product in cart: ${dateAvailability.reason}`,
+            400
+          );
+        }
+      }
+    }
+
     let subtotalAmount = 0;
-    const orderItems: Array<{
-      product: Types.ObjectId;
-      quantity: number;
-      price: number;
-      name: string;
-      startDate?: Date;
-      endDate?: Date;
-      hireOccasion?: string;
-      keepOvernight?: boolean;
-    }> = [];
+    const orderItems = [];
 
     // Process cart items
     for (const item of cart.items) {
@@ -178,38 +428,74 @@ export const createOrderFromCart = async (
       overnightFee = 30; // £30 for overnight keeping
     }
 
-    // Prepare order data for UserOrder model
+    // Calculate initial total (before discount)
+    const initialTotal = subtotalAmount + deliveryFee + overnightFee;
+    let discountAmount = 0;
+    let promoCode = "";
+    let promoDiscount = 0;
+
+    // Apply promo code if provided
+    if (data.promoCode) {
+      try {
+        const promoResult = await applyPromoToOrder(
+          data.promoCode,
+          initialTotal,
+          userId.toString()
+        );
+        discountAmount = promoResult.discount;
+        promoCode = data.promoCode;
+        promoDiscount = promoResult.discount;
+      } catch (promoError: any) {
+        throw new ApiError(promoError.message, 400);
+      }
+    }
+
+    // Calculate final total with discount
+    const totalAmount = initialTotal - discountAmount;
+
+    // Map payment method
+    const paymentMethod =
+      data.paymentMethod === "online"
+        ? PAYMENT_METHODS.CREDIT_CARD
+        : PAYMENT_METHODS.CASH_ON_DELIVERY;
+
+    // Map invoice type
+    const invoiceType =
+      data.invoiceType === "corporate"
+        ? INVOICE_TYPES.CORPORATE
+        : INVOICE_TYPES.REGULAR;
+
+    // Prepare order data
     const orderData = {
       user: userId,
       items: orderItems,
       subtotalAmount,
       deliveryFee,
       overnightFee,
-      totalAmount: subtotalAmount + deliveryFee + overnightFee,
-      paymentMethod:
-        data.paymentMethod === "online" ? "credit_card" : "cash_on_delivery",
-      status: "pending" as const,
+      discountAmount,
+      totalAmount,
+      paymentMethod,
+      status: ORDER_STATUS.PENDING,
       shippingAddress: {
         firstName: data.shippingAddress.firstName,
         lastName: data.shippingAddress.lastName,
-        email: data.shippingAddress.email,
         phone: data.shippingAddress.phone,
-        street: data.shippingAddress.street,
-        apartment: data.shippingAddress.apartment || "",
-        city: data.shippingAddress.city,
-        state: data.shippingAddress.country,
-        zipCode: data.shippingAddress.zipCode,
+        email: data.shippingAddress.email,
         country: data.shippingAddress.country,
+        city: data.shippingAddress.city,
+        street: data.shippingAddress.street,
+        zipCode: data.shippingAddress.zipCode,
+        apartment: data.shippingAddress.apartment || "",
         location: data.shippingAddress.location || "",
-        deliveryTime: data.shippingAddress.deliveryTime || "",
-        collectionTime: data.shippingAddress.collectionTime || "",
-        hireOccasion: data.shippingAddress.hireOccasion || "",
-        keepOvernight: data.shippingAddress.keepOvernight || false,
-        notes: data.shippingAddress.notes || "",
         companyName: data.shippingAddress.companyName || "",
         locationAccessibility: data.shippingAddress.locationAccessibility || "",
+        deliveryTime: data.shippingAddress.deliveryTime || "",
+        collectionTime: data.shippingAddress.collectionTime || "",
         floorType: data.shippingAddress.floorType || "",
         userType: data.shippingAddress.userType || "",
+        keepOvernight: data.shippingAddress.keepOvernight || false,
+        hireOccasion: data.shippingAddress.hireOccasion || "",
+        notes: data.shippingAddress.notes || "",
         differentBillingAddress:
           data.shippingAddress.differentBillingAddress || false,
         billingFirstName: data.shippingAddress.billingFirstName || "",
@@ -219,20 +505,17 @@ export const createOrderFromCart = async (
         billingZipCode: data.shippingAddress.billingZipCode || "",
         billingCompanyName: data.shippingAddress.billingCompanyName || "",
       },
-      bankDetails: data.bankDetails,
       termsAccepted: data.termsAccepted,
-      invoiceType: data.invoiceType || "regular",
-      estimatedDeliveryDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days from now
+      invoiceType,
+      bankDetails: data.bankDetails || "",
+      promoCode: promoCode || undefined,
+      promoDiscount,
+      estimatedDeliveryDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     };
 
-    // Create order with type casting
-    const [createdOrder] = (await UserOrder.create([orderData], {
-      session,
-    })) as unknown as IOrderDocument[];
-
-    if (!createdOrder) {
-      throw new ApiError("Failed to create order", 500);
-    }
+    // Create order
+    const createdOrder = new Order(orderData);
+    await createdOrder.save({ session });
 
     // Clear cart
     cart.items = [];
@@ -245,14 +528,13 @@ export const createOrderFromCart = async (
       `✅ Order created successfully: ${createdOrder._id}, Order Number: ${createdOrder.orderNumber}`
     );
 
-    // Send emails (outside transaction)
+    // Send emails
     try {
       await sendOrderReceivedEmail(createdOrder);
       await sendOrderNotificationToAdmin(createdOrder);
       console.log(`📧 Emails sent for order: ${createdOrder.orderNumber}`);
     } catch (emailError) {
       console.error("⚠️ Email sending failed:", emailError);
-      // Don't throw - order was already created successfully
     }
 
     return createdOrder;
@@ -262,270 +544,4 @@ export const createOrderFromCart = async (
   } finally {
     session.endSession();
   }
-};
-// Add this function to your existing checkout.service.ts
-export const checkCartStock = async (
-  userId: Types.ObjectId
-): Promise<{
-  allInStock: boolean;
-  items: Array<{
-    productId: Types.ObjectId;
-    name: string;
-    requested: number;
-    available: number;
-    inStock: boolean;
-  }>;
-}> => {
-  const cart = await Cart.findOne({ user: userId }).populate("items.product");
-
-  if (!cart || cart.items.length === 0) {
-    throw new ApiError("Cart is empty", 400);
-  }
-
-  const stockChecks = [];
-
-  for (const item of cart.items) {
-    const product = await Product.findById(item.product);
-
-    if (!product) {
-      stockChecks.push({
-        productId: item.product,
-        name: "Product not found",
-        requested: item.quantity,
-        available: 0,
-        inStock: false,
-      });
-      continue;
-    }
-
-    stockChecks.push({
-      productId: product._id,
-      name: product.name,
-      requested: item.quantity,
-      available: product.stock,
-      inStock: product.stock >= item.quantity,
-    });
-  }
-
-  return {
-    allInStock: stockChecks.every((item) => item.inStock),
-    items: stockChecks,
-  };
-};
-// Add to your existing checkout.service.ts
-export const checkDateAvailability = async (
-  productId: string,
-  startDate: Date,
-  endDate: Date,
-  quantity: number = 1
-): Promise<DateAvailabilityResponse> => {
-  if (!Types.ObjectId.isValid(productId)) {
-    throw new ApiError("Invalid product ID", 400);
-  }
-
-  const product = await Product.findById(productId);
-
-  if (!product) {
-    throw new ApiError("Product not found", 404);
-  }
-
-  // Check basic availability
-  if (!product.active) {
-    return {
-      isAvailable: false,
-      productId: product._id.toString(),
-      productName: product.name,
-      requestedQuantity: quantity,
-      availableQuantity: 0,
-      startDate,
-      endDate,
-      totalDays: Math.ceil(
-        (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
-      ),
-      message: "Product is not active",
-    };
-  }
-
-  // Check stock
-  if (product.stock < quantity) {
-    return {
-      isAvailable: false,
-      productId: product._id.toString(),
-      productName: product.name,
-      requestedQuantity: quantity,
-      availableQuantity: product.stock,
-      startDate,
-      endDate,
-      totalDays: Math.ceil(
-        (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
-      ),
-      message: `Insufficient stock. Available: ${product.stock}`,
-    };
-  }
-
-  // Check date range against product availability dates
-  const now = new Date();
-  if (startDate < now) {
-    return {
-      isAvailable: false,
-      productId: product._id.toString(),
-      productName: product.name,
-      requestedQuantity: quantity,
-      availableQuantity: product.stock,
-      startDate,
-      endDate,
-      totalDays: Math.ceil(
-        (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
-      ),
-      message: "Start date cannot be in the past",
-    };
-  }
-
-  if (startDate < product.availableFrom || endDate > product.availableUntil) {
-    return {
-      isAvailable: false,
-      productId: product._id.toString(),
-      productName: product.name,
-      requestedQuantity: quantity,
-      availableQuantity: product.stock,
-      startDate,
-      endDate,
-      totalDays: Math.ceil(
-        (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
-      ),
-      message: `Product only available from ${product.availableFrom.toDateString()} to ${product.availableUntil.toDateString()}`,
-    };
-  }
-
-  // Check for overlapping orders
-  const existingOrders = await UserOrder.find({
-    "items.product": productId,
-    status: { $in: ["pending", "confirmed", "shipped"] },
-  });
-
-  let bookedQuantity = 0;
-
-  for (const order of existingOrders) {
-    for (const item of order.items) {
-      if (item.product.toString() === productId) {
-        // Check if dates overlap
-        const itemStart = item.startDate || new Date();
-        const itemEnd = item.endDate || new Date();
-
-        if (startDate <= itemEnd && endDate >= itemStart) {
-          bookedQuantity += item.quantity;
-        }
-      }
-    }
-  }
-
-  const finalAvailable = product.stock - bookedQuantity;
-
-  if (finalAvailable < quantity) {
-    return {
-      isAvailable: false,
-      productId: product._id.toString(),
-      productName: product.name,
-      requestedQuantity: quantity,
-      availableQuantity: finalAvailable,
-      startDate,
-      endDate,
-      totalDays: Math.ceil(
-        (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
-      ),
-      message: `Not enough available during selected dates. Available: ${finalAvailable}`,
-    };
-  }
-
-  return {
-    isAvailable: true,
-    productId: product._id.toString(),
-    productName: product.name,
-    requestedQuantity: quantity,
-    availableQuantity: finalAvailable,
-    startDate,
-    endDate,
-    totalDays: Math.ceil(
-      (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
-    ),
-    message: "Available for booking",
-  };
-};
-
-export const getAvailableDates = async (
-  productId: string,
-  startDate?: Date,
-  endDate?: Date,
-  quantity: number = 1
-): Promise<AvailableDatesResponse> => {
-  if (!Types.ObjectId.isValid(productId)) {
-    throw new ApiError("Invalid product ID", 400);
-  }
-
-  const product = await Product.findById(productId);
-
-  if (!product) {
-    throw new ApiError("Product not found", 404);
-  }
-
-  // Default to next 30 days
-  const start = startDate || new Date();
-  const end = endDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-
-  // Get existing orders for this product
-  const existingOrders = await UserOrder.find({
-    "items.product": productId,
-    status: { $in: ["pending", "confirmed", "shipped"] },
-  });
-
-  const availableDates: string[] = [];
-  const unavailableDates: string[] = [];
-
-  const currentDate = new Date(start);
-  const lastDate = new Date(end);
-
-  while (currentDate <= lastDate) {
-    const dateStr = currentDate.toISOString().split("T")[0];
-    const date = new Date(dateStr);
-
-    // Check if date is within product availability range
-    if (date < product.availableFrom || date > product.availableUntil) {
-      unavailableDates.push(dateStr);
-    } else {
-      // Check for existing bookings on this date
-      let bookedOnDate = 0;
-
-      for (const order of existingOrders) {
-        for (const item of order.items) {
-          if (item.product.toString() === productId) {
-            const itemStart = item.startDate || new Date(0);
-            const itemEnd = item.endDate || new Date(0);
-
-            if (date >= itemStart && date <= itemEnd) {
-              bookedOnDate += item.quantity;
-            }
-          }
-        }
-      }
-
-      if (product.stock - bookedOnDate >= quantity) {
-        availableDates.push(dateStr);
-      } else {
-        unavailableDates.push(dateStr);
-      }
-    }
-
-    currentDate.setDate(currentDate.getDate() + 1);
-  }
-
-  return {
-    productId: product._id.toString(),
-    productName: product.name,
-    availableDates,
-    unavailableDates,
-    range: {
-      start: start,
-      end: end,
-    },
-  };
 };

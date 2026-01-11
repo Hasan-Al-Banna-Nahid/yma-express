@@ -1,7 +1,8 @@
 // src/services/checkout/email.service.ts
 import nodemailer from "nodemailer";
-import { IOrderDocument } from "../../modules/UserOrder/order.model";
-
+import { IOrderDocument } from "../../modules/Order/order.interface";
+import dotenv from "dotenv";
+dotenv.config();
 // Email configuration
 const createTransporter = () => {
   return nodemailer.createTransport({

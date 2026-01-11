@@ -1,77 +1,162 @@
-// src/models/location.model.ts
-import mongoose, { Document, Schema } from "mongoose";
-import { ILocation } from "./location.interface";
+import mongoose, { Schema } from "mongoose";
+import {
+  ILocation,
+  IDeliveryArea,
+  IDeliveryOptions,
+} from "./location.interface";
 
-export interface ILocationModel extends ILocation, Document {}
-
-const locationSchema: Schema = new Schema(
+// Sub-schema for delivery areas
+const DeliveryAreaSchema = new Schema<IDeliveryArea>(
   {
     name: {
       type: String,
-      required: [true, "A location must have a name"],
+      required: [true, "Delivery area name is required"],
       trim: true,
-      maxlength: [
-        100,
-        "A location name must have less or equal than 100 characters",
-      ],
+      maxlength: [100, "Area name cannot exceed 100 characters"],
+    },
+    postcode: {
+      type: String,
+      required: [true, "Postcode is required"],
+      trim: true,
+      uppercase: true,
+    },
+    deliveryFee: {
+      type: Number,
+      required: [true, "Delivery fee is required"],
+      min: [0, "Delivery fee cannot be negative"],
+      default: 0,
+    },
+    isFree: {
+      type: Boolean,
+      default: false,
+    },
+    minOrder: {
+      type: Number,
+      required: [true, "Minimum order is required"],
+      min: [0, "Minimum order cannot be negative"],
+      default: 0,
+    },
+    estimatedTime: {
+      type: Number,
+      required: [true, "Estimated delivery time is required"],
+      min: [0, "Estimated time cannot be negative"],
+      default: 60,
+    },
+    isActive: {
+      type: Boolean,
+      default: true,
+    },
+  },
+  { _id: true, timestamps: false }
+);
+
+// Sub-schema for delivery options
+const DeliveryOptionsSchema = new Schema<IDeliveryOptions>(
+  {
+    isAvailable: {
+      type: Boolean,
+      default: true,
+    },
+    isFree: {
+      type: Boolean,
+      default: false,
+    },
+    fee: {
+      type: Number,
+      min: [0, "Fee cannot be negative"],
+      default: 0,
+    },
+    minOrder: {
+      type: Number,
+      min: [0, "Minimum order cannot be negative"],
+      default: 0,
+    },
+    estimatedTime: {
+      type: Number,
+      min: [0, "Estimated time cannot be negative"],
+      default: 60,
+    },
+    radius: {
+      type: Number,
+      min: [0, "Radius cannot be negative"],
+      default: 5000,
+    },
+  },
+  { _id: false, timestamps: false }
+);
+
+const LocationSchema = new Schema<ILocation>(
+  {
+    name: {
+      type: String,
+      required: [true, "Location name is required"],
+      trim: true,
+      maxlength: [200, "Name cannot exceed 200 characters"],
     },
     type: {
       type: String,
-      required: [true, "A location must have a type"],
+      required: [true, "Location type is required"],
       enum: {
-        values: ["country", "state", "city", "landmark"],
-        message: "Location type is either: country, state, city, or landmark",
+        values: ["country", "state", "city", "area", "postcode"],
+        message: "Type must be one of: country, state, city, area, postcode",
       },
+      index: true,
     },
     parent: {
       type: Schema.Types.ObjectId,
       ref: "Location",
       default: null,
+      index: true,
     },
     country: {
       type: String,
-      required: [true, "A location must have a country"],
-      default: "England",
+      trim: true,
     },
     state: {
       type: String,
-      required: function (this: ILocationModel) {
-        return this.type === "city" || this.type === "landmark";
-      },
+      trim: true,
     },
     city: {
       type: String,
-      required: function (this: ILocationModel) {
-        return this.type === "landmark";
-      },
-    },
-    fullAddress: {
-      type: String,
-      required: [true, "A location must have a full address"],
       trim: true,
     },
-    coordinates: {
-      lat: {
-        type: Number,
-        required: [true, "A location must have latitude coordinates"],
-        min: -90,
-        max: 90,
-      },
-      lng: {
-        type: Number,
-        required: [true, "A location must have longitude coordinates"],
-        min: -180,
-        max: 180,
-      },
+    area: {
+      type: String,
+      trim: true,
+    },
+    postcode: {
+      type: String,
+      trim: true,
+      uppercase: true,
+    },
+    deliveryAreas: {
+      type: [DeliveryAreaSchema],
+      default: [],
+    },
+    deliveryOptions: {
+      type: DeliveryOptionsSchema,
+      default: () => ({
+        isAvailable: true,
+        isFree: false,
+        fee: 0,
+        minOrder: 0,
+        estimatedTime: 60,
+        radius: 5000,
+      }),
     },
     description: {
       type: String,
       trim: true,
-      maxlength: [500, "Description cannot exceed 500 characters"],
+      maxlength: [1000, "Description cannot exceed 1000 characters"],
     },
     isActive: {
       type: Boolean,
       default: true,
+      index: true,
+    },
+    metadata: {
+      type: Schema.Types.Mixed,
+      default: {},
     },
   },
   {
@@ -81,30 +166,39 @@ const locationSchema: Schema = new Schema(
   }
 );
 
-// Indexes for better query performance
-locationSchema.index({ type: 1 });
-locationSchema.index({ country: 1, state: 1, city: 1 });
-locationSchema.index({ coordinates: "2dsphere" });
-locationSchema.index({ isActive: 1 });
-locationSchema.index({ name: "text", fullAddress: "text" });
+// Indexes
+LocationSchema.index({ type: 1, isActive: 1 });
+LocationSchema.index({ state: 1, city: 1, area: 1 });
+LocationSchema.index({ "deliveryAreas.postcode": 1 });
+LocationSchema.index({ "deliveryAreas.isActive": 1 });
 
-// Virtual for child locations
-locationSchema.virtual("children", {
+// Virtual for children locations
+LocationSchema.virtual("children", {
   ref: "Location",
   foreignField: "parent",
   localField: "_id",
 });
 
-// Virtual for getting hierarchy
-locationSchema.virtual("hierarchy").get(function (this: ILocationModel) {
+// Virtual for delivery summary
+LocationSchema.virtual("deliverySummary").get(function (this: ILocation) {
+  const activeAreas = this.deliveryAreas.filter((area) => area.isActive);
+  const deliveryFees = activeAreas.map((area) => area.deliveryFee);
+
   return {
-    country: this.country,
-    state: this.state,
-    city: this.city,
-    landmark: this.type === "landmark" ? this.name : null,
+    totalAreas: this.deliveryAreas.length,
+    activeAreas: activeAreas.length,
+    freeDeliveryAreas: activeAreas.filter((area) => area.isFree).length,
+    minDeliveryFee:
+      deliveryFees.length > 0
+        ? Math.min(...deliveryFees)
+        : this.deliveryOptions?.fee || 0,
+    maxDeliveryFee:
+      deliveryFees.length > 0
+        ? Math.max(...deliveryFees)
+        : this.deliveryOptions?.fee || 0,
   };
 });
 
-const Location = mongoose.model<ILocationModel>("Location", locationSchema);
+const Location = mongoose.model<ILocation>("Location", LocationSchema);
 
 export default Location;

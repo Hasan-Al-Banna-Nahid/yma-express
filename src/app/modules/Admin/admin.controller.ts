@@ -1,22 +1,212 @@
-import mongoose from "mongoose";
 import { Request, Response } from "express";
+import mongoose from "mongoose";
 import asyncHandler from "../../utils/asyncHandler";
 import ApiError from "../../utils/apiError";
 import { ApiResponse } from "../../utils/apiResponse";
 import User from "../Auth/user.model";
 import { uploadToCloudinary } from "../../utils/cloudinary.util";
-import { UserRole } from "../Auth/user.interface";
+import Order from "../Order/order.model"; // Import your Order model
 
 type AuthenticatedRequest = Request & { user: any };
 
-// Get all users (admin only)
+// ==================== ADMIN USER MANAGEMENT ====================
+// ==================== ORDER STATISTICS ====================
+
+export const getOrderStatistics = asyncHandler(
+  async (req: Request, res: Response) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    // Execute all queries in parallel
+    const [
+      totalPendingOrders,
+      todayRevenueResult,
+      totalDeliveriesResult,
+      highestDemandProducts,
+    ] = await Promise.all([
+      // 1. Total pending orders
+      Order.countDocuments({
+        status: { $in: ["pending", "processing", "confirmed"] },
+      }),
+
+      // 2. Revenue generated today
+      Order.aggregate([
+        {
+          $match: {
+            status: "delivered",
+            updatedAt: { $gte: today, $lt: tomorrow },
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            totalRevenue: { $sum: "$totalAmount" },
+            totalOrders: { $sum: 1 },
+          },
+        },
+      ]),
+
+      // 3. Total deliveries (completed orders)
+      Order.countDocuments({ status: "delivered" }),
+
+      // 4. Highest demand products (top 5)
+      Order.aggregate([
+        { $match: { status: { $ne: "cancelled" } } },
+        { $unwind: "$items" },
+        {
+          $group: {
+            _id: "$items.productId",
+            productName: { $first: "$items.name" },
+            totalQuantity: { $sum: "$items.quantity" },
+            totalOrders: { $sum: 1 },
+          },
+        },
+        { $sort: { totalQuantity: -1 } },
+        { $limit: 5 },
+      ]),
+    ]);
+
+    // Process results
+    const todayRevenue = todayRevenueResult[0] || {
+      totalRevenue: 0,
+      totalOrders: 0,
+    };
+    const totalDeliveries = totalDeliveriesResult || 0;
+
+    ApiResponse(res, 200, "Order statistics retrieved", {
+      statistics: {
+        totalPendingOrders,
+        todayRevenue: {
+          amount: todayRevenue.totalRevenue,
+          currency: "POUNDS",
+          orders: todayRevenue.totalOrders,
+        },
+        totalDeliveries,
+        highestDemandProducts: highestDemandProducts.map((product) => ({
+          productId: product._id,
+          productName: product.productName,
+          totalQuantity: product.totalQuantity,
+          totalOrders: product.totalOrders,
+        })),
+      },
+      timestamp: new Date(),
+    });
+  }
+);
+
+// ==================== DASHBOARD SUMMARY ====================
+export const getDashboardSummary = asyncHandler(
+  async (req: Request, res: Response) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    const [todayStats, yesterdayStats, pendingOrders, recentOrders] =
+      await Promise.all([
+        // Today's revenue and orders
+        Order.aggregate([
+          {
+            $match: {
+              status: "delivered",
+              updatedAt: { $gte: today },
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              revenue: { $sum: "$totalAmount" },
+              orders: { $sum: 1 },
+            },
+          },
+        ]),
+
+        // Yesterday's revenue and orders (for comparison)
+        Order.aggregate([
+          {
+            $match: {
+              status: "delivered",
+              updatedAt: { $gte: yesterday, $lt: today },
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              revenue: { $sum: "$totalAmount" },
+              orders: { $sum: 1 },
+            },
+          },
+        ]),
+
+        // Pending orders with count
+        Order.countDocuments({
+          status: { $in: ["pending", "processing"] },
+        }),
+
+        // Recent orders (last 5)
+        Order.find()
+          .select("orderNumber status totalAmount createdAt")
+          .sort({ createdAt: -1 })
+          .limit(5)
+          .lean(),
+      ]);
+
+    const todayData = todayStats[0] || { revenue: 0, orders: 0 };
+    const yesterdayData = yesterdayStats[0] || { revenue: 0, orders: 0 };
+
+    // Calculate percentage change
+    const revenueChange =
+      yesterdayData.revenue === 0
+        ? 100
+        : ((todayData.revenue - yesterdayData.revenue) /
+            yesterdayData.revenue) *
+          100;
+
+    const ordersChange =
+      yesterdayData.orders === 0
+        ? 100
+        : ((todayData.orders - yesterdayData.orders) / yesterdayData.orders) *
+          100;
+
+    ApiResponse(res, 200, "Dashboard summary retrieved", {
+      summary: {
+        revenue: {
+          today: todayData.revenue,
+          yesterday: yesterdayData.revenue,
+          change: parseFloat(revenueChange.toFixed(2)),
+        },
+        orders: {
+          today: todayData.orders,
+          yesterday: yesterdayData.orders,
+          change: parseFloat(ordersChange.toFixed(2)),
+        },
+        pendingOrders,
+        recentOrders: recentOrders.map((order) => ({
+          id: order._id,
+          orderNumber: order.orderNumber,
+          status: order.status,
+          totalAmount: order.totalAmount,
+          createdAt: order.createdAt,
+        })),
+      },
+    });
+  }
+);
+// Get all users with pagination
 export const getAllUsers = asyncHandler(async (req: Request, res: Response) => {
   const { page = 1, limit = 10, role, search } = req.query;
   const skip = (Number(page) - 1) * Number(limit);
 
+  // Build query
   const query: any = {};
 
-  if (role) query.role = role;
+  if (role && role !== "all") {
+    query.role = role;
+  }
 
   if (search) {
     query.$or = [
@@ -25,9 +215,10 @@ export const getAllUsers = asyncHandler(async (req: Request, res: Response) => {
     ];
   }
 
+  // Execute queries
   const [users, total] = await Promise.all([
     User.find(query)
-      .select("-password -refreshTokenHash -refreshTokenExpiresAt")
+      .select("-password")
       .skip(skip)
       .limit(Number(limit))
       .sort({ createdAt: -1 }),
@@ -45,18 +236,16 @@ export const getAllUsers = asyncHandler(async (req: Request, res: Response) => {
   });
 });
 
-// Get user by ID
+// Get single user by ID
 export const getUserById = asyncHandler(async (req: Request, res: Response) => {
-  const userId = req.params.id;
+  const { id } = req.params;
 
-  // Validate ObjectId
-  if (!mongoose.Types.ObjectId.isValid(userId)) {
+  // Validate ID
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     throw new ApiError("Invalid user ID", 400);
   }
 
-  const user = await User.findById(userId).select(
-    "-password -refreshTokenHash -refreshTokenExpiresAt"
-  );
+  const user = await User.findById(id).select("-password");
 
   if (!user) {
     throw new ApiError("User not found", 404);
@@ -65,11 +254,10 @@ export const getUserById = asyncHandler(async (req: Request, res: Response) => {
   ApiResponse(res, 200, "User retrieved successfully", { user });
 });
 
-// Create new user (admin/superadmin only)
+// Create new user
 export const createUser = asyncHandler(async (req: Request, res: Response) => {
   const { name, email, password, role } = req.body;
   const photo = req.file;
-  const aReq = req as AuthenticatedRequest;
 
   // Validate required fields
   if (!name || !email || !password || !role) {
@@ -77,20 +265,9 @@ export const createUser = asyncHandler(async (req: Request, res: Response) => {
   }
 
   // Validate role
-  const allowedRoles: UserRole[] = ["admin", "editor", "delivery", "user"];
-
-  // Only superadmin can create superadmin
-  if (role === "superadmin" && aReq.user.role !== "superadmin") {
-    throw new ApiError("Only superadmin can create superadmin users", 403);
-  }
-
-  // Check if current user can assign this role
-  if (aReq.user.role === "admin" && role === "admin") {
-    throw new ApiError("Admin cannot create other admin users", 403);
-  }
-
-  if (!allowedRoles.includes(role) && role !== "superadmin") {
-    throw new ApiError("Invalid role specified", 400);
+  const validRoles = ["admin", "editor", "delivery", "user"];
+  if (!validRoles.includes(role)) {
+    throw new ApiError(`Role must be one of: ${validRoles.join(", ")}`, 400);
   }
 
   // Check if email exists
@@ -99,7 +276,8 @@ export const createUser = asyncHandler(async (req: Request, res: Response) => {
     throw new ApiError("Email already in use", 400);
   }
 
-  let photoUrl;
+  // Upload photo if exists
+  let photoUrl = "";
   if (photo) {
     photoUrl = await uploadToCloudinary(photo);
   }
@@ -110,47 +288,53 @@ export const createUser = asyncHandler(async (req: Request, res: Response) => {
     email: email.toLowerCase(),
     password,
     role,
-    photo: photoUrl,
+    photo: photoUrl || undefined,
     active: true,
   });
 
-  // Remove sensitive fields
-  const userResponse = user.toObject();
-  delete (userResponse as any).password;
-  delete (userResponse as any).refreshTokenHash;
-  delete (userResponse as any).refreshTokenExpiresAt;
+  // Prepare response
+  const userResponse = {
+    id: user._id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    photo: user.photo,
+    active: user.active,
+    createdAt: user.createdAt,
+    updatedAt: user.updatedAt,
+  };
 
   ApiResponse(res, 201, "User created successfully", { user: userResponse });
 });
 
 // Update user
 export const updateUser = asyncHandler(async (req: Request, res: Response) => {
-  const userId = req.params.id;
+  const { id } = req.params;
   const updateData = req.body;
   const photo = req.file;
-  const aReq = req as AuthenticatedRequest;
 
-  // Validate ObjectId
-  if (!mongoose.Types.ObjectId.isValid(userId)) {
+  // Validate ID
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     throw new ApiError("Invalid user ID", 400);
   }
 
-  const user = await User.findById(userId);
+  // Find user
+  const user = await User.findById(id);
   if (!user) {
     throw new ApiError("User not found", 404);
   }
 
-  // Handle photo upload
+  // Upload new photo if provided
   if (photo) {
     const photoUrl = await uploadToCloudinary(photo);
     updateData.photo = photoUrl;
   }
 
-  // Handle email update
+  // Handle email change
   if (updateData.email && updateData.email !== user.email) {
     const existingUser = await User.findOne({
       email: updateData.email.toLowerCase(),
-      _id: { $ne: userId },
+      _id: { $ne: id },
     });
     if (existingUser) {
       throw new ApiError("Email already in use", 400);
@@ -158,140 +342,128 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
     updateData.email = updateData.email.toLowerCase();
   }
 
-  // Handle role update - only superadmin can change roles
-  if (updateData.role && updateData.role !== user.role) {
-    if (aReq.user.role !== "superadmin") {
-      throw new ApiError("Only superadmin can change user roles", 403);
-    }
-
-    // Cannot change your own role
-    if (aReq.user.id === userId) {
-      throw new ApiError("You cannot change your own role", 400);
-    }
-  }
-
   // Update user
   Object.assign(user, updateData);
-  await user.save({ validateModifiedOnly: true });
+  await user.save();
 
-  // Remove sensitive fields
-  const userResponse = user.toObject();
-  delete (userResponse as any).password;
-  delete (userResponse as any).refreshTokenHash;
-  delete (userResponse as any).refreshTokenExpiresAt;
+  // Prepare response
+  const userResponse = {
+    id: user._id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    photo: user.photo,
+    active: user.active,
+    createdAt: user.createdAt,
+    updatedAt: user.updatedAt,
+  };
 
   ApiResponse(res, 200, "User updated successfully", { user: userResponse });
 });
 
 // Delete user (deactivate)
 export const deleteUser = asyncHandler(async (req: Request, res: Response) => {
-  const userId = req.params.id;
+  const { id } = req.params;
   const aReq = req as AuthenticatedRequest;
 
-  // Validate ObjectId
-  if (!mongoose.Types.ObjectId.isValid(userId)) {
+  // Validate ID
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     throw new ApiError("Invalid user ID", 400);
   }
 
   // Cannot delete yourself
-  if (aReq.user.id === userId) {
+  if (aReq.user.id === id) {
     throw new ApiError("You cannot delete your own account", 400);
   }
 
-  const user = await User.findById(userId);
+  // Find and deactivate user
+  const user = await User.findById(id);
   if (!user) {
     throw new ApiError("User not found", 404);
   }
 
-  // Check permission - only superadmin can delete admins
-  if (user.role === "admin" && aReq.user.role !== "superadmin") {
-    throw new ApiError("Only superadmin can delete admin users", 403);
-  }
-
-  // Deactivate user instead of deleting
   user.active = false;
   await user.save();
 
   ApiResponse(res, 200, "User deactivated successfully");
 });
 
-// Change user role (superadmin only)
-export const changeUserRole = asyncHandler(
+// Activate user
+export const activateUser = asyncHandler(
   async (req: Request, res: Response) => {
-    const { userId, newRole } = req.body;
-    console.log(req.body);
-    const aReq = req as AuthenticatedRequest;
+    const { id } = req.params;
 
-    // Validate required fields
-    if (!userId || !newRole) {
-      throw new ApiError("User ID and new role are required", 400);
-    }
-
-    // Only superadmin can change roles
-    if (aReq.user.role !== "superadmin") {
-      throw new ApiError("Only superadmin can change user roles", 403);
-    }
-
-    // Validate userId is a valid ObjectId
-    if (!mongoose.Types.ObjectId.isValid(userId)) {
+    // Validate ID
+    if (!mongoose.Types.ObjectId.isValid(id)) {
       throw new ApiError("Invalid user ID", 400);
     }
 
-    const user = await User.findById(userId);
+    // Find and activate user
+    const user = await User.findById(id);
     if (!user) {
       throw new ApiError("User not found", 404);
     }
 
-    // Cannot change your own role
-    if (aReq.user.id === userId) {
-      throw new ApiError("You cannot change your own role", 400);
-    }
-
-    // Validate new role
-    const allowedRoles: UserRole[] = [
-      "superadmin",
-      "admin",
-      "editor",
-      "delivery",
-      "user",
-    ];
-    if (!allowedRoles.includes(newRole)) {
-      throw new ApiError("Invalid role specified", 400);
-    }
-
-    user.role = newRole;
+    user.active = true;
     await user.save();
 
-    const userResponse = user.toObject();
-    delete (userResponse as any).password;
-    delete (userResponse as any).refreshTokenHash;
-    delete (userResponse as any).refreshTokenExpiresAt;
-
-    ApiResponse(res, 200, "User role updated successfully", {
-      user: userResponse,
-    });
+    ApiResponse(res, 200, "User activated successfully");
   }
 );
 
-// Get system statistics (admin/superadmin only)
+// Change user password (admin can reset password)
+export const changeUserPassword = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const { newPassword } = req.body;
+
+    // Validate ID
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      throw new ApiError("Invalid user ID", 400);
+    }
+
+    if (!newPassword || newPassword.length < 6) {
+      throw new ApiError("Password must be at least 6 characters", 400);
+    }
+
+    // Find user and update password
+    const user = await User.findById(id);
+    if (!user) {
+      throw new ApiError("User not found", 404);
+    }
+
+    user.password = newPassword;
+    await user.save();
+
+    ApiResponse(res, 200, "Password updated successfully");
+  }
+);
+
+// ==================== ADMIN STATISTICS ====================
+
+// Get system statistics
 export const getSystemStats = asyncHandler(
   async (req: Request, res: Response) => {
     const [
       totalUsers,
       activeUsers,
-      superadmins,
       admins,
       editors,
       delivery,
       regularUsers,
+      newUsersToday,
     ] = await Promise.all([
       User.countDocuments(),
       User.countDocuments({ active: true }),
-      User.countDocuments({ role: "superadmin" }),
       User.countDocuments({ role: "admin" }),
       User.countDocuments({ role: "editor" }),
       User.countDocuments({ role: "delivery" }),
       User.countDocuments({ role: "user" }),
+      User.countDocuments({
+        createdAt: {
+          $gte: new Date(new Date().setHours(0, 0, 0, 0)),
+        },
+      }),
     ]);
 
     ApiResponse(res, 200, "System statistics retrieved", {
@@ -299,15 +471,255 @@ export const getSystemStats = asyncHandler(
         users: {
           total: totalUsers,
           active: activeUsers,
+          inactive: totalUsers - activeUsers,
           byRole: {
-            superadmin: superadmins,
             admin: admins,
             editor: editors,
             delivery: delivery,
             user: regularUsers,
           },
+          newToday: newUsersToday,
         },
       },
+    });
+  }
+);
+
+// Get user activity summary
+export const getUserActivity = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { days = 30 } = req.query;
+
+    const date = new Date();
+    date.setDate(date.getDate() - Number(days));
+
+    // Get user registration by day
+    const registrationsByDay = await User.aggregate([
+      {
+        $match: {
+          createdAt: { $gte: date },
+        },
+      },
+      {
+        $group: {
+          _id: {
+            $dateToString: { format: "%Y-%m-%d", date: "$createdAt" },
+          },
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]);
+
+    // Get users by role
+    const usersByRole = await User.aggregate([
+      {
+        $group: {
+          _id: "$role",
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    // Get active vs inactive
+    const activeStatus = await User.aggregate([
+      {
+        $group: {
+          _id: "$active",
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    ApiResponse(res, 200, "User activity retrieved", {
+      registrationsByDay,
+      usersByRole,
+      activeStatus,
+    });
+  }
+);
+// ==================== ROLE MANAGEMENT ====================
+
+// Change user role
+export const changeUserRole = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const { role } = req.body;
+    const aReq = req as AuthenticatedRequest;
+
+    // Validate ID
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      throw new ApiError("Invalid user ID", 400);
+    }
+
+    // Validate role
+    if (!role) {
+      throw new ApiError("Role is required", 400);
+    }
+
+    const validRoles = ["admin", "editor", "delivery", "user"];
+    if (!validRoles.includes(role)) {
+      throw new ApiError(`Role must be one of: ${validRoles.join(", ")}`, 400);
+    }
+
+    // Cannot change your own role
+    if (aReq.user.id === id) {
+      throw new ApiError("You cannot change your own role", 400);
+    }
+
+    // Find user
+    const user = await User.findById(id);
+    if (!user) {
+      throw new ApiError("User not found", 404);
+    }
+
+    // Update role
+    user.role = role;
+    await user.save();
+
+    // Prepare response
+    const userResponse = {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      photo: user.photo,
+      active: user.active,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    };
+
+    ApiResponse(res, 200, "User role updated successfully", {
+      user: userResponse,
+    });
+  }
+);
+
+// Bulk change roles
+export const bulkChangeRoles = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { userIds, role } = req.body;
+    const aReq = req as AuthenticatedRequest;
+
+    // Validate inputs
+    if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+      throw new ApiError("User IDs array is required", 400);
+    }
+
+    if (!role) {
+      throw new ApiError("Role is required", 400);
+    }
+
+    const validRoles = ["admin", "editor", "delivery", "user"];
+    if (!validRoles.includes(role)) {
+      throw new ApiError(`Role must be one of: ${validRoles.join(", ")}`, 400);
+    }
+
+    // Check if trying to change own role
+    if (userIds.includes(aReq.user.id)) {
+      throw new ApiError("You cannot change your own role", 400);
+    }
+
+    // Validate all IDs
+    const invalidIds = userIds.filter(
+      (id: string) => !mongoose.Types.ObjectId.isValid(id)
+    );
+    if (invalidIds.length > 0) {
+      throw new ApiError(`Invalid user IDs: ${invalidIds.join(", ")}`, 400);
+    }
+
+    // Update roles
+    const result = await User.updateMany({ _id: { $in: userIds } }, { role });
+
+    // Get updated users
+    const updatedUsers = await User.find({ _id: { $in: userIds } })
+      .select("-password")
+      .sort({ createdAt: -1 });
+
+    ApiResponse(res, 200, "Roles updated successfully", {
+      success: true,
+      message: `${result.modifiedCount} users updated`,
+      updatedCount: result.modifiedCount,
+      users: updatedUsers.map((user) => ({
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      })),
+    });
+  }
+);
+
+// Get all users by specific role
+export const getUsersByRole = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { role } = req.params;
+    const { page = 1, limit = 10 } = req.query;
+    const skip = (Number(page) - 1) * Number(limit);
+
+    // Validate role
+    const validRoles = ["admin", "editor", "delivery", "user"];
+    if (!validRoles.includes(role)) {
+      throw new ApiError(`Role must be one of: ${validRoles.join(", ")}`, 400);
+    }
+
+    // Build query
+    const query = { role };
+
+    // Execute queries
+    const [users, total] = await Promise.all([
+      User.find(query)
+        .select("-password")
+        .skip(skip)
+        .limit(Number(limit))
+        .sort({ createdAt: -1 }),
+      User.countDocuments(query),
+    ]);
+
+    ApiResponse(res, 200, `Users with role '${role}' retrieved`, {
+      role,
+      users,
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        pages: Math.ceil(total / Number(limit)),
+      },
+    });
+  }
+);
+
+// Get role statistics
+export const getRoleStats = asyncHandler(
+  async (req: Request, res: Response) => {
+    const roleStats = await User.aggregate([
+      {
+        $group: {
+          _id: "$role",
+          total: { $sum: 1 },
+          active: {
+            $sum: { $cond: [{ $eq: ["$active", true] }, 1, 0] },
+          },
+          verified: {
+            $sum: { $cond: [{ $eq: ["$isEmailVerified", true] }, 1, 0] },
+          },
+        },
+      },
+      {
+        $project: {
+          role: "$_id",
+          total: 1,
+          active: 1,
+          inactive: { $subtract: ["$total", "$active"] },
+          verified: 1,
+          unverified: { $subtract: ["$total", "$verified"] },
+        },
+      },
+      { $sort: { role: 1 } },
+    ]);
+
+    ApiResponse(res, 200, "Role statistics retrieved", {
+      stats: roleStats,
     });
   }
 );
