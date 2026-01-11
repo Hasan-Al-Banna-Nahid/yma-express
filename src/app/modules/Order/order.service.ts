@@ -20,66 +20,252 @@ import {
   INVOICE_TYPES,
   DeliveryTimeManager,
 } from "./order.interface";
+import Product from "../../modules/Product/product.model";
+import User from "../../modules/Auth/user.model";
+import Customer from "../../modules/customer/customer.model";
 
 // Create new order
+
 export const createOrder = async (
-  orderData: CreateOrderInput
-): Promise<IOrderDocument> => {
+  userId: string,
+  orderData: any
+): Promise<any> => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
-    if (!orderData.termsAccepted) {
-      throw new ApiError("You must accept the terms and conditions", 400);
+    const {
+      items,
+      shippingAddress,
+      paymentMethod,
+      invoiceType = "regular",
+      bankDetails = "",
+      termsAccepted = false,
+      promoCode,
+      promoDiscount = 0,
+      estimatedDeliveryDate,
+    } = orderData;
+
+    // 1. Validate and process order items
+    let subtotalAmount = 0;
+    const processedItems = [];
+
+    for (const item of items) {
+      const product = await Product.findById(item.productId).session(session);
+      if (!product) {
+        throw new ApiError(`Product ${item.productId} not found`, 404);
+      }
+      if (product.stock < item.quantity) {
+        throw new ApiError(
+          `Insufficient stock for ${product.name}. Available: ${product.stock}`,
+          400
+        );
+      }
+
+      // Update product stock
+      product.stock -= item.quantity;
+      await product.save({ session });
+
+      const itemTotal = product.price * item.quantity;
+      subtotalAmount += itemTotal;
+
+      processedItems.push({
+        product: product._id,
+        name: product.name,
+        quantity: item.quantity,
+        price: product.price,
+        startDate: item.startDate,
+        endDate: item.endDate,
+        hireOccasion: item.hireOccasion,
+        keepOvernight: item.keepOvernight || false,
+      });
     }
 
-    if (!orderData.items || orderData.items.length === 0) {
-      throw new ApiError("Order must contain at least one item", 400);
+    // 2. Get user info
+    const user = await User.findById(userId).session(session);
+    if (!user) {
+      throw new ApiError("User not found", 404);
     }
 
-    // Calculate totals
-    const subtotal = orderData.items.reduce(
-      (sum, item) => sum + item.price * item.quantity,
-      0
-    );
-    const deliveryFee = orderData.deliveryFee || 0;
-    const overnightFee = orderData.overnightFee || 0;
-    const totalAmount = subtotal + deliveryFee + overnightFee;
+    // 3. Calculate delivery fee based on delivery time
+    const deliveryTime = shippingAddress?.deliveryTime || "8am-12pm";
+    let deliveryFee = DeliveryTimeManager.getFee(deliveryTime);
 
-    // Create order
-    const order = await Order.create({
-      ...orderData,
-      subtotalAmount: subtotal,
+    // Add collection fee if specified
+    if (
+      shippingAddress?.collectionTime &&
+      shippingAddress.collectionTime.trim() !== ""
+    ) {
+      const collectionOptions = [
+        { value: "before_5pm", fee: 0 },
+        { value: "after_5pm", fee: 10 },
+        { value: "next_day", fee: 10 },
+      ];
+      const collectionOption = collectionOptions.find(
+        (opt) => opt.value === shippingAddress.collectionTime
+      );
+      if (collectionOption) {
+        deliveryFee += collectionOption.fee;
+      }
+    }
+
+    // 4. Calculate overnight fee from items
+    const overnightFee = processedItems.reduce((total, item) => {
+      return total + (item.keepOvernight ? 50 : 0);
+    }, 0);
+
+    const discountAmount = promoDiscount || 0;
+    const totalAmount =
+      subtotalAmount + deliveryFee + overnightFee - discountAmount;
+
+    // 5. Create the order with proper schema structure
+    const order = new Order({
+      user: userId,
+      items: processedItems,
+      subtotalAmount,
       deliveryFee,
       overnightFee,
+      discountAmount,
       totalAmount,
-      status: ORDER_STATUS.PENDING,
+      paymentMethod,
+      status: "pending",
+      shippingAddress: {
+        firstName: shippingAddress.firstName,
+        lastName: shippingAddress.lastName,
+        phone: shippingAddress.phone,
+        email: shippingAddress.email,
+        country: shippingAddress.country || "UK",
+        city: shippingAddress.city,
+        street: shippingAddress.street,
+        zipCode: shippingAddress.zipCode,
+        apartment: shippingAddress.apartment || "",
+        location: shippingAddress.location || "",
+        companyName: shippingAddress.companyName || "",
+        locationAccessibility: shippingAddress.locationAccessibility || "",
+        deliveryTime: deliveryTime,
+        collectionTime: shippingAddress.collectionTime || "",
+        floorType: shippingAddress.floorType || "",
+        userType: shippingAddress.userType || "",
+        keepOvernight: overnightFee > 0,
+        hireOccasion: shippingAddress.hireOccasion || "birthday",
+        notes: shippingAddress.notes || "",
+        differentBillingAddress:
+          shippingAddress.differentBillingAddress || false,
+        billingFirstName: shippingAddress.billingFirstName || "",
+        billingLastName: shippingAddress.billingLastName || "",
+        billingStreet: shippingAddress.billingStreet || "",
+        billingCity: shippingAddress.billingCity || "",
+        billingZipCode: shippingAddress.billingZipCode || "",
+        billingCompanyName: shippingAddress.billingCompanyName || "",
+      },
+      termsAccepted: termsAccepted,
+      invoiceType: invoiceType,
+      bankDetails: bankDetails,
+      promoCode: promoCode,
+      promoDiscount: promoDiscount,
+      estimatedDeliveryDate:
+        estimatedDeliveryDate || new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
     });
 
-    // Populate order
-    const populatedOrder = await Order.findById(order._id)
-      .populate("user", "name email phone")
-      .populate("items.product", "name imageCover price category");
+    await order.save({ session });
 
-    if (!populatedOrder) {
-      throw new ApiError("Failed to create order", 500);
+    // 6. Create or update customer
+    await createOrUpdateCustomerFromOrder(
+      userId,
+      user,
+      order,
+      shippingAddress,
+      session
+    );
+
+    // 7. Commit transaction
+    await session.commitTransaction();
+    session.endSession();
+
+    // 8. Send email notifications (outside transaction)
+    try {
+      await sendOrderReceivedEmail(order);
+      await notifyAdminNewOrder(order);
+    } catch (emailError) {
+      console.error("Failed to send email:", emailError);
     }
 
-    // Send emails
-    await sendOrderReceivedEmail(populatedOrder);
-    await notifyAdminNewOrder(populatedOrder);
+    return order;
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    throw error;
+  }
+};
 
-    return populatedOrder;
-  } catch (error: any) {
-    if (error instanceof ApiError) throw error;
+// Helper function to create/update customer
+const createOrUpdateCustomerFromOrder = async (
+  userId: string,
+  user: any,
+  order: any,
+  shippingAddress: any,
+  session: mongoose.ClientSession
+): Promise<void> => {
+  try {
+    const existingCustomer = await Customer.findOne({ user: userId }).session(
+      session
+    );
 
-    if (error.code === 11000 && error.keyPattern?.orderNumber) {
-      throw new ApiError("Order number already exists. Please try again.", 400);
+    const customerData = {
+      user: userId,
+      name: user.name,
+      email: user.email,
+      phone: shippingAddress.phone || user.phone || "",
+      address: shippingAddress.street || "",
+      city: shippingAddress.city || "",
+      postcode: shippingAddress.zipCode || "",
+      notes: shippingAddress.notes || "",
+    };
+
+    if (existingCustomer) {
+      // Update existing customer
+      existingCustomer.totalOrders += 1;
+      existingCustomer.totalSpent += order.totalAmount || 0;
+      existingCustomer.lastOrderDate = new Date();
+
+      if (!existingCustomer.firstOrderDate) {
+        existingCustomer.firstOrderDate = new Date();
+      }
+
+      // Update contact info if not present
+      if (!existingCustomer.phone && customerData.phone) {
+        existingCustomer.phone = customerData.phone;
+      }
+      if (!existingCustomer.address && customerData.address) {
+        existingCustomer.address = customerData.address;
+      }
+      if (!existingCustomer.city && customerData.city) {
+        existingCustomer.city = customerData.city;
+      }
+      if (!existingCustomer.postcode && customerData.postcode) {
+        existingCustomer.postcode = customerData.postcode;
+      }
+
+      await existingCustomer.save({ session });
+    } else {
+      // Create new customer
+      await Customer.create(
+        [
+          {
+            ...customerData,
+            totalOrders: 1,
+            totalSpent: order.totalAmount || 0,
+            firstOrderDate: new Date(),
+            lastOrderDate: new Date(),
+            isFavorite: false,
+            tags: ["new-customer"],
+          },
+        ],
+        { session }
+      );
     }
-
-    if (error.name === "ValidationError") {
-      const errors = Object.values(error.errors).map((err: any) => err.message);
-      throw new ApiError(`Validation failed: ${errors.join(", ")}`, 400);
-    }
-
-    throw new ApiError("Failed to create order", 500);
+  } catch (error) {
+    console.error("Error creating/updating customer:", error);
   }
 };
 

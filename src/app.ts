@@ -3,7 +3,9 @@ import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import path from "path";
+import dotenv from "dotenv";
 
+dotenv.config();
 // Import routes
 import authRouter from "./app/modules/Auth/auth.route";
 import bookingRouter from "./app/modules/Bookings/booking.route";
@@ -21,6 +23,7 @@ import contactRoutes from "./app/modules/contact/contact.routes";
 import newsletterRoutes from "./app/modules/newsletter/newsletter.routes"; // Add this line
 import blogRoutes from "./app/modules/Blog/blog.routes"; // Add this line
 import promoRoutes from "./app/modules/promos/promos.routes";
+import customerRoutes from "./app/modules/customer/customer.routes";
 
 const app = express();
 
@@ -32,17 +35,24 @@ const allowedOrigins = [
   "https://yma-frontend.vercel.app",
   process.env.FRONTEND_URL, // From environment
   "http://localhost:8001",
-];
+  "https://ymaback.vercel.app",
+  process.env.API_PUBLIC_URL, // From environment
+].filter(Boolean);
 
 app.use(
   cors({
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) return callback(null, true);
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      console.error("Blocked by CORS:", origin);
       return callback(new Error("Not allowed by CORS"));
     },
     credentials: true,
-    methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS", "PUT"],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
@@ -73,6 +83,7 @@ app.use("/api/v1", contactRoutes);
 app.use("/api/v1", newsletterRoutes);
 app.use("/api/v1/blogs", blogRoutes);
 app.use("/api/v1", promoRoutes);
+app.use("/api/v1/customers", customerRoutes);
 
 // Health check
 app.get("/healthz", (_req, res) => res.json({ ok: true }));

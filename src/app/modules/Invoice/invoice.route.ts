@@ -7,7 +7,6 @@ import {
   getInvoicesByBooking,
   updateInvoice,
   deleteInvoice,
-  generateInvoiceForBooking,
   generateCustomInvoice,
   getInvoicesByUser,
   updateInvoiceStatus,
@@ -34,12 +33,6 @@ router.get(
   "/booking/:bookingId",
   restrictTo("admin", "superadmin", "editor"),
   getInvoicesByBooking
-);
-
-router.post(
-  "/generate/:bookingId",
-  restrictTo("admin", "superadmin", "editor"),
-  generateInvoiceForBooking
 );
 
 router.post(

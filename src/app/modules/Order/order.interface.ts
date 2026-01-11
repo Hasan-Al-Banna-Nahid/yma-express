@@ -1,5 +1,67 @@
 import mongoose, { Types, Document } from "mongoose";
 
+// User/Customer Interface
+export interface IUser extends Document {
+  _id: Types.ObjectId;
+  name: string;
+  email: string;
+  phone: string;
+  password: string;
+  role: "user" | "admin";
+  photo?: string;
+  active: boolean;
+
+  // Customer fields (will be populated when user places order)
+  customerId?: string;
+  address?: string;
+  city?: string;
+  postcode?: string;
+  notes?: string;
+  totalOrders: number;
+  totalSpent: number;
+  firstOrderDate?: Date;
+  lastOrderDate?: Date;
+  isFavorite: boolean;
+  tags: string[];
+
+  // Timestamps
+  createdAt: Date;
+  updatedAt: Date;
+
+  // Methods
+  comparePassword(candidatePassword: string): Promise<boolean>;
+  createJWT(): string;
+  changedPasswordAfter(JWTTimestamp: number): boolean;
+
+  // Virtual
+  fullAddress?: string;
+}
+
+// Customer Interface (for customer-specific operations)
+export interface ICustomer extends Document {
+  _id: Types.ObjectId;
+  userId: Types.ObjectId;
+  customerId?: string;
+  name: string;
+  email: string;
+  phone: string;
+  role: string;
+  photo?: string;
+  address?: string;
+  city?: string;
+  postcode?: string;
+  notes?: string;
+  totalOrders: number;
+  totalSpent: number;
+  firstOrderDate?: Date;
+  lastOrderDate?: Date;
+  isFavorite: boolean;
+  tags: string[];
+  fullAddress?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 // Order Item Interface
 export interface IOrderItem {
   product: Types.ObjectId;
@@ -65,6 +127,8 @@ export interface IOrder {
   estimatedDeliveryDate?: Date;
   deliveryDate?: Date;
   adminNotes?: string;
+  startDate?: Date;
+  endDate?: Date;
 }
 
 // Document Interfaces
@@ -137,6 +201,67 @@ export interface FilterOptions {
   paymentMethod?: string;
   minAmount?: number;
   maxAmount?: number;
+}
+
+// ==================== CUSTOMER INTERFACES ====================
+export interface CreateUserOrderInput {
+  productId: string;
+  quantity: number;
+  paymentMethod: string;
+  shippingAddress: {
+    firstName: string;
+    lastName: string;
+    phone: string;
+    email: string;
+    street: string;
+    city: string;
+    country?: string;
+    zipCode?: string;
+  };
+}
+
+export interface ICustomerStats {
+  totalCustomers: number;
+  newCustomersToday: number;
+  topCustomers: Array<{
+    customerId: Types.ObjectId;
+    name: string;
+    totalOrders: number;
+    totalSpent: number;
+  }>;
+}
+
+export interface CustomerSearchFilters {
+  searchTerm?: string;
+  phone?: string;
+  email?: string;
+  name?: string;
+  city?: string;
+  tags?: string[];
+  minOrders?: number;
+  maxOrders?: number;
+  minSpent?: number;
+  maxSpent?: number;
+  startDate?: Date;
+  endDate?: Date;
+  isFavorite?: boolean;
+  role?: string;
+  onlyWithOrders?: boolean;
+}
+
+export interface CustomerOrderHistory {
+  customer: ICustomer;
+  orders: any[];
+  stats: {
+    totalOrders: number;
+    totalSpent: number;
+    averageOrderValue: number;
+    favoriteProducts: Array<{
+      productId: Types.ObjectId;
+      name: string;
+      timesOrdered: number;
+    }>;
+  };
 }
 
 // ==================== DELIVERY TIME SYSTEM ====================

@@ -42,7 +42,7 @@ router.post("/check-verification", checkVerificationStatus);
 // Other auth routes
 router.post("/login", loginUser);
 router.post("/refresh", refreshTokenHandler);
-router.post("/logout", protectRoute, logout);
+router.post("/logout", logout);
 router.post("/forgot-password", forgotPasswordHandler);
 
 // Reset password routes
