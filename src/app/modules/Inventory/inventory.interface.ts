@@ -2,13 +2,26 @@ import mongoose, { Types } from "mongoose";
 
 export interface IInventory {
   product: Types.ObjectId;
+  productName: string;
+  description: string;
+  dimensions: {
+    width: number;
+    length: number;
+    height: number;
+    unit?: string;
+  };
+  images: string[];
+  isSensitive: boolean;
+  deliveryTime: string;
+  collectionTime: string;
+  rentalPrice: number;
+  quantity: number;
+  category: string;
   warehouse: string;
   vendor: string;
-  quantity: number;
+  status: "available" | "booked" | "maintenance" | "out_of_stock";
   date?: Date;
-  status?: "available" | "booked" | "maintenance" | "out_of_stock";
   bookings?: Types.ObjectId[];
-  rentalFee: number;
   minBookingDays?: number;
   maxBookingDays?: number;
   bookedDates?: {
