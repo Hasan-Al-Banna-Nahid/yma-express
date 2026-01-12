@@ -1,6 +1,8 @@
-// email.service.ts
 import nodemailer from "nodemailer";
 import { IBookingDocument } from "./booking.model";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,
@@ -22,341 +24,214 @@ const DANGER_COLOR = "#E74C3C";
 export class EmailService {
   static async sendEmail(to: string, subject: string, html: string) {
     try {
-      const mailOptions = {
-        from: `"${process.env.EMAIL_FROM_NAME}" <${process.env.EMAIL_FROM}>`,
+      await transporter.sendMail({
+        from: `"YMA Bouncy Castle" <${process.env.EMAIL_FROM}>`,
         to,
         subject,
         html,
-      };
-
-      await transporter.sendMail(mailOptions);
+      });
     } catch (error) {
-      console.error("Error sending email:", error);
-      throw error;
+      console.error("Email error:", error);
     }
   }
 
-  static getEmailTemplate(
-    title: string,
-    content: string,
-    showFooter: boolean = true
-  ) {
+  static getEmailTemplate(title: string, content: string) {
     return `
       <!DOCTYPE html>
       <html lang="en">
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>${title}</title>
-          <style>
-            /* Base Styles */
-            * {
-              margin: 0;
-              padding: 0;
-              box-sizing: border-box;
-            }
-            
-            body {
-              font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-              line-height: 1.6;
-              color: #333;
-              background-color: #f5f7fa;
-              margin: 0;
-              padding: 0;
-            }
-            
-            .email-container {
-              max-width: 600px;
-              margin: 0 auto;
-              background: #ffffff;
-              border-radius: 12px;
-              overflow: hidden;
-              box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-            }
-            
-            /* Header */
-            .email-header {
-              background: linear-gradient(135deg, ${PRIMARY_COLOR}, ${SECONDARY_COLOR});
-              padding: 30px 20px;
-              text-align: center;
-            }
-            
-            .logo-container {
-              margin-bottom: 20px;
-            }
-            
-            .logo {
-              max-width: 180px;
-              height: auto;
-            }
-            
-            .email-title {
-              color: white;
-              font-size: 28px;
-              font-weight: 600;
-              margin: 10px 0;
-            }
-            
-            .email-subtitle {
-              color: rgba(255, 255, 255, 0.9);
-              font-size: 16px;
-              font-weight: 400;
-            }
-            
-            /* Content */
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>${title}</title>
+        <style>
+          /* Base Styles */
+          * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+          }
+          
+          body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f5f7fa;
+            margin: 0;
+            padding: 0;
+          }
+          
+          .email-container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: #ffffff;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+          }
+          
+          /* Header */
+          .email-header {
+            background: linear-gradient(135deg, ${PRIMARY_COLOR}, ${SECONDARY_COLOR});
+            padding: 30px 20px;
+            text-align: center;
+          }
+          
+          .logo {
+            max-width: 200px;
+            height: auto;
+            margin-bottom: 15px;
+          }
+          
+          .email-title {
+            color: white;
+            font-size: 24px;
+            font-weight: 600;
+            margin: 10px 0;
+          }
+          
+          /* Content */
+          .email-content {
+            padding: 30px;
+          }
+          
+          .section {
+            margin-bottom: 25px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid ${PRIMARY_COLOR};
+          }
+          
+          .section-title {
+            color: ${SECONDARY_COLOR};
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #eee;
+          }
+          
+          /* Table Styles */
+          .items-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+          }
+          
+          .items-table th {
+            background: #f8f9fa;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            color: ${SECONDARY_COLOR};
+            border-bottom: 2px solid #e9ecef;
+          }
+          
+          .items-table td {
+            padding: 12px;
+            border-bottom: 1px solid #e9ecef;
+          }
+          
+          .items-table tr:hover {
+            background: #f8f9fa;
+          }
+          
+          /* Status Badges */
+          .status-badge {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+            color: white;
+          }
+          
+          .status-pending { background: ${WARNING_COLOR}; }
+          .status-confirmed { background: ${SUCCESS_COLOR}; }
+          .status-cancelled { background: ${DANGER_COLOR}; }
+          .status-completed { background: #2ecc71; }
+          
+          /* Footer */
+          .email-footer {
+            background: ${SECONDARY_COLOR};
+            color: white;
+            padding: 25px;
+            text-align: center;
+          }
+          
+          .footer-logo {
+            max-width: 150px;
+            margin-bottom: 15px;
+          }
+          
+          .contact-info {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+          }
+          
+          .contact-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: rgba(255, 255, 255, 0.9);
+          }
+          
+          .copyright {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.6);
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+          }
+          
+          /* Responsive */
+          @media (max-width: 600px) {
             .email-content {
-              padding: 40px 30px;
+              padding: 20px;
             }
             
-            .content-section {
-              margin-bottom: 30px;
-            }
-            
-            .section-title {
-              color: ${SECONDARY_COLOR};
-              font-size: 20px;
-              font-weight: 600;
-              margin-bottom: 20px;
-              padding-bottom: 10px;
-              border-bottom: 2px solid #f0f0f0;
-            }
-            
-            .info-grid {
-              display: grid;
-              grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-              gap: 20px;
-              margin-bottom: 20px;
-            }
-            
-            .info-item {
-              background: #f8f9fa;
-              padding: 15px;
-              border-radius: 8px;
-              border-left: 4px solid ${PRIMARY_COLOR};
-            }
-            
-            .info-label {
-              font-size: 14px;
-              color: #666;
-              margin-bottom: 5px;
-              font-weight: 500;
-            }
-            
-            .info-value {
-              font-size: 16px;
-              color: ${SECONDARY_COLOR};
-              font-weight: 600;
-            }
-            
-            /* Status Badges */
-            .status-badge {
-              display: inline-block;
-              padding: 8px 16px;
-              border-radius: 20px;
-              font-size: 14px;
-              font-weight: 600;
-              text-transform: uppercase;
-              letter-spacing: 0.5px;
-            }
-            
-            .status-pending { background: ${WARNING_COLOR}; color: white; }
-            .status-confirmed { background: ${SUCCESS_COLOR}; color: white; }
-            .status-cancelled { background: ${DANGER_COLOR}; color: white; }
-            .status-processing { background: #3498db; color: white; }
-            .status-delivered { background: #27ae60; color: white; }
-            .status-completed { background: #2ecc71; color: white; }
-            
-            /* Items Table */
             .items-table {
-              width: 100%;
-              border-collapse: collapse;
-              margin-top: 15px;
-            }
-            
-            .items-table th {
-              background: #f8f9fa;
-              padding: 15px;
-              text-align: left;
-              font-weight: 600;
-              color: ${SECONDARY_COLOR};
-              border-bottom: 2px solid #e9ecef;
-            }
-            
-            .items-table td {
-              padding: 15px;
-              border-bottom: 1px solid #e9ecef;
-            }
-            
-            .items-table tr:hover {
-              background: #f8f9fa;
-            }
-            
-            /* Footer */
-            .email-footer {
-              background: ${SECONDARY_COLOR};
-              color: white;
-              padding: 30px;
-              text-align: center;
-            }
-            
-            .footer-logo {
-              max-width: 120px;
-              margin-bottom: 20px;
-            }
-            
-            .footer-text {
-              color: rgba(255, 255, 255, 0.8);
-              font-size: 14px;
-              line-height: 1.6;
-              margin-bottom: 20px;
+              display: block;
+              overflow-x: auto;
             }
             
             .contact-info {
-              display: flex;
-              justify-content: center;
-              gap: 30px;
-              margin: 20px 0;
-              flex-wrap: wrap;
-            }
-            
-            .contact-item {
-              display: flex;
-              align-items: center;
+              flex-direction: column;
               gap: 10px;
-              color: rgba(255, 255, 255, 0.8);
-              font-size: 14px;
             }
-            
-            .social-links {
-              display: flex;
-              justify-content: center;
-              gap: 20px;
-              margin-top: 20px;
-            }
-            
-            .social-icon {
-              width: 32px;
-              height: 32px;
-              background: rgba(255, 255, 255, 0.1);
-              border-radius: 50%;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              color: white;
-              text-decoration: none;
-              transition: background 0.3s;
-            }
-            
-            .social-icon:hover {
-              background: ${PRIMARY_COLOR};
-            }
-            
-            .copyright {
-              font-size: 12px;
-              color: rgba(255, 255, 255, 0.6);
-              margin-top: 20px;
-              padding-top: 20px;
-              border-top: 1px solid rgba(255, 255, 255, 0.1);
-            }
-            
-            /* Buttons */
-            .action-button {
-              display: inline-block;
-              padding: 14px 28px;
-              background: ${PRIMARY_COLOR};
-              color: white;
-              text-decoration: none;
-              border-radius: 6px;
-              font-weight: 600;
-              font-size: 16px;
-              margin: 10px 5px;
-              transition: background 0.3s, transform 0.2s;
-            }
-            
-            .action-button:hover {
-              background: #357abd;
-              transform: translateY(-2px);
-            }
-            
-            /* Responsive */
-            @media (max-width: 600px) {
-              .email-content {
-                padding: 25px 20px;
-              }
-              
-              .info-grid {
-                grid-template-columns: 1fr;
-              }
-              
-              .items-table {
-                display: block;
-                overflow-x: auto;
-              }
-              
-              .contact-info {
-                flex-direction: column;
-                gap: 15px;
-              }
-              
-              .email-title {
-                font-size: 24px;
-              }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="email-container">
-            <div class="email-header">
-              <div class="logo-container">
-                <img src="${YMA_LOGO}" alt="YMA Bouncy Castle" class="logo">
-              </div>
-              <h1 class="email-title">${title}</h1>
-              <p class="email-subtitle">YMA Bouncy Castle Rentals</p>
-            </div>
-            
-            <div class="email-content">
-              ${content}
-            </div>
-            
-            ${
-              showFooter
-                ? `
-            <div class="email-footer">
-              <img src="${YMA_LOGO}" alt="YMA Bouncy Castle" class="footer-logo">
-              
-              <div class="contact-info">
-                <div class="contact-item">
-                  📞 <span>+44 1234 567890</span>
-                </div>
-                <div class="contact-item">
-                  ✉️ <span>info@ymabouncycastle.com</span>
-                </div>
-                <div class="contact-item">
-                  📍 <span>London, United Kingdom</span>
-                </div>
-              </div>
-              
-              <div class="footer-text">
-                Professional Bouncy Castle Rentals for Events, Parties, and Celebrations
-              </div>
-              
-              <div class="social-links">
-                <a href="#" class="social-icon">f</a>
-                <a href="#" class="social-icon">t</a>
-                <a href="#" class="social-icon">ig</a>
-                <a href="#" class="social-icon">in</a>
-              </div>
-              
-              <div class="copyright">
-                © ${new Date().getFullYear()} YMA Bouncy Castle. All rights reserved.<br>
-                VAT No: GB123 4567 89 | Company Reg: 12345678
-              </div>
-            </div>
-            `
-                : ""
-            }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="email-container">
+          <div class="email-header">
+            <img src="${YMA_LOGO}" alt="YMA Bouncy Castle" class="logo">
+            <h1 class="email-title">${title}</h1>
           </div>
-        </body>
+          
+          <div class="email-content">
+            ${content}
+          </div>
+          
+          <div class="email-footer">
+            <img src="${YMA_LOGO}" alt="YMA Bouncy Castle" class="footer-logo">
+            
+            <div class="contact-info">
+              <div class="contact-item">📞 +44 1234 567890</div>
+              <div class="contact-item">✉️ info@ymabouncycastle.com</div>
+              <div class="contact-item">📍 London, United Kingdom</div>
+            </div>
+            
+            <div class="copyright">
+              © ${new Date().getFullYear()} YMA Bouncy Castle. All rights reserved.<br>
+              Professional Bouncy Castle Rentals
+            </div>
+          </div>
+        </div>
+      </body>
       </html>
     `;
   }
@@ -370,9 +245,9 @@ export class EmailService {
       <tr>
         <td><strong>${item.name}</strong></td>
         <td>${item.quantity}</td>
-        <td>£${item.rentalFee.toFixed(2)}/day</td>
+        <td>€${item.rentalFee.toFixed(2)}/day</td>
         <td>${item.totalDays} days</td>
-        <td>£${(item.quantity * item.rentalFee * item.totalDays).toFixed(
+        <td>€${(item.quantity * item.rentalFee * item.totalDays).toFixed(
           2
         )}</td>
       </tr>
@@ -380,59 +255,81 @@ export class EmailService {
       )
       .join("");
 
-    const statusClass = `status-${booking.status
-      .toLowerCase()
-      .replace("_", "-")}`;
+    const statusClass = `status-${booking.status}`;
 
     const content = `
-      <div class="content-section">
-        <p style="font-size: 18px; margin-bottom: 25px; color: ${SECONDARY_COLOR};">
-          Dear <strong>${booking.shippingAddress.firstName}</strong>,<br>
-          Thank you for booking with YMA Bouncy Castle! Your booking has been confirmed.
-        </p>
-      </div>
-
-      <div class="content-section">
+      <div class="section">
         <h2 class="section-title">📋 Booking Summary</h2>
-        <div class="info-grid">
-          <div class="info-item">
-            <div class="info-label">Booking Number</div>
-            <div class="info-value">${booking.bookingNumber}</div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px;">
+          <div>
+            <div style="color: #666; font-size: 14px;">Booking Number</div>
+            <div style="font-size: 18px; font-weight: 600; color: ${PRIMARY_COLOR};">${
+      booking.bookingNumber
+    }</div>
           </div>
-          <div class="info-item">
-            <div class="info-label">Booking Date</div>
-            <div class="info-value">${new Date(
+          <div>
+            <div style="color: #666; font-size: 14px;">Booking Date</div>
+            <div style="font-size: 16px;">${new Date(
               booking.createdAt!
             ).toLocaleDateString("en-GB", {
-              weekday: "long",
+              weekday: "short",
               year: "numeric",
-              month: "long",
+              month: "short",
               day: "numeric",
             })}</div>
           </div>
-          <div class="info-item">
-            <div class="info-label">Status</div>
-            <div class="status-badge ${statusClass}">${booking.status
-      .replace("_", " ")
-      .toUpperCase()}</div>
+          <div>
+            <div style="color: #666; font-size: 14px;">Status</div>
+            <div class="status-badge ${statusClass}">${booking.status.toUpperCase()}</div>
           </div>
-          <div class="info-item">
-            <div class="info-label">Total Amount</div>
-            <div class="info-value" style="color: ${SUCCESS_COLOR}; font-size: 24px;">£${booking.totalAmount.toFixed(
+          <div>
+            <div style="color: #666; font-size: 14px;">Total Amount</div>
+            <div style="font-size: 24px; font-weight: 700; color: ${SUCCESS_COLOR};">€${booking.totalAmount.toFixed(
       2
     )}</div>
           </div>
         </div>
       </div>
 
-      <div class="content-section">
+      <div class="section">
+        <h2 class="section-title">👤 Customer Information</h2>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px;">
+          <div>
+            <div style="color: #666; font-size: 14px;">Customer Name</div>
+            <div style="font-size: 16px; font-weight: 600;">${
+              booking.shippingAddress.firstName
+            } ${booking.shippingAddress.lastName}</div>
+          </div>
+          <div>
+            <div style="color: #666; font-size: 14px;">Contact</div>
+            <div style="font-size: 16px;">📧 ${
+              booking.shippingAddress.email
+            }</div>
+            <div style="font-size: 16px;">📞 ${
+              booking.shippingAddress.phone
+            }</div>
+          </div>
+          <div>
+            <div style="color: #666; font-size: 14px;">Delivery Address</div>
+            <div style="font-size: 16px;">
+              ${booking.shippingAddress.address}<br>
+              ${booking.shippingAddress.city}, ${
+      booking.shippingAddress.postalCode
+    }<br>
+              ${booking.shippingAddress.country}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
         <h2 class="section-title">🛒 Rental Items</h2>
         <table class="items-table">
           <thead>
             <tr>
               <th>Product</th>
-              <th>Qty</th>
-              <th>Price</th>
+              <th>Quantity</th>
+              <th>Daily Rate</th>
               <th>Duration</th>
               <th>Total</th>
             </tr>
@@ -443,108 +340,84 @@ export class EmailService {
         </table>
       </div>
 
-      <div class="content-section">
-        <h2 class="section-title">📍 Delivery Information</h2>
-        <div class="info-grid">
-          <div class="info-item">
-            <div class="info-label">Delivery Address</div>
-            <div class="info-value">
-              ${booking.shippingAddress.address}<br>
-              ${booking.shippingAddress.city}, ${
-      booking.shippingAddress.postalCode
-    }<br>
-              ${booking.shippingAddress.country}
+      <div class="section">
+        <h2 class="section-title">💰 Payment Details</h2>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+          <div>
+            <div style="color: #666; font-size: 14px;">Subtotal</div>
+            <div style="font-size: 18px; font-weight: 600;">€${booking.subTotal.toFixed(
+              2
+            )}</div>
+          </div>
+          <div>
+            <div style="color: #666; font-size: 14px;">Delivery Fee</div>
+            <div style="font-size: 18px;">
+              €${booking.deliveryFee.toFixed(2)}
+              ${
+                booking.shippingAddress.deliveryTime
+                  ? `<br><small>(${booking.shippingAddress.deliveryTime})</small>`
+                  : ""
+              }
             </div>
           </div>
-          <div class="info-item">
-            <div class="info-label">Contact Details</div>
-            <div class="info-value">
-              ${booking.shippingAddress.firstName} ${
-      booking.shippingAddress.lastName
-    }<br>
-              📞 ${booking.shippingAddress.phone}<br>
-              ✉️ ${booking.shippingAddress.email}
+          <div>
+            <div style="color: #666; font-size: 14px;">Collection Fee</div>
+            <div style="font-size: 18px;">
+              €${booking.collectionFee.toFixed(2)}
+              ${
+                booking.shippingAddress.collectionTime
+                  ? `<br><small>(${booking.shippingAddress.collectionTime})</small>`
+                  : ""
+              }
             </div>
           </div>
-          <div class="info-item">
-            <div class="info-label">Rental Period</div>
-            <div class="info-value">
-              📅 ${new Date(booking.items[0].startDate).toLocaleDateString(
-                "en-GB",
-                {
-                  weekday: "short",
-                  year: "numeric",
-                  month: "short",
-                  day: "numeric",
-                }
-              )}<br>
-              📅 ${new Date(booking.items[0].endDate).toLocaleDateString(
-                "en-GB",
-                {
-                  weekday: "short",
-                  year: "numeric",
-                  month: "short",
-                  day: "numeric",
-                }
-              )}
-            </div>
-          </div>
-          <div class="info-item">
-            <div class="info-label">Payment Method</div>
-            <div class="info-value">
-              ${booking.payment.method.replace("_", " ").toUpperCase()}<br>
-              <small>Status: ${booking.payment.status}</small>
+          <div>
+            <div style="color: #666; font-size: 14px;">Payment Method</div>
+            <div style="font-size: 16px; font-weight: 600; text-transform: uppercase;">
+              ${booking.payment.method.replace("_", " ")}
             </div>
           </div>
         </div>
-      </div>
-
-      <div class="content-section" style="background: #f8f9fa; padding: 25px; border-radius: 10px; border-left: 4px solid ${PRIMARY_COLOR};">
-        <h3 style="color: ${SECONDARY_COLOR}; margin-bottom: 15px;">📞 What's Next?</h3>
-        <p style="margin-bottom: 15px;">Our team will contact you within 24 hours to:</p>
-        <ul style="margin-left: 20px; margin-bottom: 20px;">
-          <li>Confirm delivery time</li>
-          <li>Discuss setup requirements</li>
-          <li>Review safety guidelines</li>
-          <li>Answer any questions</li>
-        </ul>
-        <a href="tel:+441234567890" class="action-button">📞 Call Us Now</a>
-        <a href="mailto:info@ymabouncycastle.com" class="action-button" style="background: ${SECONDARY_COLOR};">✉️ Email Support</a>
       </div>
 
       ${
         booking.customerNotes
           ? `
-        <div class="content-section">
-          <h3 class="section-title">📝 Your Notes</h3>
-          <div style="background: #fff3cd; padding: 20px; border-radius: 8px; border-left: 4px solid ${WARNING_COLOR};">
-            ${booking.customerNotes}
-          </div>
-        </div>
+      <div class="section" style="background: #fff3cd; border-left: 4px solid ${WARNING_COLOR};">
+        <h2 class="section-title">📝 Customer Notes</h2>
+        <p style="font-size: 16px; line-height: 1.6;">${booking.customerNotes}</p>
+      </div>
       `
           : ""
       }
+
+      ${
+        booking.bankDetails
+          ? `
+      <div class="section" style="background: #e8f4fd; border-left: 4px solid ${PRIMARY_COLOR};">
+        <h2 class="section-title">🏦 Bank Transfer Details</h2>
+        <div style="font-family: monospace; font-size: 14px; background: white; padding: 15px; border-radius: 5px;">
+          ${booking.bankDetails.replace(/, /g, "<br>")}
+        </div>
+      </div>
+      `
+          : ""
+      }
+
+      <div class="section" style="background: #e8f6ef; border-left: 4px solid ${SUCCESS_COLOR}; text-align: center;">
+        <h2 class="section-title">📞 What's Next?</h2>
+        <p style="margin-bottom: 15px; font-size: 16px;">Our team will contact you within 24 hours to confirm delivery details.</p>
+        <p style="font-size: 14px; color: #666;">Need immediate assistance? Call us at +44 1234 567890</p>
+      </div>
     `;
 
-    const html = this.getEmailTemplate("Booking Confirmed", content);
+    const html = this.getEmailTemplate("Booking Confirmation", content);
     await this.sendEmail(booking.shippingAddress.email, subject, html);
   }
 
   static async sendBookingStatusUpdate(booking: IBookingDocument) {
-    const statusMessages: Record<string, string> = {
-      confirmed: "Your booking has been confirmed and is being processed.",
-      payment_completed: "Payment received! We're preparing your items.",
-      processing: "Your items are being prepared for delivery.",
-      ready_for_delivery: "Your items are ready for delivery!",
-      out_for_delivery: "Your items are on the way!",
-      delivered: "Your items have been delivered successfully.",
-      cancelled: "Your booking has been cancelled.",
-      completed: "Thank you for choosing YMA Bouncy Castle!",
-    };
-
-    const statusIcons: Record<string, string> = {
+    const statusIcons = {
       confirmed: "✅",
-      payment_completed: "💰",
       processing: "🔄",
       ready_for_delivery: "📦",
       out_for_delivery: "🚚",
@@ -553,74 +426,57 @@ export class EmailService {
       completed: "🏆",
     };
 
-    const subject = `${
-      statusIcons[booking.status] || "📋"
-    } Booking Status Update - ${booking.bookingNumber}`;
-    const statusClass = `status-${booking.status
-      .toLowerCase()
-      .replace("_", "-")}`;
+    const icon =
+      statusIcons[booking.status as keyof typeof statusIcons] || "📋";
+    const subject = `${icon} Status Update - ${booking.bookingNumber}`;
+    const statusClass = `status-${booking.status}`;
 
     const content = `
-      <div class="content-section">
-        <p style="font-size: 18px; margin-bottom: 25px; color: ${SECONDARY_COLOR};">
-          Dear <strong>${booking.shippingAddress.firstName}</strong>,
-        </p>
-        
-        <div style="text-align: center; margin: 30px 0;">
-          <div class="status-badge ${statusClass}" style="font-size: 20px; padding: 15px 30px;">
-            ${statusIcons[booking.status] || "📋"} ${booking.status
-      .replace("_", " ")
-      .toUpperCase()}
-          </div>
+      <div class="section" style="text-align: center; background: ${
+        booking.status === "cancelled" ? "#fde8e8" : "#e8f6ef"
+      }; border-left: 4px solid ${
+      booking.status === "cancelled" ? DANGER_COLOR : SUCCESS_COLOR
+    };">
+        <div class="status-badge ${statusClass}" style="font-size: 20px; padding: 15px 30px; margin-bottom: 15px;">
+          ${icon} ${booking.status.replace("_", " ").toUpperCase()}
         </div>
-
-        <div style="background: ${
-          booking.status === "cancelled" ? "#FDEDED" : "#E8F5E9"
-        }; 
-                    padding: 25px; 
-                    border-radius: 10px; 
-                    border-left: 4px solid ${
-                      booking.status === "cancelled"
-                        ? DANGER_COLOR
-                        : SUCCESS_COLOR
-                    };
-                    margin: 20px 0;">
-          <h3 style="color: ${
-            booking.status === "cancelled" ? DANGER_COLOR : SUCCESS_COLOR
-          }; margin-bottom: 15px;">
-            ${booking.status === "cancelled" ? "⚠️ " : "📢 "} 
-            Status Update
-          </h3>
-          <p style="font-size: 16px; line-height: 1.6;">
-            ${
-              statusMessages[booking.status] ||
-              "Your booking status has been updated."
-            }
-          </p>
-        </div>
+        <h2 style="color: ${
+          booking.status === "cancelled" ? DANGER_COLOR : SUCCESS_COLOR
+        };">Booking Status Updated</h2>
       </div>
 
-      <div class="content-section">
+      <div class="section">
         <h2 class="section-title">📋 Booking Details</h2>
-        <div class="info-grid">
-          <div class="info-item">
-            <div class="info-label">Booking Number</div>
-            <div class="info-value">${booking.bookingNumber}</div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+          <div>
+            <div style="color: #666; font-size: 14px;">Booking Number</div>
+            <div style="font-size: 18px; font-weight: 600;">${
+              booking.bookingNumber
+            }</div>
           </div>
-          <div class="info-item">
-            <div class="info-label">Total Amount</div>
-            <div class="info-value">£${booking.totalAmount.toFixed(2)}</div>
+          <div>
+            <div style="color: #666; font-size: 14px;">Customer</div>
+            <div style="font-size: 16px;">${
+              booking.shippingAddress.firstName
+            } ${booking.shippingAddress.lastName}</div>
           </div>
-          <div class="info-item">
-            <div class="info-label">Updated On</div>
-            <div class="info-value">${new Date().toLocaleDateString("en-GB", {
-              weekday: "long",
-              year: "numeric",
-              month: "long",
-              day: "numeric",
-              hour: "2-digit",
-              minute: "2-digit",
-            })}</div>
+          <div>
+            <div style="color: #666; font-size: 14px;">Total Amount</div>
+            <div style="font-size: 18px; font-weight: 600;">€${booking.totalAmount.toFixed(
+              2
+            )}</div>
+          </div>
+          <div>
+            <div style="color: #666; font-size: 14px;">Updated On</div>
+            <div style="font-size: 16px;">${new Date().toLocaleDateString(
+              "en-GB",
+              {
+                weekday: "long",
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+              }
+            )}</div>
           </div>
         </div>
       </div>
@@ -628,13 +484,11 @@ export class EmailService {
       ${
         booking.cancellationReason
           ? `
-        <div class="content-section">
-          <h2 class="section-title">📝 Cancellation Details</h2>
-          <div style="background: #FDEDED; padding: 20px; border-radius: 8px; border-left: 4px solid ${DANGER_COLOR};">
-            <p><strong>Cancellation Reason:</strong></p>
-            <p>${booking.cancellationReason}</p>
-          </div>
-        </div>
+      <div class="section" style="background: #fde8e8; border-left: 4px solid ${DANGER_COLOR};">
+        <h2 class="section-title">📝 Cancellation Details</h2>
+        <p><strong>Reason:</strong></p>
+        <p style="margin-top: 10px;">${booking.cancellationReason}</p>
+      </div>
       `
           : ""
       }
@@ -642,31 +496,23 @@ export class EmailService {
       ${
         booking.adminNotes
           ? `
-        <div class="content-section">
-          <h2 class="section-title">💼 Admin Notes</h2>
-          <div style="background: #E3F2FD; padding: 20px; border-radius: 8px; border-left: 4px solid ${PRIMARY_COLOR};">
-            ${booking.adminNotes}
-          </div>
-        </div>
+      <div class="section" style="background: #e8f4fd; border-left: 4px solid ${PRIMARY_COLOR};">
+        <h2 class="section-title">💼 Admin Notes</h2>
+        <p>${booking.adminNotes}</p>
+      </div>
       `
           : ""
       }
 
-      <div class="content-section" style="text-align: center;">
-        <p style="margin-bottom: 20px; font-size: 16px;">
-          Need assistance or have questions about your booking?
-        </p>
-        <a href="mailto:support@ymabouncycastle.com" class="action-button">✉️ Contact Support</a>
-        <a href="${process.env.FRONTEND_URL || process.env.BASE_URL}/bookings/${
-      booking._id
-    }" 
-           class="action-button" style="background: ${SECONDARY_COLOR};">
-          👁️ View Booking
-        </a>
+      <div class="section" style="text-align: center;">
+        <p style="margin-bottom: 20px; font-size: 16px;">Need assistance with your booking?</p>
+        <div style="display: flex; gap: 10px; justify-content: center;">
+          <a href="mailto:support@ymabouncycastle.com" style="background: ${PRIMARY_COLOR}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: 600;">✉️ Contact Support</a>
+        </div>
       </div>
     `;
 
-    const html = this.getEmailTemplate("Status Updated", content);
+    const html = this.getEmailTemplate("Status Update", content);
     await this.sendEmail(booking.shippingAddress.email, subject, html);
   }
 
@@ -674,181 +520,138 @@ export class EmailService {
     booking: IBookingDocument,
     action: string
   ) {
-    const adminEmail = process.env.ADMIN_EMAIL || process.env.EMAIL_FROM || "";
-    if (!adminEmail) {
-      console.error("Admin email is not configured");
-      return;
-    }
+    const adminEmail = process.env.ADMIN_EMAIL || process.env.EMAIL_FROM;
+    if (!adminEmail) return;
 
-    const actionIcons: Record<string, string> = {
+    const actionIcons = {
       "New Booking Created": "🆕",
       "Booking Cancelled": "❌",
       "Payment Received": "💰",
       "Status Updated": "🔄",
     };
 
-    const subject = `${actionIcons[action] || "📢"} ADMIN: ${action} - ${
-      booking.bookingNumber
-    }`;
-    const statusClass = `status-${booking.status
-      .toLowerCase()
-      .replace("_", "-")}`;
+    const icon = actionIcons[action as keyof typeof actionIcons] || "📢";
+    const subject = `${icon} ADMIN: ${action} - ${booking.bookingNumber}`;
+
+    const itemsList = booking.items
+      .map(
+        (item) =>
+          `<li>${item.name} x ${item.quantity} (${item.totalDays} days)</li>`
+      )
+      .join("");
 
     const content = `
-      <div class="content-section">
-        <div style="background: #FFF3E0; padding: 25px; border-radius: 10px; border: 2px solid ${WARNING_COLOR}; text-align: center;">
-          <h2 style="color: ${WARNING_COLOR}; margin-bottom: 15px; font-size: 24px;">
-            ${actionIcons[action] || "📢"} ${action.toUpperCase()}
-          </h2>
-          <p style="font-size: 16px; margin-bottom: 20px;">
-            Immediate attention required for this booking.
-          </p>
-        </div>
+      <div class="section" style="background: #fff3cd; border: 2px solid ${WARNING_COLOR}; text-align: center;">
+        <h1 style="color: ${WARNING_COLOR}; margin-bottom: 10px; font-size: 24px;">
+          ${icon} ${action.toUpperCase()}
+        </h1>
+        <p style="font-size: 16px; font-weight: 600;">Immediate attention required</p>
       </div>
 
-      <div class="content-section">
-        <h2 class="section-title">📋 Quick Overview</h2>
-        <div class="info-grid">
-          <div class="info-item">
-            <div class="info-label">Booking Number</div>
-            <div class="info-value" style="font-size: 20px; color: ${PRIMARY_COLOR};">${
+      <div class="section">
+        <h2 class="section-title">📊 Quick Overview</h2>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+          <div>
+            <div style="color: #666; font-size: 14px;">Booking Number</div>
+            <div style="font-size: 20px; font-weight: 700; color: ${PRIMARY_COLOR};">${
       booking.bookingNumber
     }</div>
           </div>
-          <div class="info-item">
-            <div class="info-label">Customer</div>
-            <div class="info-value">
-              ${booking.shippingAddress.firstName} ${
-      booking.shippingAddress.lastName
-    }
-            </div>
+          <div>
+            <div style="color: #666; font-size: 14px;">Customer</div>
+            <div style="font-size: 18px; font-weight: 600;">${
+              booking.shippingAddress.firstName
+            } ${booking.shippingAddress.lastName}</div>
           </div>
-          <div class="info-item">
-            <div class="info-label">Status</div>
-            <div class="status-badge ${statusClass}">${booking.status
-      .replace("_", " ")
-      .toUpperCase()}</div>
-          </div>
-          <div class="info-item">
-            <div class="info-label">Total Amount</div>
-            <div class="info-value" style="color: ${SUCCESS_COLOR}; font-size: 24px;">£${booking.totalAmount.toFixed(
+          <div>
+            <div style="color: #666; font-size: 14px;">Total Amount</div>
+            <div style="font-size: 24px; font-weight: 700; color: ${SUCCESS_COLOR};">€${booking.totalAmount.toFixed(
       2
     )}</div>
           </div>
+          <div>
+            <div style="color: #666; font-size: 14px;">Status</div>
+            <div class="status-badge status-${
+              booking.status
+            }">${booking.status.toUpperCase()}</div>
+          </div>
         </div>
       </div>
 
-      <div class="content-section">
+      <div class="section">
         <h2 class="section-title">👤 Customer Details</h2>
-        <div class="info-grid">
-          <div class="info-item">
-            <div class="info-label">Contact Information</div>
-            <div class="info-value">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px;">
+          <div>
+            <div style="color: #666; font-size: 14px;">Contact Information</div>
+            <div style="font-size: 16px;">
               📧 ${booking.shippingAddress.email}<br>
-              📞 ${booking.shippingAddress.phone}<br>
-              📍 ${booking.shippingAddress.city}, ${
-      booking.shippingAddress.country
+              📞 ${booking.shippingAddress.phone}
+            </div>
+          </div>
+          <div>
+            <div style="color: #666; font-size: 14px;">Delivery Address</div>
+            <div style="font-size: 16px;">
+              ${booking.shippingAddress.address}<br>
+              ${booking.shippingAddress.city}, ${
+      booking.shippingAddress.postalCode
     }
             </div>
           </div>
-          <div class="info-item">
-            <div class="info-label">Delivery Address</div>
-            <div class="info-value">
-              ${booking.shippingAddress.address}<br>
-              ${booking.shippingAddress.postalCode}
-            </div>
-          </div>
-          <div class="info-item">
-            <div class="info-label">Rental Period</div>
-            <div class="info-value">
-              From: ${new Date(
+          <div>
+            <div style="color: #666; font-size: 14px;">Rental Period</div>
+            <div style="font-size: 16px;">
+              📅 ${new Date(
                 booking.items[0].startDate
               ).toLocaleDateString()}<br>
-              To: ${new Date(booking.items[0].endDate).toLocaleDateString()}<br>
-              Duration: ${booking.items[0].totalDays} days
+              📅 ${new Date(booking.items[0].endDate).toLocaleDateString()}<br>
+              ⏱️ ${booking.items[0].totalDays} days
             </div>
           </div>
         </div>
       </div>
 
-      <div class="content-section">
-        <h2 class="section-title">🛒 Rental Items</h2>
-        <table class="items-table">
-          <thead>
-            <tr>
-              <th>Product</th>
-              <th>Qty</th>
-              <th>Warehouse</th>
-              <th>Vendor</th>
-              <th>Rental Fee</th>
-              <th>Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${booking.items
-              .map(
-                (item) => `
-              <tr>
-                <td><strong>${item.name}</strong></td>
-                <td>${item.quantity}</td>
-                <td>${item.warehouse}</td>
-                <td>${item.vendor}</td>
-                <td>£${item.rentalFee.toFixed(2)}</td>
-                <td>£${(
-                  item.quantity *
-                  item.rentalFee *
-                  item.totalDays
-                ).toFixed(2)}</td>
-              </tr>
-            `
-              )
-              .join("")}
-          </tbody>
-        </table>
+      <div class="section">
+        <h2 class="section-title">🛒 Items (${booking.items.length})</h2>
+        <ul style="list-style: none; padding-left: 0;">
+          ${itemsList}
+        </ul>
       </div>
 
-      <div class="content-section">
-        <h2 class="section-title">💼 Payment Information</h2>
-        <div class="info-grid">
-          <div class="info-item">
-            <div class="info-label">Method</div>
-            <div class="info-value">${booking.payment.method
-              .replace("_", " ")
-              .toUpperCase()}</div>
-          </div>
-          <div class="info-item">
-            <div class="info-label">Status</div>
-            <div class="info-value">${booking.payment.status.toUpperCase()}</div>
-          </div>
-          <div class="info-item">
-            <div class="info-label">Amount</div>
-            <div class="info-value">£${booking.payment.amount.toFixed(2)}</div>
-          </div>
+      ${
+        booking.bankDetails
+          ? `
+      <div class="section">
+        <h2 class="section-title">🏦 Bank Details</h2>
+        <div style="font-family: monospace; background: #f8f9fa; padding: 15px; border-radius: 5px;">
+          ${booking.bankDetails}
         </div>
       </div>
-
-      <div class="content-section" style="text-align: center;">
-        <a href="${process.env.BASE_URL}/admin/bookings/${booking._id}" 
-           class="action-button" style="background: ${PRIMARY_COLOR}; padding: 16px 32px; font-size: 18px;">
-          ⚡ Manage This Booking
-        </a>
-      </div>
+      `
+          : ""
+      }
 
       ${
         booking.customerNotes
           ? `
-        <div class="content-section">
-          <h2 class="section-title">📝 Customer Notes</h2>
-          <div style="background: #F0F8FF; padding: 20px; border-radius: 8px; border-left: 4px solid ${PRIMARY_COLOR};">
-            ${booking.customerNotes}
-          </div>
-        </div>
+      <div class="section">
+        <h2 class="section-title">📝 Customer Notes</h2>
+        <p style="background: #f0f8ff; padding: 15px; border-radius: 5px;">${booking.customerNotes}</p>
+      </div>
       `
           : ""
       }
+
+      <div class="section" style="text-align: center;">
+        <p style="margin-bottom: 20px; font-size: 16px;">Action Required</p>
+        <div style="display: flex; gap: 10px; justify-content: center;">
+          <a href="${process.env.FRONTEND_URL}/admin/bookings/${
+      booking._id
+    }" style="background: ${PRIMARY_COLOR}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: 600;">⚡ Manage Booking</a>
+        </div>
+      </div>
     `;
 
-    const html = this.getEmailTemplate("Admin Alert", content, false);
+    const html = this.getEmailTemplate("Admin Alert", content);
     await this.sendEmail(adminEmail, subject, html);
   }
 }

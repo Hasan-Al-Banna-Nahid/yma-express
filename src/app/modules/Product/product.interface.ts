@@ -54,6 +54,8 @@ export interface IProduct {
   purchaseHistory?: PurchaseHistoryItem[];
   frequentlyBoughtTogether?: FrequentlyBoughtItem[];
   similarProducts?: SimilarProductItem[];
+  quantity?: number; // For cart purposes
+  vendor?: string;
 }
 
 export interface CreateProductData {

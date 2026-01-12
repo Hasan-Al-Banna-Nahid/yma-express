@@ -1,20 +1,22 @@
-// booking.service.ts
 import mongoose, { Types } from "mongoose";
-import Booking, { IBookingDocument } from "../Bookings/booking.model";
-import Cart from "../Cart/cart.model";
-import Product from "../Product/product.model";
+import Booking, { IBookingDocument } from "./booking.model";
+import Product from "../../modules/Product/product.model";
 import ApiError from "../../utils/apiError";
 import {
-  IBooking,
   CreateBookingData,
   UpdateBookingData,
   BookingStats,
   BookingFilter,
-} from "../Bookings/booking.interface";
+  IBookingItem,
+  IShippingAddress,
+  IPaymentDetails,
+  IBookingStatusHistory,
+} from "./booking.interface";
 import { EmailService } from "./email.service";
+import Inventory from "../../modules/Inventory/inventory.model";
 
 export class BookingService {
-  static async createBookingFromCart(
+  static async createBooking(
     userId: Types.ObjectId,
     data: CreateBookingData
   ): Promise<IBookingDocument> {
@@ -22,25 +24,31 @@ export class BookingService {
     session.startTransaction();
 
     try {
-      const cart = await Cart.findOne({ user: userId }).session(session);
-      if (!cart || cart.items.length === 0) {
-        throw new ApiError("Cart is empty", 400);
+      // Validation
+      if (!data.items?.length) {
+        throw new ApiError("Booking items are required", 400);
+      }
+
+      if (!data.shippingAddress || !data.paymentMethod) {
+        throw new ApiError(
+          "Shipping address and payment method are required",
+          400
+        );
       }
 
       let subTotal = 0;
-      const bookingItems = [];
+      const bookingItems: IBookingItem[] = [];
+      const tempBookingId = new mongoose.Types.ObjectId();
 
-      for (const item of cart.items) {
-        const product = await Product.findById(item.product).session(session);
+      // Process each item
+      for (const item of data.items) {
+        const product = await Product.findById(item.productId).session(session);
         if (!product) {
-          throw new ApiError(`Product not found: ${item.product}`, 404);
+          throw new ApiError(`Product not found: ${item.productId}`, 404);
         }
 
         if (!item.startDate || !item.endDate) {
-          throw new ApiError(
-            "Start date and end date are required for booking",
-            400
-          );
+          throw new ApiError("Start date and end date are required", 400);
         }
 
         const startDate = new Date(item.startDate);
@@ -50,65 +58,121 @@ export class BookingService {
         );
 
         if (totalDays < 1) {
-          throw new ApiError("Minimum booking duration is 1 day", 400);
+          throw new ApiError("Minimum booking is 1 day", 400);
         }
 
-        // Get inventory info (warehouse, vendor, rentalFee)
-        // This assumes you have an inventory service to check availability
-        const inventoryItem = {
-          warehouse: "Main Warehouse", // Replace with actual inventory check
-          vendor: "YMA Suppliers", // Replace with actual inventory check
-          rentalFee: product.price, // Use product price or get from inventory
-        };
+        // Check inventory availability
+        const availability = await Inventory.checkAvailability(
+          product._id.toString(),
+          startDate,
+          endDate,
+          item.quantity
+        );
 
-        const itemTotal = item.quantity * item.price * totalDays;
+        if (!availability.isAvailable) {
+          throw new ApiError(
+            `Inventory not available: ${availability.message}`,
+            400
+          );
+        }
+
+        // Reserve inventory
+        await Inventory.reserveInventory(
+          product._id.toString(),
+          startDate,
+          endDate,
+          item.quantity,
+          tempBookingId
+        );
+
+        // Calculate price
+        const rentalFee = product.price;
+        const itemTotal = rentalFee * item.quantity * totalDays;
         subTotal += itemTotal;
 
         bookingItems.push({
           product: product._id,
           quantity: item.quantity,
-          price: item.price,
+          price: rentalFee,
           name: product.name,
           startDate,
           endDate,
           totalDays,
-          rentalType: (item as any).rentalType || "daily",
-          warehouse: inventoryItem.warehouse,
-          vendor: inventoryItem.vendor,
-          rentalFee: inventoryItem.rentalFee,
+          rentalType: item.rentalType,
+          warehouse:
+            availability.inventoryItems[0]?.warehouse || "Main Warehouse",
+          vendor: availability.inventoryItems[0]?.vendor || "YMA Suppliers",
+          rentalFee,
         });
       }
 
-      const taxRate = 0.2;
-      const taxAmount = subTotal * taxRate;
-      const deliveryFee = data.shippingAddress.city === "London" ? 25 : 35;
-      const totalAmount = subTotal + taxAmount + deliveryFee;
+      // Calculate fees
+      const taxAmount = 0; // No tax
+      let deliveryFee = 0;
+      let collectionFee = 0;
 
+      // Delivery fee: Free for 8-12 PM, €10 otherwise
+      const deliveryTime = data.shippingAddress.deliveryTime;
+      if (deliveryTime) {
+        const hour = parseInt(deliveryTime.split(":")[0]);
+        deliveryFee = hour >= 8 && hour <= 12 ? 0 : 10;
+      }
+
+      // Collection fee: Free for 5 PM, €10 otherwise
+      const collectionTime = data.shippingAddress.collectionTime;
+      if (collectionTime) {
+        const hour = parseInt(collectionTime.split(":")[0]);
+        collectionFee = hour === 17 ? 0 : 10;
+      }
+
+      const totalAmount = subTotal + deliveryFee + collectionFee;
+
+      // Generate booking number
       const bookingNumber = await Booking.generateBookingNumber();
 
+      const paymentDetails: IPaymentDetails = {
+        method: data.paymentMethod,
+        status: "pending",
+        amount: totalAmount,
+      };
+
+      const shippingAddress: IShippingAddress = {
+        firstName: data.shippingAddress.firstName,
+        lastName: data.shippingAddress.lastName,
+        email: data.shippingAddress.email,
+        phone: data.shippingAddress.phone,
+        address: data.shippingAddress.address,
+        city: data.shippingAddress.city,
+        postalCode: data.shippingAddress.postalCode,
+        country: data.shippingAddress.country || "United Kingdom",
+        notes: data.shippingAddress.notes,
+        deliveryTime: data.shippingAddress.deliveryTime,
+        collectionTime: data.shippingAddress.collectionTime,
+      };
+
+      const statusHistory: IBookingStatusHistory[] = [
+        {
+          status: "pending",
+          changedAt: new Date(),
+          changedBy: userId,
+          notes: "Booking created",
+        },
+      ];
+
       const bookingData = {
+        _id: tempBookingId,
         bookingNumber,
         user: userId,
         items: bookingItems,
-        shippingAddress: data.shippingAddress,
-        payment: {
-          method: data.paymentMethod,
-          status: "pending",
-          amount: totalAmount,
-        },
-        status: "pending",
-        statusHistory: [
-          {
-            status: "pending",
-            changedAt: new Date(),
-            changedBy: userId,
-            notes: "Booking created",
-          },
-        ],
+        shippingAddress: shippingAddress,
+        payment: paymentDetails,
+        status: "pending" as const,
+        statusHistory,
         totalAmount,
         subTotal,
         taxAmount,
         deliveryFee,
+        collectionFee,
         invoiceType: data.invoiceType || "regular",
         bankDetails: data.bankDetails,
         customerNotes: data.customerNotes,
@@ -119,13 +183,16 @@ export class BookingService {
       const bookingResult = await Booking.create([bookingData], { session });
       const booking = bookingResult[0];
 
-      cart.items = [];
-      await cart.save({ session });
+      // Update inventory with actual booking ID
+      await Inventory.updateMany(
+        { "bookedDates.bookingId": tempBookingId },
+        { $set: { "bookedDates.$.bookingId": booking._id } }
+      ).session(session);
 
       await session.commitTransaction();
 
       const populatedBooking = await this.getBookingById(
-        (booking._id as string).toString()
+        (booking._id as unknown as string).toString()
       );
 
       // Send emails
@@ -171,6 +238,7 @@ export class BookingService {
     if (filters.status) query.status = filters.status;
     if (filters.userId) query.user = filters.userId;
     if (filters.paymentStatus) query["payment.status"] = filters.paymentStatus;
+
     if (filters.search) {
       query.$or = [
         { bookingNumber: { $regex: filters.search, $options: "i" } },
@@ -184,6 +252,7 @@ export class BookingService {
           "shippingAddress.lastName": { $regex: filters.search, $options: "i" },
         },
         { "shippingAddress.email": { $regex: filters.search, $options: "i" } },
+        { "shippingAddress.phone": { $regex: filters.search, $options: "i" } },
       ];
     }
 
@@ -219,7 +288,7 @@ export class BookingService {
         status: updateData.status,
         changedAt: new Date(),
         changedBy: adminId,
-        notes: updateData.adminNotes || "Status updated by admin",
+        notes: updateData.adminNotes || "Status updated",
       });
 
       await EmailService.sendBookingStatusUpdate(booking);
@@ -246,37 +315,59 @@ export class BookingService {
     userId: Types.ObjectId,
     reason: string
   ): Promise<IBookingDocument> {
-    const booking = await Booking.findById(bookingId);
-    if (!booking) {
-      throw new ApiError("Booking not found", 404);
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+      const booking = await Booking.findById(bookingId).session(session);
+      if (!booking) {
+        throw new ApiError("Booking not found", 404);
+      }
+
+      if (booking.user.toString() !== userId.toString()) {
+        throw new ApiError("You can only cancel your own bookings", 403);
+      }
+
+      if (["cancelled", "completed"].includes(booking.status)) {
+        throw new ApiError(`Booking is already ${booking.status}`, 400);
+      }
+
+      // Release inventory
+      await Inventory.releaseInventory(bookingId);
+
+      booking.status = "cancelled";
+      booking.cancellationReason = reason;
+      booking.statusHistory.push({
+        status: "cancelled",
+        changedAt: new Date(),
+        changedBy: userId,
+        notes: `Cancelled: ${reason}`,
+      });
+
+      await booking.save({ session });
+      await session.commitTransaction();
+
+      const populatedBooking = await this.getBookingById(bookingId);
+
+      await EmailService.sendBookingStatusUpdate(populatedBooking);
+      await EmailService.sendAdminNotification(
+        populatedBooking,
+        "Booking Cancelled"
+      );
+
+      return populatedBooking;
+    } catch (error) {
+      await session.abortTransaction();
+      throw error;
+    } finally {
+      session.endSession();
     }
-
-    if (booking.user.toString() !== userId.toString()) {
-      throw new ApiError("You can only cancel your own bookings", 403);
-    }
-
-    booking.status = "cancelled";
-    booking.cancellationReason = reason;
-    booking.statusHistory.push({
-      status: "cancelled",
-      changedAt: new Date(),
-      changedBy: userId,
-      notes: `Cancelled by user: ${reason}`,
-    });
-
-    await booking.save();
-
-    const populatedBooking = await this.getBookingById(bookingId);
-    await EmailService.sendBookingStatusUpdate(populatedBooking);
-    await EmailService.sendAdminNotification(
-      populatedBooking,
-      "Booking Cancelled"
-    );
-
-    return populatedBooking;
   }
 
   static async getBookingStats(): Promise<BookingStats> {
+    const today = new Date();
+    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+
     const stats = await Booking.aggregate([
       {
         $facet: {
@@ -285,12 +376,13 @@ export class BookingService {
               $group: {
                 _id: null,
                 totalBookings: { $sum: 1 },
-                totalRevenue: {
+                totalRevenue: { $sum: "$totalAmount" },
+                pendingPaymentAmount: {
                   $sum: {
                     $cond: [
-                      { $in: ["$status", ["cancelled", "refunded"]] },
-                      0,
+                      { $eq: ["$payment.status", "pending"] },
                       "$totalAmount",
+                      0,
                     ],
                   },
                 },
@@ -301,14 +393,7 @@ export class BookingService {
           monthlyRevenue: [
             {
               $match: {
-                status: { $nin: ["cancelled", "refunded"] },
-                createdAt: {
-                  $gte: new Date(
-                    new Date().getFullYear(),
-                    new Date().getMonth(),
-                    1
-                  ),
-                },
+                createdAt: { $gte: startOfMonth },
               },
             },
             { $group: { _id: null, total: { $sum: "$totalAmount" } } },
@@ -317,7 +402,11 @@ export class BookingService {
       },
     ]);
 
-    const counts = stats[0]?.counts[0] || { totalBookings: 0, totalRevenue: 0 };
+    const counts = stats[0]?.counts[0] || {
+      totalBookings: 0,
+      totalRevenue: 0,
+      pendingPaymentAmount: 0,
+    };
     const monthly = stats[0]?.monthlyRevenue[0] || { total: 0 };
 
     const statusCounts: Record<string, number> = {};
@@ -340,7 +429,7 @@ export class BookingService {
       cancelledBookings: statusCounts.cancelled || 0,
       totalRevenue: counts.totalRevenue,
       monthlyRevenue: monthly.total,
-      pendingPaymentAmount: 0, // You can add logic for this
+      pendingPaymentAmount: counts.pendingPaymentAmount,
       averageBookingValue:
         counts.totalBookings > 0
           ? counts.totalRevenue / counts.totalBookings

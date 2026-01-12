@@ -1,4 +1,3 @@
-// booking.controller.ts
 import { Request, Response } from "express";
 import asyncHandler from "../../utils/asyncHandler";
 import ApiError from "../../utils/apiError";
@@ -11,6 +10,7 @@ export const createBooking = asyncHandler(
   async (req: Request, res: Response) => {
     const userId = (req as AuthenticatedRequest).user._id;
     const {
+      items,
       shippingAddress,
       paymentMethod,
       invoiceType,
@@ -25,7 +25,12 @@ export const createBooking = asyncHandler(
       );
     }
 
-    const booking = await BookingService.createBookingFromCart(userId, {
+    if (!items || items.length === 0) {
+      throw new ApiError("At least one booking item is required", 400);
+    }
+
+    const booking = await BookingService.createBooking(userId, {
+      items,
       shippingAddress,
       paymentMethod,
       invoiceType,
@@ -40,13 +45,25 @@ export const createBooking = asyncHandler(
 export const getMyBookings = asyncHandler(
   async (req: Request, res: Response) => {
     const userId = (req as AuthenticatedRequest).user._id;
+    const { status, page = 1, limit = 10 } = req.query;
+
+    const filters: BookingFilter = { userId: userId.toString() };
+    if (status) filters.status = status as any;
+
     const result = await BookingService.getAllBookings(
-      { userId: userId.toString() },
-      1,
-      100
+      filters,
+      Number(page),
+      Number(limit)
     );
+
     ApiResponse(res, 200, "Bookings retrieved successfully", {
       bookings: result.bookings,
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total: result.total,
+        pages: result.pages,
+      },
     });
   }
 );
@@ -105,7 +122,6 @@ export const getAllBookings = asyncHandler(
     if (startDate) filters.startDate = new Date(startDate as string);
     if (endDate) filters.endDate = new Date(endDate as string);
 
-    // CORRECT: Use getAllBookings, not getBookingById
     const result = await BookingService.getAllBookings(
       filters,
       Number(page),
