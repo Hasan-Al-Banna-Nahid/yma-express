@@ -8,6 +8,7 @@ import {
   deleteBlog,
   searchBlogs,
   togglePublishStatus,
+  getBlogStats,
 } from "./blog.controller";
 import { protectRoute } from "../../middlewares/auth.middleware";
 import { restrictTo } from "../../middlewares/authorization.middleware";
@@ -21,13 +22,16 @@ router.get("/search", searchBlogs);
 router.get("/slug/:slug", getBlogBySlug);
 router.get("/:id", getBlogById);
 
-// Protected routes (admin only)
+// Protected routes
 router.use(protectRoute);
+
+// Admin/Editor routes
+router.get("/stats", restrictTo("admin", "superadmin", "editor"), getBlogStats);
 
 router.post(
   "/",
   restrictTo("admin", "superadmin", "editor"),
-  upload.array("images", 10), // Max 10 images
+  upload.array("images", 10),
   createBlog
 );
 
@@ -38,12 +42,12 @@ router.patch(
   updateBlog
 );
 
-router.delete("/:id", restrictTo("admin", "superadmin", "editor"), deleteBlog);
-// Add to your existing blog.routes.ts, inside protected routes section
 router.patch(
-  "/:id/unpublish",
-  protectRoute,
+  "/:id/status",
   restrictTo("admin", "superadmin", "editor"),
   togglePublishStatus
 );
+
+router.delete("/:id", restrictTo("admin", "superadmin", "editor"), deleteBlog);
+
 export default router;
