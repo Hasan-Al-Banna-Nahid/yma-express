@@ -1,12 +1,24 @@
-// booking.interface.ts
 import { Types } from "mongoose";
-import {
-  BookingStatus,
-  PaymentMethod,
-  PaymentStatus,
-  InvoiceType,
-  RentalType,
-} from "../../types/express/common.types";
+
+export type BookingStatus =
+  | "pending"
+  | "confirmed"
+  | "processing"
+  | "ready_for_delivery"
+  | "out_for_delivery"
+  | "delivered"
+  | "ready_for_collection"
+  | "collected"
+  | "completed"
+  | "cancelled";
+export type PaymentMethod =
+  | "cash_on_delivery"
+  | "bank_transfer"
+  | "card"
+  | "paypal";
+export type PaymentStatus = "pending" | "paid" | "failed" | "refunded";
+export type InvoiceType = "regular" | "corporate";
+export type RentalType = "daily" | "weekly" | "monthly";
 
 export interface IBookingItem {
   product: Types.ObjectId;
@@ -32,14 +44,8 @@ export interface IShippingAddress {
   postalCode: string;
   country: string;
   notes?: string;
-  // Add the missing properties as optional
   deliveryTime?: string;
   collectionTime?: string;
-  street?: string;
-  apartment?: string;
-  zipCode?: string;
-  locationAccessibility?: string;
-  floorType?: string;
 }
 
 export interface IPaymentDetails {
@@ -70,14 +76,10 @@ export interface IBooking {
   subTotal: number;
   taxAmount: number;
   deliveryFee: number;
+  collectionFee: number;
   securityDeposit?: number;
   invoiceType: InvoiceType;
-  bankDetails?: {
-    accountName?: string;
-    accountNumber?: string;
-    sortCode?: string;
-    bankName?: string;
-  };
+  bankDetails?: string;
   estimatedDeliveryDate?: Date;
   actualDeliveryDate?: Date;
   estimatedCollectionDate?: Date;
@@ -92,15 +94,17 @@ export interface IBooking {
 }
 
 export interface CreateBookingData {
+  items: {
+    productId: string;
+    quantity: number;
+    startDate: Date;
+    endDate: Date;
+    rentalType: RentalType;
+  }[];
   shippingAddress: IShippingAddress;
   paymentMethod: PaymentMethod;
   invoiceType?: InvoiceType;
-  bankDetails?: {
-    accountName?: string;
-    accountNumber?: string;
-    sortCode?: string;
-    bankName?: string;
-  };
+  bankDetails?: string;
   customerNotes?: string;
 }
 

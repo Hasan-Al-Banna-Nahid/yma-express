@@ -1,4 +1,3 @@
-// booking.model.ts
 import mongoose, { Schema, Document, Model } from "mongoose";
 import {
   IBooking,
@@ -6,69 +5,34 @@ import {
   IShippingAddress,
   IPaymentDetails,
   IBookingStatusHistory,
-} from "./booking.interface";
-import {
   BookingStatus,
   PaymentMethod,
   PaymentStatus,
-} from "../../types/express/common.types";
+  InvoiceType,
+  RentalType,
+} from "./booking.interface";
+
 export interface IBookingDocument extends Omit<IBooking, "_id">, Document {}
 export interface IBookingModel extends Model<IBookingDocument> {
   generateBookingNumber(): Promise<string>;
-  getStats(): Promise<any>;
 }
 
 const bookingItemSchema = new Schema<IBookingItem>({
-  product: {
-    type: Schema.Types.ObjectId,
-    ref: "Product",
-    required: true,
-  },
-  quantity: {
-    type: Number,
-    required: true,
-    min: 1,
-  },
-  price: {
-    type: Number,
-    required: true,
-    min: 0,
-  },
-  name: {
-    type: String,
-    required: true,
-  },
-  startDate: {
-    type: Date,
-    required: true,
-  },
-  endDate: {
-    type: Date,
-    required: true,
-  },
-  totalDays: {
-    type: Number,
-    required: true,
-    min: 1,
-  },
+  product: { type: Schema.Types.ObjectId, ref: "Product", required: true },
+  quantity: { type: Number, required: true, min: 1 },
+  price: { type: Number, required: true, min: 0 },
+  name: { type: String, required: true },
+  startDate: { type: Date, required: true },
+  endDate: { type: Date, required: true },
+  totalDays: { type: Number, required: true, min: 1 },
   rentalType: {
     type: String,
     enum: ["daily", "weekly", "monthly"],
     required: true,
   },
-  warehouse: {
-    type: String,
-    required: true,
-  },
-  vendor: {
-    type: String,
-    required: true,
-  },
-  rentalFee: {
-    type: Number,
-    required: true,
-    min: 0,
-  },
+  warehouse: { type: String, required: true },
+  vendor: { type: String, required: true },
+  rentalFee: { type: Number, required: true, min: 0 },
 });
 
 const shippingAddressSchema = new Schema<IShippingAddress>({
@@ -81,6 +45,8 @@ const shippingAddressSchema = new Schema<IShippingAddress>({
   postalCode: { type: String, required: true },
   country: { type: String, required: true, default: "United Kingdom" },
   notes: String,
+  deliveryTime: String,
+  collectionTime: String,
 });
 
 const paymentDetailsSchema = new Schema<IPaymentDetails>({
@@ -105,8 +71,6 @@ const statusHistorySchema = new Schema<IBookingStatusHistory>({
     enum: [
       "pending",
       "confirmed",
-      "payment_pending",
-      "payment_completed",
       "processing",
       "ready_for_delivery",
       "out_for_delivery",
@@ -115,7 +79,6 @@ const statusHistorySchema = new Schema<IBookingStatusHistory>({
       "collected",
       "completed",
       "cancelled",
-      "refunded",
     ],
     required: true,
   },
@@ -146,8 +109,6 @@ const bookingSchema = new Schema<IBookingDocument>(
       enum: [
         "pending",
         "confirmed",
-        "payment_pending",
-        "payment_completed",
         "processing",
         "ready_for_delivery",
         "out_for_delivery",
@@ -156,47 +117,23 @@ const bookingSchema = new Schema<IBookingDocument>(
         "collected",
         "completed",
         "cancelled",
-        "refunded",
       ],
       default: "pending",
       index: true,
     },
     statusHistory: [statusHistorySchema],
-    totalAmount: {
-      type: Number,
-      required: true,
-      min: 0,
-    },
-    subTotal: {
-      type: Number,
-      required: true,
-      min: 0,
-    },
-    taxAmount: {
-      type: Number,
-      required: true,
-      default: 0,
-    },
-    deliveryFee: {
-      type: Number,
-      required: true,
-      default: 0,
-    },
-    securityDeposit: {
-      type: Number,
-      default: 0,
-    },
+    totalAmount: { type: Number, required: true, min: 0 },
+    subTotal: { type: Number, required: true, min: 0 },
+    taxAmount: { type: Number, required: true, default: 0 },
+    deliveryFee: { type: Number, required: true, default: 0 },
+    collectionFee: { type: Number, required: true, default: 0 },
+    securityDeposit: { type: Number, default: 0 },
     invoiceType: {
       type: String,
       enum: ["regular", "corporate"],
       default: "regular",
     },
-    bankDetails: {
-      accountName: String,
-      accountNumber: String,
-      sortCode: String,
-      bankName: String,
-    },
+    bankDetails: String,
     estimatedDeliveryDate: Date,
     actualDeliveryDate: Date,
     estimatedCollectionDate: Date,
@@ -207,12 +144,9 @@ const bookingSchema = new Schema<IBookingDocument>(
     refundAmount: Number,
     refundedAt: Date,
   },
-  {
-    timestamps: true,
-  }
+  { timestamps: true }
 );
 
-// Static method to generate booking number
 bookingSchema.statics.generateBookingNumber =
   async function (): Promise<string> {
     const prefix = "BK";
@@ -232,12 +166,9 @@ bookingSchema.statics.generateBookingNumber =
     return `${prefix}${year}${month}${sequence.toString().padStart(4, "0")}`;
   };
 
-// Indexes
 bookingSchema.index({ bookingNumber: 1 });
 bookingSchema.index({ user: 1, createdAt: -1 });
 bookingSchema.index({ status: 1, createdAt: -1 });
-bookingSchema.index({ "payment.status": 1 });
-bookingSchema.index({ createdAt: -1 });
 
 const Booking = mongoose.model<IBookingDocument, IBookingModel>(
   "Booking",

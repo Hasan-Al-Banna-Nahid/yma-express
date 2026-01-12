@@ -1,12 +1,33 @@
-import mongoose from "mongoose";
+import mongoose, { Types } from "mongoose";
 
 export interface IInventory {
-  product: mongoose.Schema.Types.ObjectId;
+  product: Types.ObjectId;
   warehouse: string;
   vendor: string;
   quantity: number;
   date?: Date;
-  status?: "available" | "booked" | "maintenance";
-  bookings?: mongoose.Schema.Types.ObjectId[];
+  status?: "available" | "booked" | "maintenance" | "out_of_stock";
+  bookings?: Types.ObjectId[];
   rentalFee: number;
+  minBookingDays?: number;
+  maxBookingDays?: number;
+  bookedDates?: {
+    startDate: Date;
+    endDate: Date;
+    bookingId: Types.ObjectId;
+  }[];
+}
+
+export interface InventoryCheckData {
+  productId: string;
+  startDate: Date;
+  endDate: Date;
+  quantity: number;
+}
+
+export interface InventoryAvailability {
+  isAvailable: boolean;
+  availableQuantity: number;
+  inventoryItems?: IInventory[];
+  message?: string;
 }
