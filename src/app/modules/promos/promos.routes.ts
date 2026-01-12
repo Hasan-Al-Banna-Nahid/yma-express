@@ -1,9 +1,11 @@
 import { Router } from "express";
 import { PromoController } from "./promos.controller";
-
+import { protectRoute } from "../../middlewares/auth.middleware";
+import { restrictTo } from "../../middlewares/authorization.middleware";
 const router = Router();
 const promoController = new PromoController();
-
+router.use(protectRoute);
+router.use(restrictTo("admin", "superadmin"));
 // Create promo
 router.post("/promos", promoController.createPromo);
 

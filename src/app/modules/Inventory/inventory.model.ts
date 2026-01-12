@@ -27,6 +27,13 @@ export interface IInventoryModel extends Model<IInventoryDocument> {
   releaseInventory(bookingId: string): Promise<void>;
 }
 
+const dimensionsSchema = new Schema({
+  width: { type: Number, required: true, min: 0 },
+  length: { type: Number, required: true, min: 0 },
+  height: { type: Number, required: true, min: 0 },
+  unit: { type: String, default: "feet" },
+});
+
 const bookedDateSchema = new Schema({
   startDate: { type: Date, required: true },
   endDate: { type: Date, required: true },
@@ -39,6 +46,50 @@ const inventorySchema = new Schema<IInventoryDocument, IInventoryModel>(
       type: Schema.Types.ObjectId,
       ref: "Product",
       required: true,
+      index: true,
+    },
+    productName: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    description: {
+      type: String,
+      required: true,
+    },
+    dimensions: dimensionsSchema,
+    images: [
+      {
+        type: String,
+        required: true,
+      },
+    ],
+    isSensitive: {
+      type: Boolean,
+      default: false,
+    },
+    deliveryTime: {
+      type: String,
+      required: true,
+    },
+    collectionTime: {
+      type: String,
+      required: true,
+    },
+    rentalPrice: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+    quantity: {
+      type: Number,
+      required: true,
+      min: 0,
+      default: 1,
+    },
+    category: {
+      type: String,
+      required: true,
     },
     warehouse: {
       type: String,
@@ -48,20 +99,15 @@ const inventorySchema = new Schema<IInventoryDocument, IInventoryModel>(
       type: String,
       required: true,
     },
-    quantity: {
-      type: Number,
-      required: true,
-      min: 0,
-      default: 1,
-    },
-    date: {
-      type: Date,
-      default: Date.now,
-    },
     status: {
       type: String,
       enum: ["available", "booked", "maintenance", "out_of_stock"],
       default: "available",
+      index: true,
+    },
+    date: {
+      type: Date,
+      default: Date.now,
     },
     bookings: [
       {
@@ -69,11 +115,6 @@ const inventorySchema = new Schema<IInventoryDocument, IInventoryModel>(
         ref: "Booking",
       },
     ],
-    rentalFee: {
-      type: Number,
-      required: true,
-      min: 0,
-    },
     minBookingDays: {
       type: Number,
       default: 1,
@@ -88,35 +129,39 @@ const inventorySchema = new Schema<IInventoryDocument, IInventoryModel>(
   },
   {
     timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
   }
 );
 
-// Check availability for specific dates
+// Virtual for formatted dimensions
+inventorySchema.virtual("formattedDimensions").get(function () {
+  return `${
+    this.dimensions.width
+  } x ${this.dimensions.length} x ${this.dimensions.height} ${this.dimensions.unit || "feet"}`;
+});
+
+// Virtual for area
+inventorySchema.virtual("area").get(function () {
+  return this.dimensions.width * this.dimensions.length;
+});
+
+// Check availability
 inventorySchema.statics.checkAvailability = async function (
   productId: string,
   startDate: Date,
   endDate: Date,
   requiredQuantity: number
 ) {
-  const totalDays = Math.ceil(
-    (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
-  );
+  console.log(`Checking availability for product: ${productId}`);
 
-  if (totalDays < 1) {
-    return {
-      isAvailable: false,
-      availableQuantity: 0,
-      inventoryItems: [],
-      message: "Minimum booking duration is 1 day",
-    };
-  }
-
-  // Find all inventory items for this product
+  // Find inventory for this product
   const inventoryItems = await this.find({
     product: productId,
     status: "available",
-    quantity: { $gte: 1 },
   });
+
+  console.log(`Found ${inventoryItems.length} inventory items`);
 
   if (inventoryItems.length === 0) {
     return {
@@ -127,27 +172,39 @@ inventorySchema.statics.checkAvailability = async function (
     };
   }
 
-  // Check each inventory item's booked dates
   let availableQuantity = 0;
   const availableItems: IInventoryDocument[] = [];
 
   for (const item of inventoryItems) {
-    // Check if this item is booked for the requested dates
-    const isBooked = item.bookedDates?.some((booking: any) => {
-      const bookingStart = new Date(booking.startDate);
-      const bookingEnd = new Date(booking.endDate);
-      return (
-        (startDate >= bookingStart && startDate <= bookingEnd) ||
-        (endDate >= bookingStart && endDate <= bookingEnd) ||
-        (startDate <= bookingStart && endDate >= bookingEnd)
-      );
-    });
+    console.log(`Checking item ${item._id}, quantity: ${item.quantity}`);
+
+    // Check booked dates
+    let isBooked = false;
+    if (item.bookedDates && item.bookedDates.length > 0) {
+      for (const booking of item.bookedDates) {
+        const bookingStart = new Date(booking.startDate);
+        const bookingEnd = new Date(booking.endDate);
+
+        const hasOverlap = !(endDate < bookingStart || startDate > bookingEnd);
+
+        if (hasOverlap) {
+          isBooked = true;
+          console.log(`Item ${item._id} is booked during requested dates`);
+          break;
+        }
+      }
+    }
 
     if (!isBooked) {
       availableQuantity += item.quantity;
       availableItems.push(item);
+      console.log(`Item ${item._id} is available, adding ${item.quantity}`);
     }
   }
+
+  console.log(
+    `Total available: ${availableQuantity}, Required: ${requiredQuantity}`
+  );
 
   return {
     isAvailable: availableQuantity >= requiredQuantity,
@@ -160,7 +217,7 @@ inventorySchema.statics.checkAvailability = async function (
   };
 };
 
-// Reserve inventory for booking
+// Reserve inventory
 inventorySchema.statics.reserveInventory = async function (
   productId: string,
   startDate: Date,
@@ -168,76 +225,91 @@ inventorySchema.statics.reserveInventory = async function (
   quantity: number,
   bookingId: mongoose.Types.ObjectId
 ) {
-  const session = await mongoose.startSession();
-  session.startTransaction();
+  console.log(`Reserving ${quantity} items for booking ${bookingId}`);
 
-  try {
-    const { isAvailable, availableQuantity, inventoryItems } =
-      await this.checkAvailability(productId, startDate, endDate, quantity);
+  const { isAvailable, availableQuantity, inventoryItems } =
+    await this.checkAvailability(productId, startDate, endDate, quantity);
 
-    if (!isAvailable) {
-      throw new Error(
-        `Not enough inventory available. Required: ${quantity}, Available: ${availableQuantity}`
+  if (!isAvailable) {
+    throw new Error(
+      `Not enough inventory available. Required: ${quantity}, Available: ${availableQuantity}`
+    );
+  }
+
+  let remaining = quantity;
+  const updatedItems: IInventoryDocument[] = [];
+
+  for (const item of inventoryItems) {
+    if (remaining <= 0) break;
+
+    if (!item.bookedDates) item.bookedDates = [];
+    item.bookedDates.push({
+      startDate,
+      endDate,
+      bookingId,
+    });
+
+    // Update status if needed
+    if (item.quantity <= remaining) {
+      item.status = "booked";
+    }
+
+    if (!item.bookings) item.bookings = [];
+    item.bookings.push(bookingId);
+
+    await item.save();
+    updatedItems.push(item);
+    remaining -= Math.min(item.quantity, remaining);
+
+    console.log(`Reserved item ${item._id}`);
+  }
+
+  console.log(`Successfully reserved ${quantity} items`);
+  return updatedItems;
+};
+
+// Release inventory
+inventorySchema.statics.releaseInventory = async function (bookingId: string) {
+  console.log(`Releasing inventory for booking ${bookingId}`);
+
+  const items = await this.find({
+    "bookedDates.bookingId": bookingId,
+  });
+
+  for (const item of items) {
+    if (item.bookedDates) {
+      item.bookedDates = item.bookedDates.filter(
+        (booking: any) => booking.bookingId.toString() !== bookingId
       );
     }
 
-    let remainingQuantity = quantity;
-    const updatedItems: IInventoryDocument[] = [];
-
-    for (const item of inventoryItems) {
-      if (remainingQuantity <= 0) break;
-
-      const reservedQuantity = Math.min(item.quantity, remainingQuantity);
-
-      // Add to booked dates
-      if (!item.bookedDates) item.bookedDates = [];
-      item.bookedDates.push({
-        startDate,
-        endDate,
-        bookingId,
-      });
-
-      // If all quantity is reserved, mark as booked
-      if (reservedQuantity === item.quantity) {
-        item.status = "booked";
-      }
-
-      // Add booking reference
-      if (!item.bookings) item.bookings = [];
-      item.bookings.push(bookingId);
-
-      await item.save({ session });
-      updatedItems.push(item);
-      remainingQuantity -= reservedQuantity;
+    // Remove booking reference
+    if (item.bookings) {
+      item.bookings = item.bookings.filter(
+        (bid: any) => bid.toString() !== bookingId
+      );
     }
 
-    await session.commitTransaction();
-    return updatedItems;
-  } catch (error) {
-    await session.abortTransaction();
-    throw error;
-  } finally {
-    session.endSession();
+    // Set to available if no more bookings
+    if (
+      (!item.bookedDates || item.bookedDates.length === 0) &&
+      (!item.bookings || item.bookings.length === 0)
+    ) {
+      item.status = "available";
+    }
+
+    await item.save();
   }
-};
 
-// Release inventory when booking is cancelled or completed
-inventorySchema.statics.releaseInventory = async function (bookingId: string) {
-  await this.updateMany(
-    { bookings: bookingId },
-    {
-      $pull: {
-        bookings: bookingId,
-        bookedDates: { bookingId: bookingId },
-      },
-      $set: { status: "available" },
-    }
-  );
+  console.log(`Released ${items.length} items`);
 };
 
 // Indexes
-inventorySchema.index({ product: 1, date: 1 });
 inventorySchema.index({ product: 1, status: 1 });
+inventorySchema.index({ category: 1 });
+inventorySchema.index({ warehouse: 1 });
+inventorySchema.index({ vendor: 1 });
+inventorySchema.index({ status: 1 });
 inventorySchema.index({ "bookedDates.bookingId": 1 });
 
 const Inventory = mongoose.model<IInventoryDocument, IInventoryModel>(

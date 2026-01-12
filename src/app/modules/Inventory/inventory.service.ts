@@ -2,27 +2,64 @@ import ApiError from "../../utils/apiError";
 import Inventory from "./inventory.model";
 import { IInventory } from "./inventory.interface";
 import Booking from "../../modules/Bookings/booking.model";
-import { Types } from "mongoose";
 
 export const createInventoryItem = async (inventoryData: IInventory) => {
   // Check required fields
-  const requiredFields = ["product", "warehouse", "vendor", "rentalFee"];
+  const requiredFields = [
+    "product",
+    "productName",
+    "description",
+    "dimensions",
+    "images",
+    "deliveryTime",
+    "collectionTime",
+    "rentalPrice",
+    "quantity",
+    "category",
+    "warehouse",
+    "vendor",
+  ];
+
   for (const field of requiredFields) {
     if (!inventoryData[field as keyof IInventory]) {
       throw new ApiError(`${field} is required`, 400);
     }
   }
 
+  // Validate dimensions
+  if (
+    !inventoryData.dimensions.width ||
+    !inventoryData.dimensions.length ||
+    !inventoryData.dimensions.height
+  ) {
+    throw new ApiError(
+      "Width, length, and height are required in dimensions",
+      400
+    );
+  }
+
+  // Validate images
+  if (!inventoryData.images || inventoryData.images.length === 0) {
+    throw new ApiError("At least one image is required", 400);
+  }
+
   const inventoryItem = await Inventory.create({
     ...inventoryData,
     date: inventoryData.date || new Date(),
+    status: inventoryData.status || "available",
+    isSensitive: inventoryData.isSensitive || false,
+    minBookingDays: inventoryData.minBookingDays || 1,
+    maxBookingDays: inventoryData.maxBookingDays || 30,
   });
 
   return inventoryItem;
 };
 
 export const getInventoryItem = async (id: string) => {
-  const inventoryItem = await Inventory.findById(id);
+  const inventoryItem = await Inventory.findById(id).populate(
+    "product",
+    "name price"
+  );
   if (!inventoryItem) {
     throw new ApiError("No inventory item found with that ID", 404);
   }
@@ -30,7 +67,9 @@ export const getInventoryItem = async (id: string) => {
 };
 
 export const getInventoryItems = async (filter: any = {}) => {
-  return await Inventory.find(filter);
+  return await Inventory.find(filter)
+    .populate("product", "name price stock")
+    .sort({ createdAt: -1 });
 };
 
 export const updateInventoryItem = async (
@@ -67,7 +106,6 @@ export const getAvailableInventory = async (
 ) => {
   const query: any = {
     product: productId,
-    date: { $gte: startDate, $lte: endDate },
     status: "available",
   };
 
@@ -75,7 +113,31 @@ export const getAvailableInventory = async (
     query.warehouse = warehouse;
   }
 
-  return await Inventory.find(query);
+  // Get inventory items and check if they're booked for these dates
+  const inventoryItems = await Inventory.find(query);
+
+  const availableItems = [];
+  for (const item of inventoryItems) {
+    let isBooked = false;
+
+    if (item.bookedDates && item.bookedDates.length > 0) {
+      for (const booking of item.bookedDates) {
+        const bookingStart = new Date(booking.startDate);
+        const bookingEnd = new Date(booking.endDate);
+
+        if (!(endDate < bookingStart || startDate > bookingEnd)) {
+          isBooked = true;
+          break;
+        }
+      }
+    }
+
+    if (!isBooked) {
+      availableItems.push(item);
+    }
+  }
+
+  return availableItems;
 };
 
 export const getBookedInventory = async (
@@ -86,8 +148,9 @@ export const getBookedInventory = async (
 ) => {
   const query: any = {
     product: productId,
-    date: { $gte: startDate, $lte: endDate },
     status: "booked",
+    "bookedDates.startDate": { $lte: endDate },
+    "bookedDates.endDate": { $gte: startDate },
   };
 
   if (warehouse) {
@@ -99,28 +162,41 @@ export const getBookedInventory = async (
 
 export const checkInventoryAvailability = async (
   productId: string,
-  date: Date,
-  warehouse?: string
+  startDate: Date,
+  endDate: Date,
+  quantity: number
 ) => {
-  const query: any = {
-    product: productId,
-    date,
-  };
+  try {
+    const result = await Inventory.checkAvailability(
+      productId,
+      new Date(startDate),
+      new Date(endDate),
+      quantity
+    );
 
-  if (warehouse) {
-    query.warehouse = warehouse;
+    return {
+      isAvailable: result.isAvailable,
+      availableQuantity: result.availableQuantity,
+      message: result.message,
+      inventoryItems: result.inventoryItems.map((item) => ({
+        id: item._id,
+        productName: item.productName,
+        quantity: item.quantity,
+        warehouse: item.warehouse,
+        vendor: item.vendor,
+        rentalPrice: item.rentalPrice,
+        dimensions: item.dimensions,
+      })),
+    };
+  } catch (error) {
+    console.error("Error checking inventory availability:", error);
+    return {
+      isAvailable: false,
+      availableQuantity: 0,
+      message: "Error checking availability",
+      inventoryItems: [],
+    };
   }
-
-  const inventoryItem = await Inventory.findOne(query);
-
-  if (!inventoryItem) {
-    return { available: false, quantity: 0 };
-  }
-
-  return {
-    available: inventoryItem.status === "available",
-    quantity: inventoryItem.quantity,
-  };
 };
 
 export const releaseExpiredCartItems = async () => {
@@ -132,74 +208,21 @@ export const releaseExpiredCartItems = async () => {
   });
 
   for (const booking of expiredBookings) {
-    for (const item of booking.items) {
-      await Inventory.updateMany(
-        {
-          product: item.product,
-          date: { $gte: item.startDate, $lte: item.endDate },
-        },
-        {
-          $set: { status: "available" },
-          $pull: { bookings: booking._id },
-        }
+    try {
+      // Use the model's static method
+      await Inventory.releaseInventory(
+        (booking._id as unknown as string).toString()
+      );
+
+      // Delete the booking
+      await Booking.findByIdAndDelete(booking._id);
+    } catch (error) {
+      console.error(
+        `Error releasing inventory for booking ${booking._id}:`,
+        error
       );
     }
-
-    await Booking.findByIdAndDelete(booking._id);
   }
 
   return expiredBookings.length;
-};
-
-export const updateInventoryForBooking = async (
-  booking: any,
-  action: "reserve" | "release"
-) => {
-  for (const item of booking.items) {
-    const productId = item.product;
-    const startDate = new Date(item.startDate);
-    const endDate = new Date(item.endDate);
-
-    const dates = [];
-    const currentDate = new Date(startDate);
-
-    while (currentDate <= endDate) {
-      dates.push(new Date(currentDate));
-      currentDate.setDate(currentDate.getDate() + 1);
-    }
-
-    for (const date of dates) {
-      let inventoryItem = await Inventory.findOne({
-        product: productId,
-        date,
-      });
-
-      if (!inventoryItem) {
-        inventoryItem = await Inventory.create({
-          product: productId,
-          date,
-          quantity: 1,
-          status: action === "reserve" ? "booked" : "available",
-          bookings: action === "reserve" ? [booking._id] : [],
-          warehouse: booking.warehouse || "",
-          vendor: booking.vendor || "",
-          rentalFee: 0,
-        });
-      } else {
-        if (action === "reserve") {
-          inventoryItem.status = "booked";
-          inventoryItem.bookings = inventoryItem.bookings || [];
-          if (!inventoryItem.bookings.includes(booking._id)) {
-            inventoryItem.bookings.push(booking._id);
-          }
-        } else {
-          inventoryItem.status = "available";
-          inventoryItem.bookings = (inventoryItem.bookings || []).filter(
-            (b) => b.toString() !== booking._id.toString()
-          );
-        }
-        await inventoryItem.save();
-      }
-    }
-  }
 };

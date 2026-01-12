@@ -9,13 +9,17 @@ import {
   getBookedInventoryHandler,
   checkInventoryAvailabilityHandler,
   releaseExpiredCartItemsHandler,
+  checkProductAvailabilityHandler,
 } from "./inventory.controller";
 import { protectRoute } from "../../middlewares/auth.middleware";
 import { restrictTo } from "../../middlewares/authorization.middleware";
 
 const router = express.Router();
 
-// Protect all routes
+// Public routes
+router.post("/check-availability", checkProductAvailabilityHandler);
+
+// Protected routes
 router.use(protectRoute);
 
 // Admin only routes
@@ -25,7 +29,7 @@ router.post("/", createInventoryItemHandler);
 router.get("/", getInventoryItemsHandler);
 router.get("/available", getAvailableInventoryHandler);
 router.get("/booked", getBookedInventoryHandler);
-router.get("/check-availability", checkInventoryAvailabilityHandler);
+router.get("/check", checkInventoryAvailabilityHandler);
 router.get("/release-expired", releaseExpiredCartItemsHandler);
 router.get("/:id", getInventoryItemHandler);
 router.patch("/:id", updateInventoryItemHandler);
