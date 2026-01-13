@@ -9,6 +9,7 @@ export interface ICartItem {
   price: number;
   startDate?: Date;
   endDate?: Date;
+  name?: string;
 }
 
 export interface ICart {

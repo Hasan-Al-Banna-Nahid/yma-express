@@ -37,7 +37,6 @@ export const subscribe = async (data: SubscribeData): Promise<INewsletter> => {
     // Reactivate if previously unsubscribed
     existing.isActive = true;
     existing.unsubscribedAt = undefined;
-    existing.source = data.source || existing.source;
     await existing.save();
     return existing;
   }

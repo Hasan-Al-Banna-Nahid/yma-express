@@ -54,19 +54,6 @@ export const updateLocationHandler = asyncHandler(
 );
 
 // Delete location
-export const deleteLocationHandler = asyncHandler(
-  async (req: Request, res: Response) => {
-    const location = await LocationService.deleteLocation(req.params.id);
-
-    if (!location) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Location not found" });
-    }
-
-    res.status(200).json({ success: true, data: location });
-  }
-);
 
 // Check delivery
 export const checkDeliveryHandler = asyncHandler(
@@ -117,12 +104,10 @@ export const updateDeliveryAreaHandler = asyncHandler(
     );
 
     if (!location) {
-      return res
-        .status(404)
-        .json({
-          success: false,
-          message: "Location or delivery area not found",
-        });
+      return res.status(404).json({
+        success: false,
+        message: "Location or delivery area not found",
+      });
     }
 
     res.status(200).json({ success: true, data: location });
@@ -138,12 +123,10 @@ export const deleteDeliveryAreaHandler = asyncHandler(
     );
 
     if (!location) {
-      return res
-        .status(404)
-        .json({
-          success: false,
-          message: "Location or delivery area not found",
-        });
+      return res.status(404).json({
+        success: false,
+        message: "Location or delivery area not found",
+      });
     }
 
     res.status(200).json({ success: true, data: location });
@@ -175,5 +158,23 @@ export const getDeliveryHierarchyHandler = asyncHandler(
       req.query.parent as string
     );
     res.status(200).json({ success: true, data: hierarchy });
+  }
+);
+export const deleteLocationHandler = asyncHandler(
+  async (req: Request, res: Response) => {
+    const location = await LocationService.deleteLocation(req.params.id);
+
+    if (!location) {
+      return res.status(404).json({
+        success: false,
+        message: "Location not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Location deleted successfully",
+      data: location,
+    });
   }
 );

@@ -5,7 +5,7 @@ import * as newsletterService from "./newsletter.service";
 // Subscribe to newsletter
 export const subscribe = asyncHandler(
   async (req: Request, res: Response, next: NextFunction) => {
-    const { email, name, source } = req.body;
+    const { email } = req.body;
 
     if (!email) {
       return res.status(400).json({
@@ -16,8 +16,6 @@ export const subscribe = asyncHandler(
 
     const newsletter = await newsletterService.subscribe({
       email,
-      name,
-      source,
     });
 
     res.status(201).json({
@@ -27,7 +25,6 @@ export const subscribe = asyncHandler(
         newsletter: {
           id: newsletter._id,
           email: newsletter.email,
-          name: newsletter.name,
           subscribedAt: newsletter.subscribedAt,
         },
       },

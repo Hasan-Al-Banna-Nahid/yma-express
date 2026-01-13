@@ -993,15 +993,15 @@ export const getFrequentlyBoughtTogether = async (
     return getPopularProducts(limit);
   }
 
-  const objectIds = productIds.map(id => new Types.ObjectId(id));
+  const objectIds = productIds.map((id) => new Types.ObjectId(id));
 
   // For single product
   if (objectIds.length === 1) {
     const product = await Product.findById(objectIds[0])
       .populate({
-        path: 'frequentlyBoughtTogether.productId',
+        path: "frequentlyBoughtTogether.productId",
         match: { active: true, stock: { $gt: 0 } },
-        select: 'name price imageCover categories material description'
+        select: "name price imageCover categories material description",
       })
       .exec();
 
@@ -1011,12 +1011,12 @@ export const getFrequentlyBoughtTogether = async (
 
     // Filter and sort recommendations
     const recommendations = product.frequentlyBoughtTogether
-      .filter(item => item.productId && item.productId !== null)
+      .filter((item) => item.productId && item.productId !== null)
       .sort((a, b) => (b.frequency || 0) - (a.frequency || 0))
       .slice(0, limit)
-      .map(item => {
+      .map((item) => {
         // Type guard to ensure productId is populated
-        if (item.productId && typeof item.productId !== 'string') {
+        if (item.productId && typeof item.productId !== "string") {
           return item.productId as unknown as IProductModel;
         }
         return null;
@@ -1028,10 +1028,10 @@ export const getFrequentlyBoughtTogether = async (
 
   // For multiple products, find common recommendations
   const products = await Product.find({
-    _id: { $in: objectIds }
+    _id: { $in: objectIds },
   })
-  .select('frequentlyBoughtTogether')
-  .exec();
+    .select("frequentlyBoughtTogether")
+    .exec();
 
   if (products.length === 0) {
     return getPopularProducts(limit);
@@ -1040,13 +1040,13 @@ export const getFrequentlyBoughtTogether = async (
   // Aggregate recommendations
   const recommendationScores = new Map<string, number>();
 
-  products.forEach(product => {
+  products.forEach((product) => {
     if (product.frequentlyBoughtTogether) {
-      product.frequentlyBoughtTogether.forEach(item => {
+      product.frequentlyBoughtTogether.forEach((item) => {
         const itemId = item.productId.toString();
-        
+
         // Skip if already in cart
-        if (objectIds.some(id => id.toString() === itemId)) {
+        if (objectIds.some((id) => id.toString() === itemId)) {
           return;
         }
 
@@ -1070,11 +1070,11 @@ export const getFrequentlyBoughtTogether = async (
   const recommendedProducts = await Product.find({
     _id: { $in: sortedIds },
     active: true,
-    stock: { $gt: 0 }
+    stock: { $gt: 0 },
   })
-  .populate('categories', 'name slug')
-  .select('name price imageCover categories material description')
-  .exec();
+    .populate("categories", "name slug")
+    .select("name price imageCover categories material description")
+    .exec();
 
   return recommendedProducts;
 };
@@ -1092,7 +1092,7 @@ export const getCartRecommendations = async (
 
   // Convert to ObjectIds
   const productIds = cartItems
-    .map(item => {
+    .map((item) => {
       try {
         return new Types.ObjectId(item.productId);
       } catch {
@@ -1107,27 +1107,39 @@ export const getCartRecommendations = async (
 
   // Get recommendations
   const recommendations = await getFrequentlyBoughtTogether(
-    productIds.map(id => id.toString()),
+    productIds.map((id) => id.toString()),
     limit * 2
   );
 
   // Filter out products already in cart
-  const cartIdSet = new Set(productIds.map(id => id.toString()));
+  const cartIdSet = new Set(productIds.map((id) => id.toString()));
   const filtered = recommendations.filter(
-    product => product._id && typeof product._id !== 'string' && !cartIdSet.has(product._id.toString())
+    (product) =>
+      product._id &&
+      typeof product._id !== "string" &&
+      !cartIdSet.has(product._id.toString())
   );
 
   // If not enough recommendations, add similar products
   if (filtered.length < limit) {
-    const similar = await getSimilarProducts(productIds, limit - filtered.length);
-    
-    // Add unique similar products
-    const filteredIds = new Set(filtered.map(p => p._id?.toString()).filter((id): id is string => id !== undefined));
-    const uniqueSimilar = similar.filter(
-      product => product._id && !cartIdSet.has(product._id.toString()) && 
-                !filteredIds.has(product._id.toString())
+    const similar = await getSimilarProducts(
+      productIds,
+      limit - filtered.length
     );
-    
+
+    // Add unique similar products
+    const filteredIds = new Set(
+      filtered
+        .map((p) => p._id?.toString())
+        .filter((id): id is string => id !== undefined)
+    );
+    const uniqueSimilar = similar.filter(
+      (product) =>
+        product._id &&
+        !cartIdSet.has(product._id.toString()) &&
+        !filteredIds.has(product._id.toString())
+    );
+
     filtered.push(...uniqueSimilar);
   }
 
@@ -1137,14 +1149,12 @@ export const getCartRecommendations = async (
 /* =========================
    RECORD PURCHASE FOR ANALYTICS
 ========================= */
-export const recordPurchase = async (
-  productIds: string[]
-): Promise<void> => {
+export const recordPurchase = async (productIds: string[]): Promise<void> => {
   if (productIds.length < 2) {
     return; // Need at least 2 products for correlations
   }
 
-  const objectIds = productIds.map(id => new Types.ObjectId(id));
+  const objectIds = productIds.map((id) => new Types.ObjectId(id));
   const batchUpdates: Promise<any>[] = [];
 
   // Update each product's purchase history with others
@@ -1163,7 +1173,9 @@ export const recordPurchase = async (
 
   // Recalculate frequently bought (async)
   setTimeout(() => {
-    objectIds.forEach(id => recalculateFrequentlyBought(id).catch(console.error));
+    objectIds.forEach((id) =>
+      recalculateFrequentlyBought(id).catch(console.error)
+    );
   }, 0);
 };
 
@@ -1175,16 +1187,16 @@ export const recordPurchase = async (
 const getPopularProducts = async (limit: number): Promise<IProductModel[]> => {
   return Product.find({
     active: true,
-    stock: { $gt: 0 }
+    stock: { $gt: 0 },
   })
-  .populate('categories', 'name slug')
-  .sort({ 
-    createdAt: -1,
-    price: -1 
-  })
-  .limit(limit)
-  .select('name price imageCover categories material description')
-  .exec();
+    .populate("categories", "name slug")
+    .sort({
+      createdAt: -1,
+      price: -1,
+    })
+    .limit(limit)
+    .select("name price imageCover categories material description")
+    .exec();
 };
 
 // Get similar products
@@ -1194,14 +1206,15 @@ const getSimilarProducts = async (
 ): Promise<IProductModel[]> => {
   // Get categories from products
   const products = await Product.find({
-    _id: { $in: productIds }
+    _id: { $in: productIds },
   })
-  .select('categories price material')
-  .exec();
+    .select("categories price material")
+    .exec();
 
-  const categoryIds = products.flatMap(p => p.categories);
-  const uniqueCategoryIds = [...new Set(categoryIds.map(id => id.toString()))]
-    .map(id => new Types.ObjectId(id));
+  const categoryIds = products.flatMap((p) => p.categories);
+  const uniqueCategoryIds = [
+    ...new Set(categoryIds.map((id) => id.toString())),
+  ].map((id) => new Types.ObjectId(id));
 
   if (uniqueCategoryIds.length === 0) {
     return [];
@@ -1212,12 +1225,12 @@ const getSimilarProducts = async (
     _id: { $nin: productIds },
     categories: { $in: uniqueCategoryIds },
     active: true,
-    stock: { $gt: 0 }
+    stock: { $gt: 0 },
   })
-  .populate('categories', 'name slug')
-  .limit(limit)
-  .select('name price imageCover categories material description')
-  .exec();
+    .populate("categories", "name slug")
+    .limit(limit)
+    .select("name price imageCover categories material description")
+    .exec();
 };
 
 // Update purchase pair
@@ -1230,15 +1243,17 @@ const updatePurchasePair = async (
     {
       $push: {
         purchaseHistory: {
-          $each: [{
-            productId: relatedId,
-            count: 1,
-            lastPurchased: new Date()
-          }],
+          $each: [
+            {
+              productId: relatedId,
+              count: 1,
+              lastPurchased: new Date(),
+            },
+          ],
           $sort: { lastPurchased: -1 },
-          $slice: 100
-        }
-      }
+          $slice: 100,
+        },
+      },
     }
   ).exec();
 };
@@ -1248,7 +1263,7 @@ const recalculateFrequentlyBought = async (
   productId: Types.ObjectId
 ): Promise<void> => {
   const product = await Product.findById(productId)
-    .select('purchaseHistory')
+    .select("purchaseHistory")
     .exec();
 
   if (!product || !product.purchaseHistory) {
@@ -1259,7 +1274,7 @@ const recalculateFrequentlyBought = async (
   const frequencyMap = new Map<string, number>();
   let totalCount = 0;
 
-  product.purchaseHistory.forEach(item => {
+  product.purchaseHistory.forEach((item) => {
     const id = item.productId.toString();
     const current = frequencyMap.get(id) || 0;
     frequencyMap.set(id, current + item.count);
@@ -1271,11 +1286,11 @@ const recalculateFrequentlyBought = async (
     .map(([id, count]) => {
       const frequency = totalCount > 0 ? count / totalCount : 0;
       const confidence = calculateConfidence(count, totalCount);
-      
+
       return {
         productId: new Types.ObjectId(id),
         frequency,
-        confidence
+        confidence,
       };
     })
     .sort((a, b) => b.frequency - a.frequency)

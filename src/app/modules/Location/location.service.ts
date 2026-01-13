@@ -81,7 +81,21 @@ export const updateLocation = async (
 
 // Delete location (soft delete)
 export const deleteLocation = async (id: string): Promise<ILocation | null> => {
-  return Location.findByIdAndUpdate(id, { isActive: false }, { new: true });
+  // Check if location exists
+  const location = await Location.findById(id);
+
+  if (!location) {
+    return null;
+  }
+
+  // Soft delete by setting isActive to false
+  const deletedLocation = await Location.findByIdAndUpdate(
+    id,
+    { isActive: false },
+    { new: true } // Return updated document
+  );
+
+  return deletedLocation;
 };
 
 // Get all locations
