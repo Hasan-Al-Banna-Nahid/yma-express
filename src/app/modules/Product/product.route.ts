@@ -22,9 +22,12 @@ import {
   getFrequentlyBoughtTogether,
   getCartRecommendations,
   recordPurchase,
+  createFrequentlyBoughtRelationships,
+  getAllFrequentRelationships,
 } from "./product.controller";
 import { protectRoute } from "../../middlewares/auth.middleware";
 import { restrictTo } from "../../middlewares/authorization.middleware";
+import { upload } from "../../utils/cloudinary.util";
 
 const router = express.Router();
 
@@ -45,11 +48,22 @@ router.post("/recommendations/frequently-bought", getFrequentlyBoughtTogether);
 router.post("/recommendations/cart", getCartRecommendations);
 
 router.get("/:id", getProduct);
+router.get("/frequently-bought/all", getAllFrequentRelationships);
 
+// GET frequently bought for specific product (PUBLIC)
 // ==================== PROTECTED ROUTES ====================
 router.use(protectRoute);
 
-router.post("/", restrictTo("superadmin", "admin", "editor"), createProduct);
+router.post(
+  "/",
+
+  restrictTo("superadmin", "admin", "editor"),
+  upload.fields([
+    { name: "imageCover", maxCount: 1 },
+    { name: "images[]", maxCount: 5 },
+  ]),
+  createProduct
+);
 router.patch(
   "/:id",
   restrictTo("superadmin", "admin", "editor"),
@@ -80,7 +94,12 @@ router.patch(
   restrictTo("superadmin", "admin", "editor"),
   markAsTopPick
 );
-
+// In the protected routes section:
+router.post(
+  "/frequently-bought",
+  restrictTo("superadmin", "admin", "editor"),
+  createFrequentlyBoughtRelationships
+);
 // NEW PROTECTED ROUTE (for recording purchases):
 router.post("/recommendations/record-purchase", recordPurchase);
 

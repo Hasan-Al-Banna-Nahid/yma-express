@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import Location from "./location.model";
+import { LocationModel as Location } from "./location.model";
 import {
   ILocation,
   ICreateLocationData,
@@ -11,21 +11,206 @@ import {
   IDeliveryArea,
   IDeliveryOptions,
 } from "./location.interface";
+import ApiError from "../../utils/apiError";
 
+// Helper to check duplicate location
+export const checkDuplicateLocation = async (data: {
+  name?: string;
+  postcode?: string;
+  state?: string;
+  city?: string;
+}): Promise<ILocation | null> => {
+  const query: any = { isActive: true };
+
+  // Check by name in same city/state
+  if (data.name && data.city && data.state) {
+    const existingByName = await Location.findOne({
+      name: { $regex: new RegExp(`^${data.name}$`, "i") },
+      city: { $regex: new RegExp(`^${data.city}$`, "i") },
+      state: { $regex: new RegExp(`^${data.state}$`, "i") },
+      isActive: true,
+    });
+
+    if (existingByName) return existingByName;
+  }
+
+  // Check by postcode
+  if (data.postcode) {
+    const existingByPostcode = await Location.findOne({
+      postcode: data.postcode.toUpperCase(),
+      isActive: true,
+    });
+
+    if (existingByPostcode) return existingByPostcode;
+  }
+
+  return null;
+};
+
+// Helper to check duplicate location on update
+export const checkDuplicateLocationOnUpdate = async (
+  locationId: string,
+  data: {
+    name?: string;
+    postcode?: string;
+    state?: string;
+    city?: string;
+  }
+): Promise<ILocation | null> => {
+  const query: any = {
+    _id: { $ne: new mongoose.Types.ObjectId(locationId) },
+    isActive: true,
+  };
+
+  // Check by name in same city/state
+  if (data.name && data.city && data.state) {
+    const existingByName = await Location.findOne({
+      name: { $regex: new RegExp(`^${data.name}$`, "i") },
+      city: { $regex: new RegExp(`^${data.city}$`, "i") },
+      state: { $regex: new RegExp(`^${data.state}$`, "i") },
+      ...query,
+    });
+
+    if (existingByName) return existingByName;
+  }
+
+  // Check by postcode
+  if (data.postcode) {
+    const existingByPostcode = await Location.findOne({
+      postcode: data.postcode.toUpperCase(),
+      ...query,
+    });
+
+    if (existingByPostcode) return existingByPostcode;
+  }
+
+  return null;
+};
+
+// Helper to check duplicate delivery area
+export const checkDuplicateDeliveryArea = async (
+  locationId: string,
+  postcode: string
+): Promise<IDeliveryArea | null> => {
+  const location = await Location.findById(locationId);
+
+  if (!location) return null;
+
+  const normalizedPostcode = postcode.toUpperCase();
+
+  return (
+    location.deliveryAreas.find(
+      (area) => area.postcode === normalizedPostcode && area.isActive
+    ) || null
+  );
+};
+
+// Helper to check duplicate delivery area on update
+export const checkDuplicateDeliveryAreaOnUpdate = async (
+  locationId: string,
+  areaId: string,
+  postcode: string
+): Promise<IDeliveryArea | null> => {
+  const location = await Location.findById(locationId);
+
+  if (!location) return null;
+
+  const normalizedPostcode = postcode.toUpperCase();
+
+  return (
+    location.deliveryAreas.find(
+      (area) =>
+        area.postcode === normalizedPostcode &&
+        area.isActive &&
+        area._id?.toString() !== areaId
+    ) || null
+  );
+};
+
+// Create location
 // Create location
 export const createLocation = async (
   data: ICreateLocationData
 ): Promise<ILocation> => {
+  // Validate required fields
+  if (!data.name || !data.type || !data.country || !data.state) {
+    throw new ApiError(
+      "Missing required fields: name, type, country, state are required",
+      400
+    );
+  }
+
+  // Check for duplicate
+  const duplicate = await checkDuplicateLocation({
+    name: data.name,
+    postcode: data.postcode,
+    state: data.state,
+    city: data.city,
+  });
+
+  if (duplicate) {
+    throw new ApiError(
+      `Location with name "${data.name}" or postcode "${
+        data.postcode
+      }" already exists in ${data.city || data.state}`,
+      400
+    );
+  }
+
+  // Process delivery areas with comma-separated postcodes
+  let validatedDeliveryAreas: IDeliveryArea[] = [];
+  if (data.deliveryAreas && Array.isArray(data.deliveryAreas)) {
+    const allPostcodes = new Set();
+
+    for (const area of data.deliveryAreas) {
+      if (!area.postcode) {
+        throw new ApiError(
+          "All delivery areas must have a postcode field",
+          400
+        );
+      }
+
+      // Split comma-separated postcodes
+      const postcodes = area.postcode
+        .split(",")
+        .map((p) => p.trim().toUpperCase());
+
+      // Check for duplicates
+      for (const postcode of postcodes) {
+        if (allPostcodes.has(postcode)) {
+          throw new ApiError(
+            `Duplicate postcode "${postcode}" found in delivery areas`,
+            400
+          );
+        }
+        allPostcodes.add(postcode);
+      }
+
+      // Create individual delivery area entries for each postcode
+      for (const postcode of postcodes) {
+        validatedDeliveryAreas.push({
+          name: area.name || `Delivery Area - ${postcode}`,
+          postcode: postcode,
+          deliveryFee: area.deliveryFee || 0,
+          isFree: area.isFree ?? area.deliveryFee === 0,
+          minOrder: area.minOrder || 0,
+          estimatedTime: area.estimatedTime || 60,
+          isActive: area.isActive ?? true,
+        });
+      }
+    }
+  }
+
   const location = await Location.create({
     name: data.name,
     type: data.type,
     parent: data.parent ? new mongoose.Types.ObjectId(data.parent) : null,
     country: data.country,
     state: data.state,
-    city: data.city,
-    area: data.area,
-    postcode: data.postcode?.toUpperCase(),
-    deliveryAreas: data.deliveryAreas || [],
+    city: data.city || "",
+    area: data.area || "",
+    postcode: data.postcode?.toUpperCase() || "",
+    deliveryAreas: validatedDeliveryAreas,
     deliveryOptions: data.deliveryOptions || {
       isAvailable: true,
       isFree: false,
@@ -34,7 +219,7 @@ export const createLocation = async (
       estimatedTime: 60,
       radius: 5000,
     },
-    description: data.description,
+    description: data.description || "",
     isActive: data.isActive ?? true,
     metadata: data.metadata || {},
   });
@@ -92,7 +277,7 @@ export const deleteLocation = async (id: string): Promise<ILocation | null> => {
   const deletedLocation = await Location.findByIdAndUpdate(
     id,
     { isActive: false },
-    { new: true } // Return updated document
+    { new: true }
   );
 
   return deletedLocation;
@@ -232,9 +417,23 @@ export const addDeliveryArea = async (
   const location = await Location.findById(locationId);
   if (!location) return null;
 
+  const normalizedPostcode = data.postcode.toUpperCase();
+
+  // Check for duplicate delivery area postcode
+  const duplicateArea = location.deliveryAreas.find(
+    (area) => area.postcode === normalizedPostcode && area.isActive
+  );
+
+  if (duplicateArea) {
+    throw new ApiError(
+      `Delivery area with postcode "${data.postcode}" already exists for this location`,
+      400
+    );
+  }
+
   const deliveryArea: IDeliveryArea = {
     name: data.name,
-    postcode: data.postcode.toUpperCase(),
+    postcode: normalizedPostcode,
     deliveryFee: data.deliveryFee,
     isFree: data.isFree ?? data.deliveryFee === 0,
     minOrder: data.minOrder,
@@ -262,6 +461,24 @@ export const updateDeliveryArea = async (
   );
 
   if (areaIndex === -1) return null;
+
+  // Check for duplicate postcode when updating
+  if (data.postcode) {
+    const normalizedPostcode = data.postcode.toUpperCase();
+    const duplicateArea = location.deliveryAreas.find(
+      (area, index) =>
+        area.postcode === normalizedPostcode &&
+        area.isActive &&
+        index !== areaIndex
+    );
+
+    if (duplicateArea) {
+      throw new ApiError(
+        `Delivery area with postcode "${data.postcode}" already exists for this location`,
+        400
+      );
+    }
+  }
 
   if (data.name !== undefined)
     location.deliveryAreas[areaIndex].name = data.name;

@@ -56,6 +56,12 @@ export interface IProduct {
   similarProducts?: SimilarProductItem[];
   quantity?: number; // For cart purposes
   vendor?: string;
+  deliveryTimeOptions?: string[]; // Array of available delivery times
+  collectionTimeOptions?: string[]; // Array of available collection times
+  defaultDeliveryTime?: string; // Default delivery time
+  defaultCollectionTime?: string; // Default collection time
+  deliveryTimeFee?: number; // Default delivery time fee
+  collectionTimeFee?: number; // Default collection time fee
 }
 
 export interface CreateProductData {
@@ -102,6 +108,12 @@ export interface CreateProductData {
     warrantyPeriod?: string;
     warrantyDetails?: string;
   };
+  deliveryTimeOptions?: string[];
+  collectionTimeOptions?: string[];
+  defaultDeliveryTime?: string;
+  defaultCollectionTime?: string;
+  deliveryTimeFee?: number;
+  collectionTimeFee?: number;
 }
 // Add to your existing interfaces
 export interface PurchaseHistoryItem {

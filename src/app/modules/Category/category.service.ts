@@ -4,11 +4,23 @@ import ApiError from "../../utils/apiError";
 export const createCategory = async (
   categoryData: Partial<ICategoryModel>
 ): Promise<ICategoryModel> => {
+  // Check for duplicate name (case-insensitive)
+  const existingCategory = await Category.findOne({
+    name: { $regex: new RegExp(`^${categoryData.name}$`, "i") },
+  });
+
+  if (existingCategory) {
+    throw new ApiError(
+      `Category with name "${categoryData.name}" already exists`,
+      400
+    );
+  }
+
   return await Category.create(categoryData);
 };
 
 export const getAllCategories = async (): Promise<ICategoryModel[]> => {
-  return await Category.find({ isActive: true });
+  return await Category.find({ isActive: true }).sort({ name: 1 });
 };
 
 export const getCategoryById = async (id: string): Promise<ICategoryModel> => {
@@ -25,6 +37,21 @@ export const updateCategory = async (
   id: string,
   updateData: Partial<ICategoryModel>
 ): Promise<ICategoryModel> => {
+  // If name is being updated, check for duplicates
+  if (updateData.name) {
+    const existingCategory = await Category.findOne({
+      name: { $regex: new RegExp(`^${updateData.name}$`, "i") },
+      _id: { $ne: id },
+    });
+
+    if (existingCategory) {
+      throw new ApiError(
+        `Category with name "${updateData.name}" already exists`,
+        400
+      );
+    }
+  }
+
   const category = await Category.findByIdAndUpdate(id, updateData, {
     new: true,
     runValidators: true,
@@ -57,7 +84,10 @@ export const seedHardcodedCategories = async (): Promise<ICategoryModel[]> => {
   const results = [];
 
   for (const categoryData of hardcodedCategories) {
-    let category = await Category.findOne({ name: categoryData.name });
+    // Check if category already exists (case-insensitive)
+    let category = await Category.findOne({
+      name: { $regex: new RegExp(`^${categoryData.name}$`, "i") },
+    });
 
     if (!category) {
       category = await Category.create(categoryData);
@@ -80,5 +110,5 @@ export const getHardcodedCategories = async (): Promise<ICategoryModel[]> => {
         "Tower Castle",
       ],
     },
-  });
+  }).sort({ name: 1 });
 };

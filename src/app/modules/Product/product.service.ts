@@ -3,24 +3,38 @@ import Product, { IProductModel } from "./product.model";
 import ApiError from "../../utils/apiError";
 import { ObjectId, Types } from "mongoose";
 import { CreateProductData } from "./product.interface";
+import { deleteFromCloudinary } from "../../utils/cloudinary.util";
 
-/**
- * Base filter for available products
- * Only active & in-stock products should be visible publicly
- */
 const AVAILABLE_PRODUCT_FILTER = {
   active: true,
   stock: { $gt: 0 },
 };
 
 /* =========================
-   CREATE PRODUCT
+   CREATE PRODUCT WITH CLOUDINARY
 ========================= */
 export const createProduct = async (
-  productData: CreateProductData
+  productData: CreateProductData & {
+    imageCover?: Express.Multer.File;
+    images?: Express.Multer.File[];
+  }
 ): Promise<IProductModel> => {
+  // Validate required fields
   if (!productData.categories || productData.categories.length === 0) {
     throw new ApiError("At least one category is required", 400);
+  }
+
+  // Validate images
+  if (!productData.images || productData.images.length === 0) {
+    throw new ApiError("At least one image is required", 400);
+  }
+
+  if (productData.images.length > 5) {
+    throw new ApiError("Maximum 5 images allowed", 400);
+  }
+
+  if (!productData.imageCover) {
+    throw new ApiError("Cover image is required", 400);
   }
 
   const categoryIds = productData.categories.map(
@@ -36,15 +50,69 @@ export const createProduct = async (
     throw new ApiError("One or more categories are invalid or inactive", 400);
   }
 
+  // For file uploads, we'll handle in controller
+  // This function expects URLs from controller
   const product = await Product.create({
-    ...productData,
+    name: productData.name,
+    description: productData.description,
+    summary: productData.summary,
+    price: productData.price,
+    perDayPrice: productData.perDayPrice,
+    perWeekPrice: productData.perWeekPrice,
+    deliveryAndCollection: productData.deliveryAndCollection,
+    priceDiscount: productData.priceDiscount,
+    duration: productData.duration,
+    maxGroupSize: productData.maxGroupSize,
+    difficulty: productData.difficulty,
     categories: categoryIds,
+    images: productData.images as string[], // URLs from controller
+    imageCover: productData.imageCover as string, // URL from controller
     location: {
       country: "England",
       state: productData.location?.state || "",
       city: productData.location?.city || "",
     },
+    dimensions: productData.dimensions || {
+      length: 1,
+      width: 1,
+      height: 1,
+    },
+    availableFrom: productData.availableFrom
+      ? new Date(productData.availableFrom)
+      : new Date(),
+    availableUntil: productData.availableUntil
+      ? new Date(productData.availableUntil)
+      : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+    size: productData.size,
+    active: productData.active !== undefined ? productData.active : true,
+    stock: productData.stock || 0,
+    isSensitive: productData.isSensitive || false,
+    material: productData.material,
+    design: productData.design,
     dateAdded: new Date(),
+    deliveryTimeOptions: productData.deliveryTimeOptions || [
+      "8am-12pm",
+      "12pm-4pm",
+      "4pm-8pm",
+    ],
+    collectionTimeOptions: productData.collectionTimeOptions || [
+      "before_5pm",
+      "after_5pm",
+      "next_day",
+    ],
+    defaultDeliveryTime: productData.defaultDeliveryTime || "8am-12pm",
+    defaultCollectionTime: productData.defaultCollectionTime || "before_5pm",
+    deliveryTimeFee: productData.deliveryTimeFee || 0,
+    collectionTimeFee: productData.collectionTimeFee || 0,
+    ageRange: productData.ageRange || {
+      min: 0,
+      max: 0,
+      unit: "years",
+    },
+    safetyFeatures: productData.safetyFeatures || [],
+    qualityAssurance: productData.qualityAssurance || {
+      isCertified: false,
+    },
   });
 
   await product.populate({
@@ -57,21 +125,26 @@ export const createProduct = async (
 };
 
 /* =========================
-   UPDATE PRODUCT
-========================= */
-/* =========================
-   ENHANCED UPDATE PRODUCT
-   Supports updating all fields from the JSON example
+   UPDATE PRODUCT WITH CLOUDINARY
 ========================= */
 export const updateProduct = async (
   productId: string,
-  updateData: any
+  updateData: any & {
+    newImageCover?: Express.Multer.File;
+    newImages?: Express.Multer.File[];
+  }
 ): Promise<IProductModel> => {
   if (!Types.ObjectId.isValid(productId)) {
     throw new ApiError("Invalid product ID", 400);
   }
 
-  // Create a clean update object with proper transformations
+  // Find existing product
+  const existingProduct = await Product.findById(productId);
+  if (!existingProduct) {
+    throw new ApiError("Product not found", 404);
+  }
+
+  // Create update object
   const cleanUpdateData: any = {};
 
   // Basic fields that can be directly updated
@@ -87,8 +160,6 @@ export const updateProduct = async (
     "duration",
     "maxGroupSize",
     "difficulty",
-    "images",
-    "imageCover",
     "size",
     "active",
     "stock",
@@ -96,9 +167,14 @@ export const updateProduct = async (
     "material",
     "design",
     "dateAdded",
+    "deliveryTimeOptions",
+    "collectionTimeOptions",
+    "defaultDeliveryTime",
+    "defaultCollectionTime",
+    "deliveryTimeFee",
+    "collectionTimeFee",
   ];
 
-  // Copy basic fields if they exist in updateData
   basicFields.forEach((field) => {
     if (updateData[field] !== undefined) {
       cleanUpdateData[field] = updateData[field];
@@ -166,9 +242,6 @@ export const updateProduct = async (
     if (!Array.isArray(updateData.safetyFeatures)) {
       throw new ApiError("Safety features must be an array", 400);
     }
-    if (updateData.safetyFeatures.length === 0) {
-      throw new ApiError("At least one safety feature is required", 400);
-    }
     cleanUpdateData.safetyFeatures = updateData.safetyFeatures;
   }
 
@@ -185,11 +258,31 @@ export const updateProduct = async (
     };
   }
 
-  // Update the product with validation
+  // Handle images - if new images are uploaded
+  if (updateData.newImages && Array.isArray(updateData.newImages)) {
+    if (updateData.newImages.length > 5) {
+      throw new ApiError("Maximum 5 images allowed", 400);
+    }
+    // Images will be URLs from controller
+    cleanUpdateData.images = updateData.newImages;
+  }
+
+  // Handle image cover - if new cover is uploaded
+  if (updateData.newImageCover) {
+    // Image cover will be URL from controller
+    cleanUpdateData.imageCover = updateData.newImageCover;
+  }
+
+  // Validate array limits for images
+  if (cleanUpdateData.images && cleanUpdateData.images.length > 5) {
+    throw new ApiError("Maximum 5 images allowed", 400);
+  }
+
+  // Update the product
   const product = await Product.findByIdAndUpdate(productId, cleanUpdateData, {
     new: true,
     runValidators: true,
-    context: "query", // This ensures validators run on update
+    context: "query",
   }).populate("categories", "name slug description image");
 
   if (!product) {
@@ -198,6 +291,8 @@ export const updateProduct = async (
 
   return product;
 };
+
+// ... rest of your existing service functions remain the same
 
 /* =========================
    GET ALL PRODUCTS
@@ -1308,4 +1403,160 @@ const calculateConfidence = (count: number, total: number): number => {
   if (total < 5) return 0.3;
   if (total < 20) return 0.6;
   return Math.min(0.95, (count / total) * 1.2);
+};
+/* =========================
+   ADD FREQUENTLY BOUGHT TOGETHER PRODUCTS (Admin Only)
+========================= */
+/* =========================
+   CREATE FREQUENTLY BOUGHT RELATIONSHIPS
+   Add multiple products to each other's frequently bought lists
+========================= */
+/* =========================
+   CREATE FREQUENTLY BOUGHT RELATIONSHIPS
+   Add multiple products to each other's frequently bought lists
+========================= */
+export const createFrequentlyBoughtRelationships = async (
+  productIds: string[]
+): Promise<IProductModel[]> => {
+  // Validate all product IDs
+  const validProductIds = productIds
+    .filter((id) => Types.ObjectId.isValid(id))
+    .map((id) => new Types.ObjectId(id));
+
+  if (validProductIds.length < 2) {
+    throw new ApiError("At least 2 valid product IDs are required", 400);
+  }
+
+  // Check if all products exist and are active
+  const products = await Product.find({
+    _id: { $in: validProductIds },
+    active: true,
+  }).select("_id");
+
+  if (products.length !== validProductIds.length) {
+    throw new ApiError("One or more products not found or inactive", 400);
+  }
+
+  // For each product, add all other products to its frequentlyBoughtTogether list
+  const updatePromises = validProductIds.map(async (currentProductId) => {
+    const otherProductIds = validProductIds.filter(
+      (id) => !id.equals(currentProductId)
+    );
+
+    const frequentlyBoughtTogether = otherProductIds.map((id) => ({
+      productId: id,
+      frequency: 0.5,
+      confidence: 0.4,
+    }));
+
+    const updatedProduct = await Product.findByIdAndUpdate(
+      currentProductId,
+      {
+        frequentlyBoughtTogether,
+      },
+      { new: true, runValidators: true }
+    ).populate({
+      path: "frequentlyBoughtTogether.productId",
+      select: "name price imageCover stock active",
+      match: { active: true },
+    });
+
+    if (!updatedProduct) {
+      throw new ApiError(`Product ${currentProductId} not found`, 404);
+    }
+
+    return updatedProduct;
+  });
+
+  const updatedProducts = await Promise.all(updatePromises);
+  return updatedProducts;
+};
+
+export const getAllFrequentlyBoughtRelationships = async (): Promise<{
+  [productId: string]: IProductModel[];
+}> => {
+  // Get all products that have frequentlyBoughtTogether data
+  const products = await Product.find({
+    "frequentlyBoughtTogether.0": { $exists: true }, // Has at least one item
+    active: true,
+  })
+    .populate({
+      path: "frequentlyBoughtTogether.productId",
+      select: "name price imageCover stock active",
+      match: { active: true, stock: { $gt: 0 } },
+    })
+    .select("name frequentlyBoughtTogether")
+    .lean()
+    .exec();
+
+  // Create a map of product relationships
+  const relationships: { [productId: string]: IProductModel[] } = {};
+
+  products.forEach((product) => {
+    if (product._id && product.frequentlyBoughtTogether) {
+      const productId = product._id.toString();
+      const relatedProducts: IProductModel[] = [];
+
+      product.frequentlyBoughtTogether.forEach((item) => {
+        if (
+          item.productId &&
+          typeof item.productId === "object" &&
+          "_id" in item.productId &&
+          "name" in item.productId
+        ) {
+          relatedProducts.push(item.productId as unknown as IProductModel);
+        }
+      });
+
+      if (relatedProducts.length > 0) {
+        relationships[productId] = relatedProducts;
+      }
+    }
+  });
+
+  return relationships;
+};
+
+export const getAllFrequentRelationships = async (): Promise<
+  Array<{
+    productId: string;
+    productName: string;
+    frequentlyBought: Array<{
+      productId: string;
+      productName: string;
+      price: number;
+      imageCover: string;
+    }>;
+  }>
+> => {
+  const products = await Product.find({
+    "frequentlyBoughtTogether.0": { $exists: true },
+    active: true,
+  })
+    .populate({
+      path: "frequentlyBoughtTogether.productId",
+      select: "name price imageCover",
+      match: { active: true, stock: { $gt: 0 } },
+    })
+    .select("name frequentlyBoughtTogether")
+    .lean()
+    .exec();
+
+  const result = products
+    .map((product) => ({
+      productId: product._id?.toString() || "",
+      productName: product.name || "",
+      frequentlyBought: (product.frequentlyBoughtTogether || [])
+        .filter((item) => item.productId && typeof item.productId === "object")
+        .map((item) => ({
+          productId: (item.productId as any)?._id?.toString() || "",
+          productName: (item.productId as any)?.name || "",
+          price: (item.productId as any)?.price || 0,
+          imageCover: (item.productId as any)?.imageCover || "",
+        }))
+        .filter((item) => item.productId && item.productName),
+    }))
+    .filter((product) => product.frequentlyBought.length > 0);
+
+  return result;
 };

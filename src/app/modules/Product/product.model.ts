@@ -276,19 +276,60 @@ const productSchema: Schema = new Schema(
         },
       },
     ],
+    deliveryTimeOptions: {
+      type: [String],
+      default: ["8am-12pm", "12pm-4pm", "4pm-8pm"],
+      enum: ["8am-12pm", "12pm-4pm", "4pm-8pm", "after_8pm"],
+    },
+    collectionTimeOptions: {
+      type: [String],
+      default: ["before_5pm", "after_5pm", "next_day"],
+      enum: ["before_5pm", "after_5pm", "next_day"],
+    },
+    defaultDeliveryTime: {
+      type: String,
+      default: "8am-12pm",
+      enum: ["8am-12pm", "12pm-4pm", "4pm-8pm", "after_8pm"],
+    },
+    defaultCollectionTime: {
+      type: String,
+      default: "before_5pm",
+      enum: ["before_5pm", "after_5pm", "next_day"],
+    },
+    deliveryTimeFee: {
+      type: Number,
+      default: 0,
+      min: [0, "Delivery time fee cannot be negative"],
+    },
+    collectionTimeFee: {
+      type: Number,
+      default: 0,
+      min: [0, "Collection time fee cannot be negative"],
+    },
   },
+
   {
     timestamps: true,
     toJSON: { virtuals: true },
     toObject: { virtuals: true },
   }
 );
-
+// In productSchema.index section, add:
+productSchema.index({ "frequentlyBoughtTogether.frequency": -1 });
 productSchema.virtual("dimensions.area").get(function (this: IProductModel) {
   return this.dimensions.length * this.dimensions.width;
 });
 productSchema.index({ "frequentlyBoughtTogether.frequency": -1 });
-
+productSchema.virtual("deliveryInfo").get(function (this: IProductModel) {
+  return {
+    deliveryTimes: this.deliveryTimeOptions,
+    defaultDelivery: this.defaultDeliveryTime,
+    deliveryFee: this.deliveryTimeFee,
+    collectionTimes: this.collectionTimeOptions,
+    defaultCollection: this.defaultCollectionTime,
+    collectionFee: this.collectionTimeFee,
+  };
+});
 productSchema
   .virtual("formattedDimensions")
   .get(function (this: IProductModel) {
