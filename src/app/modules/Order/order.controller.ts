@@ -1,8 +1,10 @@
+// src/modules/order/order.controller.ts
 import { Request, Response } from "express";
 import asyncHandler from "../../utils/asyncHandler";
 import ApiError from "../../utils/apiError";
 import { ApiResponse } from "../../utils/apiResponse";
 import * as orderService from "./order.service";
+import mongoose from "mongoose";
 
 export const createOrderHandler = asyncHandler(
   async (req: Request, res: Response) => {
@@ -10,12 +12,11 @@ export const createOrderHandler = asyncHandler(
     const userId = aReq.user.id;
     const orderData = req.body;
 
-    // Validate required fields based on Order model schema
+    // Basic validation
     if (!orderData.items || !orderData.items.length) {
       throw new ApiError("Order items are required", 400);
     }
 
-    // Validate each item has required fields
     for (const [index, item] of orderData.items.entries()) {
       if (!item.productId) {
         throw new ApiError(`Item ${index + 1}: Product ID is required`, 400);
@@ -32,7 +33,7 @@ export const createOrderHandler = asyncHandler(
       throw new ApiError("Shipping address is required", 400);
     }
 
-    // Required shipping address fields
+    // Required shipping fields
     const requiredShippingFields = [
       "firstName",
       "lastName",
@@ -49,7 +50,7 @@ export const createOrderHandler = asyncHandler(
       }
     }
 
-    // Validate email format
+    // Email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(orderData.shippingAddress.email)) {
       throw new ApiError("Please provide a valid email address", 400);
@@ -59,7 +60,6 @@ export const createOrderHandler = asyncHandler(
       throw new ApiError("Payment method is required", 400);
     }
 
-    // Validate payment method
     const validPaymentMethods = ["cash_on_delivery", "credit_card", "online"];
     if (!validPaymentMethods.includes(orderData.paymentMethod)) {
       throw new ApiError(
@@ -72,70 +72,9 @@ export const createOrderHandler = asyncHandler(
       throw new ApiError("You must accept the terms and conditions", 400);
     }
 
-    // Validate invoice type if provided
-    if (
-      orderData.invoiceType &&
-      !["regular", "corporate"].includes(orderData.invoiceType)
-    ) {
-      throw new ApiError("Invoice type must be 'regular' or 'corporate'", 400);
-    }
-
-    // Validate delivery time if provided
-    if (orderData.shippingAddress.deliveryTime) {
-      const validDeliveryTimes = [
-        "8am-12pm",
-        "12pm-4pm",
-        "4pm-8pm",
-        "after_8pm",
-      ];
-      if (
-        !validDeliveryTimes.includes(orderData.shippingAddress.deliveryTime)
-      ) {
-        throw new ApiError(
-          `Delivery time must be one of: ${validDeliveryTimes.join(", ")}`,
-          400
-        );
-      }
-    }
-
-    // Validate collection time if provided
-    if (orderData.shippingAddress.collectionTime) {
-      const validCollectionTimes = ["before_5pm", "after_5pm", "next_day", ""];
-      if (
-        !validCollectionTimes.includes(orderData.shippingAddress.collectionTime)
-      ) {
-        throw new ApiError(
-          `Collection time must be one of: ${validCollectionTimes
-            .slice(0, 3)
-            .join(", ")}`,
-          400
-        );
-      }
-    }
-
-    // Validate hire occasion if provided
-    if (orderData.shippingAddress.hireOccasion) {
-      const validOccasions = [
-        "birthday",
-        "wedding",
-        "corporate_event",
-        "school_event",
-        "community_event",
-        "private_party",
-        "other",
-      ];
-      if (!validOccasions.includes(orderData.shippingAddress.hireOccasion)) {
-        throw new ApiError(
-          `Hire occasion must be one of: ${validOccasions.join(", ")}`,
-          400
-        );
-      }
-    }
-
-    // Create order using service
+    // Create order
     const order = await orderService.createOrder(userId, orderData);
 
-    // Return response with order details
     ApiResponse(res, 201, "Order created successfully", {
       order: {
         id: order._id,
@@ -181,5 +120,239 @@ export const createOrderHandler = asyncHandler(
       },
       message: "Order placed successfully and customer profile created/updated",
     });
+  }
+);
+
+export const getMyOrders = asyncHandler(async (req: Request, res: Response) => {
+  const aReq = req as any;
+  const userId = aReq.user.id;
+  const page = parseInt(req.query.page as string) || 1;
+  const limit = parseInt(req.query.limit as string) || 10;
+
+  const result = await orderService.getOrdersByUserId(userId, page, limit);
+
+  ApiResponse(res, 200, "Orders retrieved successfully", result);
+});
+
+export const getOrder = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const aReq = req as any;
+  const userId = aReq.user.id;
+  const isAdmin = aReq.user.role === "admin";
+
+  const order = await orderService.getOrderById(id);
+
+  // Check authorization
+  if (!isAdmin && order.user.toString() !== userId.toString()) {
+    throw new ApiError("Not authorized to view this order", 403);
+  }
+
+  ApiResponse(res, 200, "Order retrieved successfully", { order });
+});
+
+export const updateOrderHandler = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const aReq = req as any;
+    const userId = aReq.user.id;
+    const isAdmin = aReq.user.role === "admin";
+    const updateData = req.body;
+
+    const order = await orderService.updateOrder(
+      id,
+      updateData,
+      userId,
+      isAdmin
+    );
+
+    ApiResponse(res, 200, "Order updated successfully", { order });
+  }
+);
+
+export const deleteOrderHandler = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const aReq = req as any;
+    const userId = aReq.user.id;
+
+    await orderService.deleteOrder(id, userId);
+
+    ApiResponse(res, 200, "Order deleted successfully");
+  }
+);
+
+// Admin controllers
+export const getAllOrdersHandler = asyncHandler(
+  async (req: Request, res: Response) => {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 20;
+    const filters: any = {
+      status: req.query.status as string,
+      paymentMethod: req.query.paymentMethod as string,
+      userId: req.query.userId as string,
+      search: req.query.search as string,
+      startDate: req.query.startDate
+        ? new Date(req.query.startDate as string)
+        : undefined,
+      endDate: req.query.endDate
+        ? new Date(req.query.endDate as string)
+        : undefined,
+      minAmount: req.query.minAmount
+        ? parseFloat(req.query.minAmount as string)
+        : undefined,
+      maxAmount: req.query.maxAmount
+        ? parseFloat(req.query.maxAmount as string)
+        : undefined,
+    };
+
+    const result = await orderService.getAllOrders(page, limit, filters);
+
+    ApiResponse(res, 200, "Orders retrieved successfully", result);
+  }
+);
+
+export const getOrderStatsHandler = asyncHandler(
+  async (req: Request, res: Response) => {
+    const stats = await orderService.getOrderStatistics();
+    ApiResponse(res, 200, "Order statistics retrieved", stats);
+  }
+);
+
+export const getTodayRevenueHandler = asyncHandler(
+  async (req: Request, res: Response) => {
+    const revenue = await orderService.getTodayRevenue();
+    ApiResponse(res, 200, "Today's revenue", { revenue });
+  }
+);
+
+export const getPendingConfirmationsHandler = asyncHandler(
+  async (req: Request, res: Response) => {
+    const count = await orderService.getPendingConfirmationsCount();
+    ApiResponse(res, 200, "Pending confirmations count", { count });
+  }
+);
+
+export const getTodayBookingsHandler = asyncHandler(
+  async (req: Request, res: Response) => {
+    const bookings = await orderService.getTodayBookings();
+    ApiResponse(res, 200, "Today's bookings", { bookings });
+  }
+);
+
+export const getTodayDeliveriesHandler = asyncHandler(
+  async (req: Request, res: Response) => {
+    const deliveries = await orderService.getTodayDeliveries();
+    ApiResponse(res, 200, "Today's deliveries", { deliveries });
+  }
+);
+
+export const getRevenueOverTimeHandler = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { startDate, endDate, interval = "day" } = req.query;
+
+    if (!startDate || !endDate) {
+      throw new ApiError("startDate and endDate are required", 400);
+    }
+
+    const revenueData = await orderService.getRevenueOverTime(
+      new Date(startDate as string),
+      new Date(endDate as string),
+      interval as "day" | "week" | "month"
+    );
+
+    ApiResponse(res, 200, "Revenue over time", revenueData);
+  }
+);
+
+export const getOrderSummaryHandler = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { orderId } = req.params;
+    const summary = await orderService.getOrderSummary(orderId);
+    ApiResponse(res, 200, "Order summary", summary);
+  }
+);
+
+export const updateOrderStatusHandler = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const { status, adminNotes } = req.body;
+
+    if (!status) {
+      throw new ApiError("Status is required", 400);
+    }
+
+    const order = await orderService.updateOrderStatus(id, status, adminNotes);
+    ApiResponse(res, 200, "Order status updated", { order });
+  }
+);
+
+export const getUserOrdersHandler = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { userId } = req.params;
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+
+    const result = await orderService.getOrdersByUserId(userId, page, limit);
+    ApiResponse(res, 200, "User orders retrieved", result);
+  }
+);
+
+export const searchOrdersHandler = asyncHandler(
+  async (req: Request, res: Response) => {
+    const searchTerm = req.query.q as string;
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 20;
+
+    if (!searchTerm || searchTerm.trim().length < 2) {
+      throw new ApiError("Search term must be at least 2 characters", 400);
+    }
+
+    const result = await orderService.searchOrders(searchTerm, page, limit);
+    ApiResponse(res, 200, "Search results", result);
+  }
+);
+
+export const generateInvoiceHandler = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { orderId } = req.params;
+    const aReq = req as any;
+    const userId = aReq.user.id;
+    const isAdmin = aReq.user.role === "admin";
+
+    const result = await orderService.generateInvoice(orderId, userId, isAdmin);
+    ApiResponse(res, 200, result.message, result);
+  }
+);
+
+export const downloadInvoiceHandler = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { orderId } = req.params;
+    const aReq = req as any;
+    const userId = aReq.user.id;
+    const isAdmin = aReq.user.role === "admin";
+
+    const { html, filename } = await orderService.downloadInvoice(
+      orderId,
+      userId,
+      isAdmin
+    );
+
+    res.setHeader("Content-Type", "text/html");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send(html);
+  }
+);
+
+export const previewInvoiceHandler = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { orderId } = req.params;
+    const aReq = req as any;
+    const userId = aReq.user.id;
+    const isAdmin = aReq.user.role === "admin";
+
+    const html = await orderService.previewInvoice(orderId, userId, isAdmin);
+
+    res.setHeader("Content-Type", "text/html");
+    res.send(html);
   }
 );

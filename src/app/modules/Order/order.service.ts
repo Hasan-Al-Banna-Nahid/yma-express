@@ -1,14 +1,10 @@
+// src/modules/order/order.service.ts
 import mongoose from "mongoose";
 import Order from "./order.model";
+import Customer from "../customer/customer.model";
+import User from "../Auth/user.model";
+import Product from "../Product/product.model";
 import ApiError from "../../utils/apiError";
-import {
-  sendOrderReceivedEmail,
-  sendOrderConfirmedEmail,
-  sendDeliveryReminderEmail,
-  sendOrderCancelledEmail,
-  sendInvoiceEmail,
-  notifyAdminNewOrder,
-} from "./email.service";
 import {
   IOrderDocument,
   CreateOrderInput,
@@ -20,11 +16,15 @@ import {
   INVOICE_TYPES,
   DeliveryTimeManager,
 } from "./order.interface";
-import Product from "../../modules/Product/product.model";
-import User from "../../modules/Auth/user.model";
-import Customer from "../../modules/customer/customer.model";
-
-// Create new order
+import {
+  sendOrderReceivedEmail,
+  sendOrderConfirmedEmail,
+  sendDeliveryReminderEmail,
+  sendOrderCancelledEmail,
+  sendInvoiceEmail,
+  notifyAdminNewOrder,
+  sendDeliveryCompleteEmail,
+} from "./email.service";
 
 export const createOrder = async (
   userId: string,
@@ -87,7 +87,7 @@ export const createOrder = async (
       throw new ApiError("User not found", 404);
     }
 
-    // 3. Calculate delivery fee based on delivery time
+    // 3. Calculate delivery fee
     const deliveryTime = shippingAddress?.deliveryTime || "8am-12pm";
     let deliveryFee = DeliveryTimeManager.getFee(deliveryTime);
 
@@ -109,7 +109,7 @@ export const createOrder = async (
       }
     }
 
-    // 4. Calculate overnight fee from items
+    // 4. Calculate overnight fee
     const overnightFee = processedItems.reduce((total, item) => {
       return total + (item.keepOvernight ? 50 : 0);
     }, 0);
@@ -118,7 +118,7 @@ export const createOrder = async (
     const totalAmount =
       subtotalAmount + deliveryFee + overnightFee - discountAmount;
 
-    // 5. Create the order with proper schema structure
+    // 5. Create order
     const order = new Order({
       user: userId,
       items: processedItems,
@@ -169,7 +169,7 @@ export const createOrder = async (
 
     await order.save({ session });
 
-    // 6. Create or update customer
+    // 6. Create or update customer (treat user as customer)
     await createOrUpdateCustomerFromOrder(
       userId,
       user,
@@ -182,12 +182,12 @@ export const createOrder = async (
     await session.commitTransaction();
     session.endSession();
 
-    // 8. Send email notifications (outside transaction)
+    // 8. Send emails
     try {
       await sendOrderReceivedEmail(order);
       await notifyAdminNewOrder(order);
     } catch (emailError) {
-      console.error("Failed to send email:", emailError);
+      console.error("Email sending failed:", emailError);
     }
 
     return order;
@@ -207,110 +207,102 @@ const createOrUpdateCustomerFromOrder = async (
   session: mongoose.ClientSession
 ): Promise<void> => {
   try {
-    const existingCustomer = await Customer.findOne({ user: userId }).session(
-      session
-    );
+    // Check if customer exists
+    let customer = await Customer.findOne({ user: userId }).session(session);
 
     const customerData = {
       user: userId,
-      name: user.name,
-      email: user.email,
+      name: `${shippingAddress.firstName} ${shippingAddress.lastName}`,
+      email: shippingAddress.email,
       phone: shippingAddress.phone || user.phone || "",
       address: shippingAddress.street || "",
       city: shippingAddress.city || "",
       postcode: shippingAddress.zipCode || "",
+      country: shippingAddress.country || "UK",
       notes: shippingAddress.notes || "",
+      customerType: "retail",
     };
 
-    if (existingCustomer) {
+    if (customer) {
       // Update existing customer
-      existingCustomer.totalOrders += 1;
-      existingCustomer.totalSpent += order.totalAmount || 0;
-      existingCustomer.lastOrderDate = new Date();
+      customer.totalOrders += 1;
+      customer.totalSpent += order.totalAmount || 0;
+      customer.lastOrderDate = new Date();
 
-      if (!existingCustomer.firstOrderDate) {
-        existingCustomer.firstOrderDate = new Date();
+      if (!customer.firstOrderDate) {
+        customer.firstOrderDate = new Date();
       }
 
       // Update contact info if not present
-      if (!existingCustomer.phone && customerData.phone) {
-        existingCustomer.phone = customerData.phone;
+      if (!customer.phone && customerData.phone) {
+        customer.phone = customerData.phone;
       }
-      if (!existingCustomer.address && customerData.address) {
-        existingCustomer.address = customerData.address;
+      if (!customer.address && customerData.address) {
+        customer.address = customerData.address;
       }
-      if (!existingCustomer.city && customerData.city) {
-        existingCustomer.city = customerData.city;
+      if (!customer.city && customerData.city) {
+        customer.city = customerData.city;
       }
-      if (!existingCustomer.postcode && customerData.postcode) {
-        existingCustomer.postcode = customerData.postcode;
+      if (!customer.postcode && customerData.postcode) {
+        customer.postcode = customerData.postcode;
       }
 
-      await existingCustomer.save({ session });
+      await customer.save({ session });
     } else {
       // Create new customer
-      await Customer.create(
-        [
-          {
-            ...customerData,
-            totalOrders: 1,
-            totalSpent: order.totalAmount || 0,
-            firstOrderDate: new Date(),
-            lastOrderDate: new Date(),
-            isFavorite: false,
-            tags: ["new-customer"],
-          },
-        ],
-        { session }
-      );
+      customer = new Customer({
+        ...customerData,
+        totalOrders: 1,
+        totalSpent: order.totalAmount || 0,
+        firstOrderDate: new Date(),
+        lastOrderDate: new Date(),
+        isFavorite: false,
+        tags: ["new-customer"],
+        customerId: `CUST${Date.now().toString().slice(-6)}`,
+      });
+
+      await customer.save({ session });
     }
+
+    // Also update user with customer info
+    await User.findByIdAndUpdate(
+      userId,
+      {
+        $set: {
+          phone: shippingAddress.phone || user.phone,
+          address: shippingAddress.street || user.address,
+          city: shippingAddress.city || user.city,
+          postcode: shippingAddress.zipCode || user.postcode,
+        },
+      },
+      { session }
+    );
   } catch (error) {
-    console.error("Error creating/updating customer:", error);
+    console.error("Error in customer creation:", error);
   }
 };
 
 // Get order by ID
-// Get order by ID - FIXED VERSION
 export const getOrderById = async (
   orderId: string
 ): Promise<IOrderDocument> => {
-  // More flexible ID validation
   if (!orderId || typeof orderId !== "string") {
     throw new ApiError("Order ID is required", 400);
   }
 
-  // Try to find by orderNumber first (since orderNumber might be passed)
   let order: IOrderDocument | null = null;
 
-  // Check if it's a MongoDB ObjectId (24 hex characters)
+  // Try by MongoDB ObjectId
   if (mongoose.Types.ObjectId.isValid(orderId) && orderId.length === 24) {
     order = await Order.findById(orderId)
-      .populate("user", "name email phone")
+      .populate("user", "name email phone address city postcode")
       .populate("items.product", "name imageCover price category description");
   }
 
-  // If not found by ID, try by orderNumber
+  // Try by orderNumber
   if (!order) {
     order = await Order.findOne({ orderNumber: orderId })
-      .populate("user", "name email phone")
-      .populate("items.product", "name imageCover price category description");
-  }
-
-  // If still not found, try by any field
-  if (!order) {
-    // Try by various fields (case-insensitive)
-    const searchRegex = new RegExp(orderId, "i");
-    order = await Order.findOne({
-      $or: [
-        {
-          _id: mongoose.Types.ObjectId.isValid(orderId)
-            ? new mongoose.Types.ObjectId(orderId)
-            : null,
-        },
-        { orderNumber: searchRegex },
-      ],
-    })
-      .populate("user", "name email phone")
+      .populate("user", "name email phone address city postcode")
       .populate("items.product", "name imageCover price category description");
   }
 
@@ -321,8 +313,7 @@ export const getOrderById = async (
   return order;
 };
 
-// Also fix getAllOrders function to handle the error properly
-// Get all orders with filters - SIMPLE FIX
+// Get all orders
 export const getAllOrders = async (
   page: number = 1,
   limit: number = 20,
@@ -375,7 +366,6 @@ export const getAllOrders = async (
       ];
     }
 
-    // Get orders with pagination
     const [orders, total] = await Promise.all([
       Order.find(query)
         .populate("user", "name email phone")
@@ -386,18 +376,13 @@ export const getAllOrders = async (
       Order.countDocuments(query),
     ]);
 
-    console.log(
-      `✅ Found ${total} orders, returning ${orders.length} on page ${page}`
-    );
-
     return {
       orders,
       total,
       pages: Math.ceil(total / limit),
     };
   } catch (error: any) {
-    console.error("❌ Error in getAllOrders:", error.message);
-    // Return empty result on error
+    console.error("Error in getAllOrders:", error.message);
     return {
       orders: [],
       total: 0,
@@ -496,22 +481,71 @@ export const updateOrder = async (
   return order;
 };
 
-// Update order status
+// Add this function to your order.service.ts (replace the existing updateOrderStatus)
 export const updateOrderStatus = async (
   orderId: string,
   status: "pending" | "confirmed" | "shipped" | "delivered" | "cancelled",
   adminNotes?: string
 ): Promise<IOrderDocument> => {
-  const updateData: UpdateOrderInput = { status };
-  if (adminNotes) {
-    updateData.adminNotes = adminNotes;
+  if (!mongoose.Types.ObjectId.isValid(orderId)) {
+    throw new ApiError("Invalid order ID", 400);
   }
 
-  return updateOrder(orderId, updateData, undefined, true);
+  const order = await Order.findById(orderId)
+    .populate("user", "name email phone")
+    .populate("items.product", "name imageCover price");
+
+  if (!order) {
+    throw new ApiError("Order not found", 404);
+  }
+
+  const previousStatus = order.status;
+
+  // Update order status
+  order.status = status;
+  if (adminNotes) {
+    order.adminNotes = adminNotes;
+  }
+
+  // Update delivery date if status is delivered
+  if (status === ORDER_STATUS.DELIVERED) {
+    order.deliveryDate = new Date();
+  }
+
+  await order.save();
+
+  // Send email notifications for status changes
+  if (status !== previousStatus) {
+    try {
+      switch (status) {
+        case ORDER_STATUS.CONFIRMED:
+          await sendOrderConfirmedEmail(order);
+          break;
+        case ORDER_STATUS.SHIPPED:
+          await sendDeliveryReminderEmail(order);
+          break;
+        case ORDER_STATUS.DELIVERED:
+          await sendDeliveryCompleteEmail(order);
+          break;
+        case ORDER_STATUS.CANCELLED:
+          await sendOrderCancelledEmail(order);
+          break;
+      }
+    } catch (emailError) {
+      console.error("Failed to send status change email:", emailError);
+      // Don't throw error, just log it
+    }
+  }
+
+  return order;
 };
 
-// Delete order
-export const deleteOrder = async (orderId: string): Promise<void> => {
+// Update the generateInvoice function
+export const generateInvoice = async (
+  orderId: string,
+  userId?: string,
+  isAdmin: boolean = false
+): Promise<{ message: string; orderId: string }> => {
   if (!mongoose.Types.ObjectId.isValid(orderId)) {
     throw new ApiError("Invalid order ID", 400);
   }
@@ -519,6 +553,38 @@ export const deleteOrder = async (orderId: string): Promise<void> => {
   const order = await Order.findById(orderId);
   if (!order) {
     throw new ApiError("Order not found", 404);
+  }
+
+  if (!isAdmin && userId && order.user.toString() !== userId.toString()) {
+    throw new ApiError("You are not authorized to access this invoice", 403);
+  }
+
+  // Send email WITHOUT attachments - invoice is included in email body
+  await sendInvoiceEmail(order);
+
+  return {
+    message: "Invoice sent successfully",
+    orderId: order._id.toString(),
+  };
+};
+
+// Delete order
+export const deleteOrder = async (
+  orderId: string,
+  userId?: string
+): Promise<void> => {
+  if (!mongoose.Types.ObjectId.isValid(orderId)) {
+    throw new ApiError("Invalid order ID", 400);
+  }
+
+  const order = await Order.findById(orderId);
+  if (!order) {
+    throw new ApiError("Order not found", 404);
+  }
+
+  // Check authorization
+  if (userId && order.user.toString() !== userId.toString()) {
+    throw new ApiError("You are not authorized to delete this order", 403);
   }
 
   if (
@@ -556,7 +622,6 @@ export const getOrderStatistics = async (): Promise<OrderStats> => {
     revenueResult,
     todayRevenueResult,
     monthlyRevenueResult,
-    ordersTodayResult,
   ] = await Promise.all([
     Order.countDocuments(),
     Order.countDocuments({ status: ORDER_STATUS.PENDING }),
@@ -586,9 +651,6 @@ export const getOrderStatistics = async (): Promise<OrderStats> => {
       },
       { $group: { _id: null, total: { $sum: "$totalAmount" } } },
     ]),
-    Order.countDocuments({
-      createdAt: { $gte: today, $lt: tomorrow },
-    }),
   ]);
 
   const totalRevenue = revenueResult[0]?.total || 0;
@@ -608,6 +670,169 @@ export const getOrderStatistics = async (): Promise<OrderStats> => {
     todayRevenue,
     monthlyRevenue,
     averageOrderValue: parseFloat(averageOrderValue.toFixed(2)),
+  };
+};
+
+// NEW: Get today's revenue
+export const getTodayRevenue = async (): Promise<number> => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  const result = await Order.aggregate([
+    {
+      $match: {
+        status: ORDER_STATUS.DELIVERED,
+        createdAt: { $gte: today, $lt: tomorrow },
+      },
+    },
+    { $group: { _id: null, total: { $sum: "$totalAmount" } } },
+  ]);
+
+  return result[0]?.total || 0;
+};
+
+// NEW: Get pending confirmations count
+export const getPendingConfirmationsCount = async (): Promise<number> => {
+  return await Order.countDocuments({ status: ORDER_STATUS.PENDING });
+};
+
+// NEW: Get today's bookings
+export const getTodayBookings = async (): Promise<IOrderDocument[]> => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  return await Order.find({
+    createdAt: { $gte: today, $lt: tomorrow },
+  })
+    .populate("user", "name email phone")
+    .populate("items.product", "name imageCover price")
+    .sort({ createdAt: -1 })
+    .limit(20);
+};
+
+// NEW: Get today's deliveries
+export const getTodayDeliveries = async (): Promise<IOrderDocument[]> => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  return await Order.find({
+    status: ORDER_STATUS.DELIVERED,
+    deliveryDate: { $gte: today, $lt: tomorrow },
+  })
+    .populate("user", "name email phone")
+    .populate("items.product", "name imageCover price")
+    .sort({ deliveryDate: -1 })
+    .limit(20);
+};
+
+// NEW: Get revenue over time for charts
+export const getRevenueOverTime = async (
+  startDate: Date,
+  endDate: Date,
+  interval: "day" | "week" | "month" = "day"
+): Promise<Array<{ date: string; revenue: number; orders: number }>> => {
+  const matchStage = {
+    $match: {
+      status: ORDER_STATUS.DELIVERED,
+      createdAt: { $gte: startDate, $lte: endDate },
+    },
+  };
+
+  let groupStage: any;
+  let dateFormat: string;
+
+  switch (interval) {
+    case "day":
+      dateFormat = "%Y-%m-%d";
+      groupStage = {
+        $group: {
+          _id: {
+            $dateToString: { format: dateFormat, date: "$createdAt" },
+          },
+          revenue: { $sum: "$totalAmount" },
+          orders: { $sum: 1 },
+        },
+      };
+      break;
+    case "week":
+      dateFormat = "%Y-%W";
+      groupStage = {
+        $group: {
+          _id: {
+            $dateToString: { format: dateFormat, date: "$createdAt" },
+          },
+          revenue: { $sum: "$totalAmount" },
+          orders: { $sum: 1 },
+        },
+      };
+      break;
+    case "month":
+      dateFormat = "%Y-%m";
+      groupStage = {
+        $group: {
+          _id: {
+            $dateToString: { format: dateFormat, date: "$createdAt" },
+          },
+          revenue: { $sum: "$totalAmount" },
+          orders: { $sum: 1 },
+        },
+      };
+      break;
+    default:
+      dateFormat = "%Y-%m-%d";
+      groupStage = {
+        $group: {
+          _id: {
+            $dateToString: { format: dateFormat, date: "$createdAt" },
+          },
+          revenue: { $sum: "$totalAmount" },
+          orders: { $sum: 1 },
+        },
+      };
+  }
+
+  const result = await Order.aggregate([
+    matchStage,
+    groupStage,
+    { $sort: { _id: 1 } },
+  ]);
+
+  return result.map((item) => ({
+    date: item._id,
+    revenue: item.revenue,
+    orders: item.orders,
+  }));
+};
+
+// NEW: Get order summary with user info
+export const getOrderSummary = async (
+  orderId: string
+): Promise<{
+  order: IOrderDocument;
+  user: any;
+  customer: any;
+}> => {
+  const order = await getOrderById(orderId);
+
+  const user = await User.findById(order.user).select(
+    "name email phone address city postcode createdAt"
+  );
+
+  const customer = await Customer.findOne({ user: order.user });
+
+  return {
+    order,
+    user,
+    customer,
   };
 };
 
@@ -729,8 +954,6 @@ export const getOrdersByStatus = async (
 
   return { orders, total, pages: Math.ceil(total / limit) };
 };
-
-// ==================== INVOICE FUNCTIONS ====================
 
 // Generate invoice HTML
 const generateInvoiceHtml = (order: IOrderDocument): string => {
@@ -919,32 +1142,6 @@ const generateInvoiceHtml = (order: IOrderDocument): string => {
 };
 
 // Generate and send invoice
-export const generateInvoice = async (
-  orderId: string,
-  userId?: string,
-  isAdmin: boolean = false
-): Promise<{ message: string; orderId: string }> => {
-  if (!mongoose.Types.ObjectId.isValid(orderId)) {
-    throw new ApiError("Invalid order ID", 400);
-  }
-
-  const order = await Order.findById(orderId);
-  if (!order) {
-    throw new ApiError("Order not found", 404);
-  }
-
-  if (!isAdmin && userId && order.user.toString() !== userId.toString()) {
-    throw new ApiError("You are not authorized to access this invoice", 403);
-  }
-
-  const invoiceHtml = generateInvoiceHtml(order);
-  await sendInvoiceEmail(order, invoiceHtml);
-
-  return {
-    message: "Invoice sent successfully",
-    orderId: order._id.toString(),
-  };
-};
 
 // Download invoice
 export const downloadInvoice = async (
