@@ -91,6 +91,8 @@ export interface IBooking {
   refundedAt?: Date;
   createdAt?: Date;
   updatedAt?: Date;
+  startDate?: Date;
+  endDate?: Date;
 }
 
 export interface CreateBookingData {

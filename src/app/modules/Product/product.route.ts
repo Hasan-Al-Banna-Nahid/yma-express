@@ -98,6 +98,10 @@ router.patch(
 router.post(
   "/frequently-bought",
   restrictTo("superadmin", "admin", "editor"),
+  upload.fields([
+    { name: "images[]", maxCount: 5 }, // For updating product images
+    { name: "newImageCover", maxCount: 1 }, // For updating cover image
+  ]),
   createFrequentlyBoughtRelationships
 );
 // NEW PROTECTED ROUTE (for recording purchases):

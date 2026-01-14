@@ -5,6 +5,54 @@ export type IProductModel = IProduct & mongoose.Document;
 
 const productSchema: Schema = new Schema(
   {
+    discount: {
+      type: Number,
+      min: 0,
+      max: 100,
+      default: 0,
+    },
+
+    dimensions: {
+      length: {
+        type: Number,
+        required: [true, "Length is required"],
+        min: [1, "Length must be at least 1 foot"],
+      },
+      width: {
+        type: Number,
+        required: [true, "Width is required"],
+        min: [1, "Width must be at least 1 foot"],
+      },
+      height: {
+        type: Number,
+        required: [true, "Height is required"],
+        min: [1, "Height must be at least 1 foot"],
+      },
+    },
+
+    images: [String], // Already exists - this is the array of images
+
+    bookedDates: [
+      {
+        startDate: {
+          type: Date,
+          required: true,
+        },
+        endDate: {
+          type: Date,
+          required: true,
+        },
+        bookingId: {
+          type: Schema.Types.ObjectId,
+          ref: "Booking",
+        },
+        status: {
+          type: String,
+          enum: ["confirmed", "pending", "cancelled"],
+          default: "confirmed",
+        },
+      },
+    ],
     isTopPick: {
       type: Boolean,
       default: false,
@@ -107,7 +155,6 @@ const productSchema: Schema = new Schema(
         ref: "Category",
       },
     ],
-    images: [String],
     imageCover: {
       type: String,
       required: [true, "Image cover is required"],
@@ -128,23 +175,7 @@ const productSchema: Schema = new Schema(
         trim: true,
       },
     },
-    dimensions: {
-      length: {
-        type: Number,
-        required: [true, "Length is required"],
-        min: [1, "Length must be at least 1 foot"],
-      },
-      width: {
-        type: Number,
-        required: [true, "Width is required"],
-        min: [1, "Width must be at least 1 foot"],
-      },
-      height: {
-        type: Number,
-        required: [true, "Height is required"],
-        min: [1, "Height must be at least 1 foot"],
-      },
-    },
+
     availableFrom: {
       type: Date,
       required: [true, "Available from date is required"],
@@ -318,6 +349,27 @@ const productSchema: Schema = new Schema(
 productSchema.index({ "frequentlyBoughtTogether.frequency": -1 });
 productSchema.virtual("dimensions.area").get(function (this: IProductModel) {
   return this.dimensions.length * this.dimensions.width;
+});
+productSchema.virtual("discountPrice").get(function (this: IProductModel) {
+  if (this.discount && this.discount > 0) {
+    return this.price - (this.price * this.discount) / 100;
+  }
+  return this.price;
+});
+
+// Add virtual for available dates
+productSchema.virtual("availableDates").get(function (this: IProductModel) {
+  const now = new Date();
+  const availableFrom = new Date(this.availableFrom);
+  const availableUntil = new Date(this.availableUntil);
+
+  // Return array of available dates (simplified)
+  return {
+    from: availableFrom > now ? availableFrom : now,
+    until: availableUntil,
+    isAvailable:
+      this.stock > 0 && now >= availableFrom && now <= availableUntil,
+  };
 });
 productSchema.index({ "frequentlyBoughtTogether.frequency": -1 });
 productSchema.virtual("deliveryInfo").get(function (this: IProductModel) {

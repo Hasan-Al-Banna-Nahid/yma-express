@@ -4,6 +4,7 @@ import ApiError from "../../utils/apiError";
 import { ObjectId, Types } from "mongoose";
 import { CreateProductData } from "./product.interface";
 import { deleteFromCloudinary } from "../../utils/cloudinary.util";
+import Booking from "../../modules/Bookings/booking.model";
 
 const AVAILABLE_PRODUCT_FILTER = {
   active: true,
@@ -294,9 +295,6 @@ export const updateProduct = async (
 
 // ... rest of your existing service functions remain the same
 
-/* =========================
-   GET ALL PRODUCTS
-========================= */
 export const getAllProducts = async (
   page = 1,
   limit = 10,
@@ -324,21 +322,45 @@ export const getAllProducts = async (
 
   const products = await Product.find(filter)
     .populate("categories", "name description")
+    .select("-__v") // Exclude version key
     .sort({ createdAt: -1 })
     .skip(skip)
-    .limit(limit);
+    .limit(limit)
+    .lean(); // Use lean for better performance
 
   const total = await Product.countDocuments(filter);
 
+  // Transform products to include booked dates
+  const productsWithBookedDates = await Promise.all(
+    products.map(async (product: any) => {
+      // Get booked dates for this product
+      const bookedDates = await getBookedDatesForProduct(
+        product._id.toString()
+      );
+
+      return {
+        ...product,
+        bookedDates,
+        images: product.images || [], // Ensure images array is returned
+        discount: product.discount || 0,
+        dimensions: product.dimensions || {
+          length: 0,
+          width: 0,
+          height: 0,
+        },
+      };
+    })
+  );
+
   return {
-    products,
+    products: productsWithBookedDates as IProductModel[],
     total,
     pages: Math.ceil(total / limit),
   };
 };
 
 /* =========================
-   GET PRODUCT BY ID
+   GET PRODUCT BY ID WITH BOOKED DATES
 ========================= */
 export const getProductById = async (
   productId: string
@@ -350,15 +372,55 @@ export const getProductById = async (
   const product = await Product.findOne({
     _id: productId,
     ...AVAILABLE_PRODUCT_FILTER,
-  }).populate("categories", "name description");
+  })
+    .populate("categories", "name description")
+    .select("-__v")
+    .lean();
 
   if (!product) {
     throw new ApiError("Product not found", 404);
   }
 
-  return product;
-};
+  // Get booked dates for this product
+  const bookedDates = await getBookedDatesForProduct(productId);
 
+  // Return product with booked dates
+  return {
+    ...product,
+    bookedDates,
+    images: product.images || [],
+    discount: product.discount || 0,
+    dimensions: product.dimensions || {
+      length: 0,
+      width: 0,
+      height: 0,
+    },
+  } as IProductModel;
+};
+const getBookedDatesForProduct = async (productId: string): Promise<any[]> => {
+  try {
+    const bookings = await Booking.find({
+      product: productId,
+      status: { $in: ["confirmed", "pending"] },
+      $or: [
+        { startDate: { $gte: new Date() } },
+        { endDate: { $gte: new Date() } },
+      ],
+    })
+      .select("startDate endDate status bookingId")
+      .lean();
+
+    return bookings.map((booking) => ({
+      startDate: booking.startDate,
+      endDate: booking.endDate,
+      bookingId: booking._id,
+      status: booking.status,
+    }));
+  } catch (error) {
+    console.error("Error fetching booked dates:", error);
+    return [];
+  }
+};
 /* =========================
    SOFT DELETE PRODUCT
 ========================= */
@@ -1415,8 +1477,12 @@ const calculateConfidence = (count: number, total: number): number => {
    CREATE FREQUENTLY BOUGHT RELATIONSHIPS
    Add multiple products to each other's frequently bought lists
 ========================= */
+/* =========================
+   CREATE FREQUENTLY BOUGHT RELATIONSHIPS WITH UPDATES
+========================= */
 export const createFrequentlyBoughtRelationships = async (
-  productIds: string[]
+  productIds: string[],
+  productUpdates?: { [productId: string]: any }
 ): Promise<IProductModel[]> => {
   // Validate all product IDs
   const validProductIds = productIds
@@ -1428,13 +1494,19 @@ export const createFrequentlyBoughtRelationships = async (
   }
 
   // Check if all products exist and are active
-  const products = await Product.find({
+  const existingProducts = await Product.find({
     _id: { $in: validProductIds },
-    active: true,
-  }).select("_id");
+  }).select("_id name active");
 
-  if (products.length !== validProductIds.length) {
-    throw new ApiError("One or more products not found or inactive", 400);
+  if (existingProducts.length !== validProductIds.length) {
+    throw new ApiError("One or more products not found", 404);
+  }
+
+  // Check for inactive products
+  const inactiveProducts = existingProducts.filter((p) => !p.active);
+  if (inactiveProducts.length > 0) {
+    const inactiveNames = inactiveProducts.map((p) => p.name).join(", ");
+    throw new ApiError(`Some products are inactive: ${inactiveNames}`, 400);
   }
 
   // For each product, add all other products to its frequentlyBoughtTogether list
@@ -1443,33 +1515,90 @@ export const createFrequentlyBoughtRelationships = async (
       (id) => !id.equals(currentProductId)
     );
 
+    // Prepare frequently bought together data
     const frequentlyBoughtTogether = otherProductIds.map((id) => ({
       productId: id,
       frequency: 0.5,
       confidence: 0.4,
+      addedAt: new Date(),
     }));
 
+    // Prepare update object
+    const updateData: any = {
+      frequentlyBoughtTogether,
+      updatedAt: new Date(),
+    };
+
+    // Apply any additional updates for this product
+    if (productUpdates && productUpdates[currentProductId.toString()]) {
+      Object.assign(updateData, productUpdates[currentProductId.toString()]);
+    }
+
+    // Update the product
     const updatedProduct = await Product.findByIdAndUpdate(
       currentProductId,
-      {
-        frequentlyBoughtTogether,
-      },
+      updateData,
       { new: true, runValidators: true }
     ).populate({
       path: "frequentlyBoughtTogether.productId",
-      select: "name price imageCover stock active",
+      select: "name price imageCover stock active discount dimensions images",
       match: { active: true },
     });
 
     if (!updatedProduct) {
-      throw new ApiError(`Product ${currentProductId} not found`, 404);
+      throw new ApiError(
+        `Product ${currentProductId} not found after update`,
+        404
+      );
     }
 
     return updatedProduct;
   });
 
   const updatedProducts = await Promise.all(updatePromises);
+
+  // Also update each product's purchase history to reflect the relationship
+  await Promise.all(
+    validProductIds.map(async (productId) => {
+      await updatePurchaseHistoryForFrequentlyBought(
+        productId,
+        validProductIds
+      );
+    })
+  );
+
   return updatedProducts;
+};
+
+/* =========================
+   HELPER: UPDATE PURCHASE HISTORY FOR FREQUENTLY BOUGHT
+========================= */
+const updatePurchaseHistoryForFrequentlyBought = async (
+  productId: Types.ObjectId,
+  relatedProductIds: Types.ObjectId[]
+): Promise<void> => {
+  const otherProductIds = relatedProductIds.filter(
+    (id) => !id.equals(productId)
+  );
+
+  for (const relatedId of otherProductIds) {
+    // Update purchase history to reflect the relationship
+    await Product.findByIdAndUpdate(productId, {
+      $push: {
+        purchaseHistory: {
+          $each: [
+            {
+              productId: relatedId,
+              count: 3, // Add some initial count for the relationship
+              lastPurchased: new Date(),
+            },
+          ],
+          $sort: { lastPurchased: -1 },
+          $slice: 100,
+        },
+      },
+    });
+  }
 };
 
 export const getAllFrequentlyBoughtRelationships = async (): Promise<{
@@ -1557,6 +1686,22 @@ export const getAllFrequentRelationships = async (): Promise<
         .filter((item) => item.productId && item.productName),
     }))
     .filter((product) => product.frequentlyBought.length > 0);
+
+  return result;
+};
+/* =========================
+   GET BOOKED DATES FOR MULTIPLE PRODUCTS
+========================= */
+export const getBookedDatesForProducts = async (
+  productIds: string[]
+): Promise<{ [productId: string]: any[] }> => {
+  const result: { [productId: string]: any[] } = {};
+
+  await Promise.all(
+    productIds.map(async (productId) => {
+      result[productId] = await getBookedDatesForProduct(productId);
+    })
+  );
 
   return result;
 };

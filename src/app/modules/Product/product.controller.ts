@@ -1235,6 +1235,10 @@ export const markAsTopPick = asyncHandler(
 /* =========================
    GET FREQUENTLY BOUGHT TOGETHER
 ========================= */
+
+/* =========================
+   GET FREQUENTLY BOUGHT TOGETHER WITH ENHANCED FIELDS
+========================= */
 export const getFrequentlyBoughtTogether = asyncHandler(
   async (req: Request, res: Response, next: NextFunction) => {
     const { productIds } = req.body;
@@ -1268,12 +1272,83 @@ export const getFrequentlyBoughtTogether = asyncHandler(
       limit
     );
 
+    // Get booked dates for all recommended products
+    const recommendedProductIds = recommendations
+      .filter((p) => p && p._id)
+      .map((p) => (p._id as unknown as string).toString());
+
+    const bookedDatesMap = await productService.getBookedDatesForProducts(
+      recommendedProductIds
+    );
+
+    // Enhance recommendations with additional fields
+    const enhancedRecommendations = await Promise.all(
+      recommendations.map(async (product: any) => {
+        if (!product) return null;
+
+        const productId = product._id?.toString();
+
+        return {
+          id: productId,
+          name: product.name,
+          description: product.description,
+          price: product.price,
+          discount: product.discount || 0,
+          discountPrice: product.discountPrice || product.price,
+          dimensions: product.dimensions || {
+            length: 0,
+            width: 0,
+            height: 0,
+          },
+          images: product.images || [], // Return all images
+          imageCover: product.imageCover, // Also include cover separately
+          material: product.material,
+          design: product.design,
+          ageRange: product.ageRange,
+          safetyFeatures: product.safetyFeatures || [],
+          qualityAssurance: product.qualityAssurance,
+          location: product.location,
+          categories: product.categories,
+          bookedDates: bookedDatesMap[productId] || [],
+          frequentlyBoughtDetails: product.frequentlyBoughtTogether?.find(
+            (item: any) => {
+              const itemId =
+                item.productId?._id?.toString() || item.productId?.toString();
+              return productIds.includes(itemId);
+            }
+          ),
+          metadata: {
+            isAvailable: product.stock > 0,
+            stock: product.stock,
+            active: product.active,
+            hasDiscount: (product.discount || 0) > 0,
+            totalImages: (product.images || []).length,
+          },
+        };
+      })
+    ).then((results) => results.filter((r) => r !== null));
+
     res.status(200).json({
       status: "success",
       message: "Frequently bought together products",
       data: {
-        recommendations,
-        count: recommendations.length,
+        recommendations: enhancedRecommendations,
+        count: enhancedRecommendations.length,
+        requestedProducts: productIds,
+        metadata: {
+          includes: [
+            "discount",
+            "dimensions",
+            "images",
+            "bookedDates",
+            "material",
+            "design",
+            "ageRange",
+            "safetyFeatures",
+          ],
+          requestedProducts: productIds.length,
+          foundProducts: enhancedRecommendations.length,
+        },
       },
     });
   }
@@ -1370,9 +1445,13 @@ export const recordPurchase = asyncHandler(
 /* =========================
    CREATE FREQUENTLY BOUGHT RELATIONSHIPS (Admin Only)
 ========================= */
+/* =========================
+   CREATE FREQUENTLY BOUGHT RELATIONSHIPS WITH FILE UPLOAD
+========================= */
 export const createFrequentlyBoughtRelationships = asyncHandler(
   async (req: Request, res: Response, next: NextFunction) => {
     const { productIds } = req.body;
+    const files = req.files as any;
 
     // Validate input
     if (!productIds || !Array.isArray(productIds)) {
@@ -1383,20 +1462,142 @@ export const createFrequentlyBoughtRelationships = asyncHandler(
       throw new ApiError("At least 2 product IDs are required", 400);
     }
 
-    // Remove duplicates
-    const uniqueProductIds = [...new Set(productIds)];
+    // Validate each product ID
+    for (const id of productIds) {
+      if (!Types.ObjectId.isValid(id)) {
+        throw new ApiError(`Invalid product ID: ${id}`, 400);
+      }
+    }
 
+    // Extract additional data for product updates
+    const {
+      discount,
+      dimensions,
+      // Other update fields can be added here
+    } = req.body;
+
+    // Prepare update data for each product
+    const productUpdates: { [productId: string]: any } = {};
+
+    // Process files if uploaded
+    if (files) {
+      // Handle image cover updates
+      if (files.newImageCover && files.newImageCover.length > 0) {
+        try {
+          const newImageCover = files.newImageCover[0];
+          const coverUrl = await uploadToCloudinary(newImageCover);
+
+          // Apply cover to first product or all products? Let's apply to first product
+          const firstProductId = productIds[0];
+          productUpdates[firstProductId] = productUpdates[firstProductId] || {};
+          productUpdates[firstProductId].imageCover = coverUrl;
+
+          console.log(
+            `Updated cover image for product ${firstProductId}: ${coverUrl}`
+          );
+        } catch (error: any) {
+          console.error("Failed to upload cover image:", error);
+        }
+      }
+
+      // Handle additional images
+      if (files["images[]"] && files["images[]"].length > 0) {
+        const newImages = files["images[]"];
+        try {
+          const imageUrls = await Promise.all(
+            newImages.map(async (file: Express.Multer.File) => {
+              return await uploadToCloudinary(file);
+            })
+          );
+
+          // Apply images to products - you can decide logic here
+          // For example, apply to all products or specific ones
+          productIds.forEach((productId, index) => {
+            if (index < imageUrls.length) {
+              productUpdates[productId] = productUpdates[productId] || {};
+              productUpdates[productId].$push =
+                productUpdates[productId].$push || {};
+              productUpdates[productId].$push.images = {
+                $each: [imageUrls[index]],
+                $position: 0,
+              };
+            }
+          });
+        } catch (error: any) {
+          console.error("Failed to upload images:", error);
+        }
+      }
+    }
+
+    // Process other update fields
+    if (discount !== undefined) {
+      const discountValue = parseFloat(discount);
+      if (!isNaN(discountValue) && discountValue >= 0 && discountValue <= 100) {
+        productIds.forEach((productId) => {
+          productUpdates[productId] = productUpdates[productId] || {};
+          productUpdates[productId].discount = discountValue;
+        });
+      }
+    }
+
+    if (dimensions) {
+      try {
+        const parsedDimensions =
+          typeof dimensions === "string" ? JSON.parse(dimensions) : dimensions;
+
+        if (parsedDimensions && typeof parsedDimensions === "object") {
+          const { length, width, height } = parsedDimensions;
+
+          productIds.forEach((productId) => {
+            productUpdates[productId] = productUpdates[productId] || {};
+            productUpdates[productId].dimensions = {
+              length: parseFloat(length) || 1,
+              width: parseFloat(width) || 1,
+              height: parseFloat(height) || 1,
+            };
+          });
+        }
+      } catch (error) {
+        console.warn("Failed to parse dimensions:", error);
+      }
+    }
+
+    // Create frequently bought relationships
     const updatedProducts =
       await productService.createFrequentlyBoughtRelationships(
-        uniqueProductIds
+        productIds,
+        productUpdates
       );
 
     res.status(200).json({
       status: "success",
-      message: "Frequently bought relationships created successfully",
+      message:
+        "Frequently bought relationships created successfully with updates",
       data: {
-        products: updatedProducts,
+        products: updatedProducts.map((product) => ({
+          id: product._id,
+          name: product.name,
+          price: product.price,
+          discount: product.discount || 0,
+          discountPrice: product.discount || product.price,
+          dimensions: product.dimensions || { length: 0, width: 0, height: 0 },
+          images: product.images || [],
+          imageCover: product.imageCover,
+          frequentlyBoughtTogether: product.frequentlyBoughtTogether?.map(
+            (item: any) => ({
+              productId: item.productId?._id || item.productId,
+              productName: item.productId?.name || "Unknown",
+              frequency: item.frequency,
+              confidence: item.confidence,
+            })
+          ),
+        })),
         count: updatedProducts.length,
+        metadata: {
+          filesUploaded: files ? Object.keys(files).length : 0,
+          fieldsUpdated: Object.keys(productUpdates).length,
+          totalProducts: productIds.length,
+        },
       },
     });
   }

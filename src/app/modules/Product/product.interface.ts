@@ -62,6 +62,14 @@ export interface IProduct {
   defaultCollectionTime?: string; // Default collection time
   deliveryTimeFee?: number; // Default delivery time fee
   collectionTimeFee?: number; // Default collection time fee
+  discount?: number; // Added discount field
+  bookedDates?: Array<{
+    // Added bookedDates array
+    startDate: Date;
+    endDate: Date;
+    bookingId?: Types.ObjectId;
+    status?: "confirmed" | "pending" | "cancelled";
+  }>;
 }
 
 export interface CreateProductData {
