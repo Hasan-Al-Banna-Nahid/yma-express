@@ -31,14 +31,22 @@ router.get("/stats", restrictTo("admin", "superadmin", "editor"), getBlogStats);
 router.post(
   "/",
   restrictTo("admin", "superadmin", "editor"),
-  upload.array("images", 10),
+  upload.fields([
+    // Use .fields() instead of .array()
+    { name: "authorImage", maxCount: 1 },
+    { name: "images", maxCount: 10 },
+  ]),
   createBlog
 );
 
 router.patch(
   "/:id",
   restrictTo("admin", "superadmin", "editor"),
-  upload.array("images", 10),
+  upload.fields([
+    // Use .fields() instead of .array()
+    { name: "authorImage", maxCount: 1 },
+    { name: "images", maxCount: 10 },
+  ]),
   updateBlog
 );
 

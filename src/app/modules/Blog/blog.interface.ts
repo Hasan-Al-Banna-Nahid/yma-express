@@ -1,14 +1,22 @@
 import { Types } from "mongoose";
 
 export type BlogStatus = "draft" | "published" | "archived" | "scheduled";
-
+export interface IAuthor {
+  _id?: Types.ObjectId;
+  name: string;
+  email?: string;
+  avatar?: string;
+  profilePicture?: string;
+  bio?: string;
+}
 export interface IBlog {
   _id?: Types.ObjectId;
   title: string;
+  author?: Types.ObjectId | IAuthor;
+
   subtitle?: string;
   description: string;
   images?: string[];
-  author?: Types.ObjectId;
   category?: string;
   tags?: string[];
   status: BlogStatus;

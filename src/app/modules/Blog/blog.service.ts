@@ -7,7 +7,16 @@ export const createBlog = async (
   blogData: CreateBlogData
 ): Promise<IBlogModel> => {
   const blog = await Blog.create(blogData);
-  return blog;
+
+  // Populate author details after creation
+  const populatedBlog = await Blog.findById(blog._id)
+    .populate({
+      path: "author",
+      select: "name email avatar profilePicture bio",
+    })
+    .lean();
+
+  return populatedBlog as IBlogModel;
 };
 
 export const getAllBlogs = async (

@@ -5,6 +5,32 @@ export type IBlogModel = IBlog & mongoose.Document;
 
 const blogSchema = new Schema(
   {
+    author: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+    },
+
+    // Add author details directly in blog
+    authorDetails: {
+      name: {
+        type: String,
+        trim: true,
+      },
+      avatar: {
+        type: String,
+      },
+      profilePicture: {
+        type: String,
+      },
+      bio: {
+        type: String,
+        maxlength: [500, "Bio cannot exceed 500 characters"],
+      },
+      designation: {
+        type: String,
+        trim: true,
+      },
+    },
     title: {
       type: String,
       required: [true, "Blog title is required"],
@@ -21,10 +47,7 @@ const blogSchema = new Schema(
       required: [true, "Blog description is required"],
     },
     images: [String],
-    author: {
-      type: Schema.Types.ObjectId,
-      ref: "User",
-    },
+
     category: {
       type: String,
       trim: true,

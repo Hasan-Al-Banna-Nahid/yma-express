@@ -5,13 +5,15 @@ import ApiError from "../../utils/apiError";
 import { uploadToCloudinary } from "../../utils/cloudinary.util";
 import { BlogFilter } from "./blog.interface";
 
-// Create blog
 export const createBlog = asyncHandler(async (req: Request, res: Response) => {
   const {
     title,
     subtitle,
     description,
     author,
+    authorName,
+    authorBio,
+    authorDesignation,
     category,
     tags,
     status,
@@ -49,21 +51,39 @@ export const createBlog = asyncHandler(async (req: Request, res: Response) => {
     }
   }
 
-  // Upload images if provided
-  let images: string[] = [];
-  if (req.files && Array.isArray(req.files)) {
-    for (const file of req.files as Express.Multer.File[]) {
-      const imageUrl = await uploadToCloudinary(file);
-      images.push(imageUrl);
+  // Handle file uploads
+  let blogImages: string[] = [];
+  let authorImageUrl: string | undefined;
+
+  if (req.files) {
+    const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+
+    // Handle author image
+    if (files["authorImage"] && files["authorImage"][0]) {
+      const authorFile = files["authorImage"][0];
+      // CloudinaryStorage already uploaded it, URL is in file.path
+      authorImageUrl = authorFile.path;
+    }
+
+    // Handle blog images
+    if (files["images"]) {
+      for (const file of files["images"]) {
+        // CloudinaryStorage already uploaded it, URL is in file.path
+        blogImages.push(file.path);
+      }
     }
   }
 
-  const blogData = {
+  // Use provided author ID or default to logged-in user
+  const authorId = author || (req as any).user?._id;
+  const currentUser = (req as any).user;
+
+  const blogData: any = {
     title,
     subtitle,
     description,
-    images,
-    author: author || (req as any).user?._id,
+    images: blogImages, // This should now have URLs
+    author: authorId,
     category,
     tags: parsedTags,
     status: status || "draft",
@@ -79,11 +99,78 @@ export const createBlog = asyncHandler(async (req: Request, res: Response) => {
     seoKeywords: parsedSeoKeywords,
   };
 
+  // Add author details
+  blogData.authorDetails = {
+    name: authorName || currentUser?.name,
+    avatar: authorImageUrl || currentUser?.avatar,
+    profilePicture: authorImageUrl || currentUser?.profilePicture,
+    bio: authorBio || currentUser?.bio,
+    designation: authorDesignation || currentUser?.designation,
+  };
+
   const blog = await blogService.createBlog(blogData);
 
   res.status(201).json({
     success: true,
     message: "Blog created successfully",
+    data: { blog },
+  });
+});
+
+// Update blog
+export const updateBlog = asyncHandler(async (req: Request, res: Response) => {
+  const blogId = req.params.id;
+  const updateData = req.body;
+
+  // Handle file uploads
+  if (req.files) {
+    const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+
+    // Handle author image update
+    if (files["authorImage"] && files["authorImage"][0]) {
+      const authorImageUrl = files["authorImage"][0].path;
+      updateData.authorDetails = updateData.authorDetails || {};
+      updateData.authorDetails.avatar = authorImageUrl;
+      updateData.authorDetails.profilePicture = authorImageUrl;
+    }
+
+    // Handle new blog images
+    if (files["images"] && files["images"].length > 0) {
+      const newBlogImages: string[] = [];
+      for (const file of files["images"]) {
+        newBlogImages.push(file.path);
+      }
+
+      // Get existing images and combine with new ones
+      const existingBlog = await blogService.getBlogById(blogId);
+      const existingImages = existingBlog.images || [];
+      updateData.images = [...existingImages, ...newBlogImages];
+    }
+  }
+
+  // Parse tags if provided
+  if (updateData.tags) {
+    if (typeof updateData.tags === "string") {
+      updateData.tags = updateData.tags
+        .split(",")
+        .map((tag: string) => tag.trim());
+    }
+  }
+
+  // Parse SEO keywords if provided
+  if (updateData.seoKeywords) {
+    if (typeof updateData.seoKeywords === "string") {
+      updateData.seoKeywords = updateData.seoKeywords
+        .split(",")
+        .map((keyword: string) => keyword.trim());
+    }
+  }
+
+  const blog = await blogService.updateBlog(blogId, updateData);
+
+  res.status(200).json({
+    success: true,
+    message: "Blog updated successfully",
     data: { blog },
   });
 });
@@ -182,48 +269,6 @@ export const getBlogBySlug = asyncHandler(
     });
   }
 );
-
-// Update blog
-export const updateBlog = asyncHandler(async (req: Request, res: Response) => {
-  const blogId = req.params.id;
-  const updateData = req.body;
-
-  // Handle image uploads
-  if (req.files && Array.isArray(req.files)) {
-    const images: string[] = [];
-    for (const file of req.files as Express.Multer.File[]) {
-      const imageUrl = await uploadToCloudinary(file);
-      images.push(imageUrl);
-    }
-    updateData.images = images;
-  }
-
-  // Parse tags if provided
-  if (updateData.tags) {
-    if (typeof updateData.tags === "string") {
-      updateData.tags = updateData.tags
-        .split(",")
-        .map((tag: string) => tag.trim());
-    }
-  }
-
-  // Parse SEO keywords if provided
-  if (updateData.seoKeywords) {
-    if (typeof updateData.seoKeywords === "string") {
-      updateData.seoKeywords = updateData.seoKeywords
-        .split(",")
-        .map((keyword: string) => keyword.trim());
-    }
-  }
-
-  const blog = await blogService.updateBlog(blogId, updateData);
-
-  res.status(200).json({
-    success: true,
-    message: "Blog updated successfully",
-    data: { blog },
-  });
-});
 
 // Delete blog
 export const deleteBlog = asyncHandler(async (req: Request, res: Response) => {
