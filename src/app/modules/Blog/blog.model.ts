@@ -37,11 +37,7 @@ const blogSchema = new Schema(
       trim: true,
       maxlength: [200, "Title cannot exceed 200 characters"],
     },
-    subtitle: {
-      type: String,
-      trim: true,
-      maxlength: [300, "Subtitle cannot exceed 300 characters"],
-    },
+
     description: {
       type: String,
       required: [true, "Blog description is required"],
@@ -73,7 +69,16 @@ const blogSchema = new Schema(
     customField6: String,
     customField7: String,
     customField8: String,
-
+    subtitle: String,
+    // Add these author fields:
+    authorName: {
+      type: String,
+      required: true,
+    },
+    authorImage: {
+      type: String,
+      default: "",
+    },
     isFeatured: {
       type: Boolean,
       default: false,
