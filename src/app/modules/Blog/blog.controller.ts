@@ -8,48 +8,19 @@ import { BlogFilter } from "./blog.interface";
 export const createBlog = asyncHandler(async (req: Request, res: Response) => {
   const {
     title,
-    subtitle,
     description,
-    author,
+    subtitle,
     authorName,
-    authorBio,
-    authorDesignation,
-    category,
-    tags,
     status,
-    scheduledAt,
     customField1,
     customField2,
     customField3,
     customField4,
     customField5,
-    isFeatured,
-    seoTitle,
-    seoDescription,
-    seoKeywords,
+    customField6,
+    customField7,
+    customField8,
   } = req.body;
-
-  // Parse tags if string
-  let parsedTags: string[] = [];
-  if (tags) {
-    if (typeof tags === "string") {
-      parsedTags = tags.split(",").map((tag) => tag.trim());
-    } else if (Array.isArray(tags)) {
-      parsedTags = tags;
-    }
-  }
-
-  // Parse SEO keywords
-  let parsedSeoKeywords: string[] = [];
-  if (seoKeywords) {
-    if (typeof seoKeywords === "string") {
-      parsedSeoKeywords = seoKeywords
-        .split(",")
-        .map((keyword) => keyword.trim());
-    } else if (Array.isArray(seoKeywords)) {
-      parsedSeoKeywords = seoKeywords;
-    }
-  }
 
   // Handle file uploads
   let blogImages: string[] = [];
@@ -60,53 +31,34 @@ export const createBlog = asyncHandler(async (req: Request, res: Response) => {
 
     // Handle author image
     if (files["authorImage"] && files["authorImage"][0]) {
-      const authorFile = files["authorImage"][0];
-      // CloudinaryStorage already uploaded it, URL is in file.path
-      authorImageUrl = authorFile.path;
+      authorImageUrl = files["authorImage"][0].path;
     }
 
     // Handle blog images
     if (files["images"]) {
-      for (const file of files["images"]) {
-        // CloudinaryStorage already uploaded it, URL is in file.path
-        blogImages.push(file.path);
-      }
+      blogImages = files["images"].map((file) => file.path);
     }
   }
 
-  // Use provided author ID or default to logged-in user
-  const authorId = author || (req as any).user?._id;
-  const currentUser = (req as any).user;
-
   const blogData: any = {
     title,
-    subtitle,
     description,
-    images: blogImages, // This should now have URLs
-    author: authorId,
-    category,
-    tags: parsedTags,
+    subtitle,
+    authorName,
+    authorImage: authorImageUrl,
+    images: blogImages,
     status: status || "draft",
-    scheduledAt: scheduledAt ? new Date(scheduledAt) : undefined,
-    customField1,
-    customField2,
-    customField3,
-    customField4,
-    customField5,
-    isFeatured: isFeatured === "true" || isFeatured === true,
-    seoTitle,
-    seoDescription,
-    seoKeywords: parsedSeoKeywords,
   };
 
-  // Add author details
-  blogData.authorDetails = {
-    name: authorName || currentUser?.name,
-    avatar: authorImageUrl || currentUser?.avatar,
-    profilePicture: authorImageUrl || currentUser?.profilePicture,
-    bio: authorBio || currentUser?.bio,
-    designation: authorDesignation || currentUser?.designation,
-  };
+  // Add custom fields only if they exist
+  if (customField1) blogData.customField1 = customField1;
+  if (customField2) blogData.customField2 = customField2;
+  if (customField3) blogData.customField3 = customField3;
+  if (customField4) blogData.customField4 = customField4;
+  if (customField5) blogData.customField5 = customField5;
+  if (customField6) blogData.customField6 = customField6;
+  if (customField7) blogData.customField7 = customField7;
+  if (customField8) blogData.customField8 = customField8;
 
   const blog = await blogService.createBlog(blogData);
 
@@ -128,41 +80,17 @@ export const updateBlog = asyncHandler(async (req: Request, res: Response) => {
 
     // Handle author image update
     if (files["authorImage"] && files["authorImage"][0]) {
-      const authorImageUrl = files["authorImage"][0].path;
-      updateData.authorDetails = updateData.authorDetails || {};
-      updateData.authorDetails.avatar = authorImageUrl;
-      updateData.authorDetails.profilePicture = authorImageUrl;
+      updateData.authorImage = files["authorImage"][0].path;
     }
 
     // Handle new blog images
     if (files["images"] && files["images"].length > 0) {
-      const newBlogImages: string[] = [];
-      for (const file of files["images"]) {
-        newBlogImages.push(file.path);
-      }
+      const newBlogImages = files["images"].map((file) => file.path);
 
       // Get existing images and combine with new ones
       const existingBlog = await blogService.getBlogById(blogId);
       const existingImages = existingBlog.images || [];
       updateData.images = [...existingImages, ...newBlogImages];
-    }
-  }
-
-  // Parse tags if provided
-  if (updateData.tags) {
-    if (typeof updateData.tags === "string") {
-      updateData.tags = updateData.tags
-        .split(",")
-        .map((tag: string) => tag.trim());
-    }
-  }
-
-  // Parse SEO keywords if provided
-  if (updateData.seoKeywords) {
-    if (typeof updateData.seoKeywords === "string") {
-      updateData.seoKeywords = updateData.seoKeywords
-        .split(",")
-        .map((keyword: string) => keyword.trim());
     }
   }
 

@@ -2,21 +2,9 @@ import Blog, { IBlogModel } from "./blog.model";
 import ApiError from "../../utils/apiError";
 import { Types } from "mongoose";
 import { CreateBlogData, UpdateBlogData, BlogFilter } from "./blog.interface";
-
-export const createBlog = async (
-  blogData: CreateBlogData
-): Promise<IBlogModel> => {
+export const createBlog = async (blogData: any): Promise<any> => {
   const blog = await Blog.create(blogData);
-
-  // Populate author details after creation
-  const populatedBlog = await Blog.findById(blog._id)
-    .populate({
-      path: "author",
-      select: "name email avatar profilePicture bio",
-    })
-    .lean();
-
-  return populatedBlog as IBlogModel;
+  return blog;
 };
 
 export const getAllBlogs = async (
@@ -108,24 +96,18 @@ export const getBlogBySlug = async (slug: string): Promise<IBlogModel> => {
 
 export const updateBlog = async (
   blogId: string,
-  updateData: UpdateBlogData
-): Promise<IBlogModel> => {
-  if (!Types.ObjectId.isValid(blogId)) {
-    throw new ApiError("Invalid blog ID", 400);
-  }
-
+  updateData: any
+): Promise<any> => {
   const blog = await Blog.findByIdAndUpdate(blogId, updateData, {
     new: true,
     runValidators: true,
-  })
-    .populate("author", "name email avatar")
-    .lean();
+  });
 
   if (!blog) {
-    throw new ApiError("Blog not found", 404);
+    throw new Error("Blog not found");
   }
 
-  return blog as IBlogModel;
+  return blog;
 };
 
 export const deleteBlog = async (blogId: string): Promise<void> => {

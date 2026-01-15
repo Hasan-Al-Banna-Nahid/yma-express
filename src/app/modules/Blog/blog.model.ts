@@ -65,11 +65,15 @@ const blogSchema = new Schema(
     scheduledAt: {
       type: Date,
     },
-    customField1: { type: String, trim: true },
-    customField2: { type: String, trim: true },
-    customField3: { type: String, trim: true },
-    customField4: { type: String, trim: true },
-    customField5: { type: String, trim: true },
+    customField1: String,
+    customField2: String,
+    customField3: String,
+    customField4: String,
+    customField5: String,
+    customField6: String,
+    customField7: String,
+    customField8: String,
+
     isFeatured: {
       type: Boolean,
       default: false,
