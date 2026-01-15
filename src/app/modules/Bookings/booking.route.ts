@@ -7,6 +7,7 @@ import {
   getAllBookings,
   updateBookingStatus,
   getBookingStats,
+  syncOrderToBooking,
 } from "./booking.controller";
 import { protectRoute } from "../../middlewares/auth.middleware";
 import { restrictTo } from "../../middlewares/authorization.middleware";
@@ -38,5 +39,10 @@ router.get(
   restrictTo("admin", "superadmin"),
   getBookingStats
 );
-
+router.post(
+  "/sync-from-order",
+  protectRoute,
+  restrictTo("admin", "superadmin"),
+  syncOrderToBooking
+);
 export default router;

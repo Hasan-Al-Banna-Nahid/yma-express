@@ -89,6 +89,13 @@ const statusHistorySchema = new Schema<IBookingStatusHistory>({
 
 const bookingSchema = new Schema<IBookingDocument>(
   {
+    bookedDates: [
+      {
+        date: { type: Date, required: true },
+        itemIndex: { type: Number, required: true }, // Index in items array
+        quantity: { type: Number, required: true },
+      },
+    ],
     bookingNumber: {
       type: String,
       required: true,
@@ -144,6 +151,7 @@ const bookingSchema = new Schema<IBookingDocument>(
     refundAmount: Number,
     refundedAt: Date,
   },
+
   { timestamps: true }
 );
 

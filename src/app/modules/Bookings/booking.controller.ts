@@ -162,3 +162,19 @@ export const getBookingStats = asyncHandler(
     ApiResponse(res, 200, "Booking statistics retrieved", { stats });
   }
 );
+// booking.controller.ts - Add this endpoint
+export const syncOrderToBooking = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { orderId } = req.body;
+
+    if (!orderId) {
+      throw new ApiError("Order ID is required", 400);
+    }
+
+    const booking = await BookingService.syncWithOrder(orderId);
+
+    ApiResponse(res, 201, "Order synced to booking successfully", { booking });
+  }
+);
+
+// In your booking routes:

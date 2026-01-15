@@ -93,6 +93,11 @@ export interface IBooking {
   updatedAt?: Date;
   startDate?: Date;
   endDate?: Date;
+  bookedDates?: Array<{
+    date: Date;
+    itemIndex: number;
+    quantity: number;
+  }>;
 }
 
 export interface CreateBookingData {
