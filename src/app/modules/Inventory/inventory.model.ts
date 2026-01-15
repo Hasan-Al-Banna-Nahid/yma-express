@@ -45,7 +45,7 @@ const inventorySchema = new Schema<IInventoryDocument, IInventoryModel>(
     product: {
       type: Schema.Types.ObjectId,
       ref: "Product",
-      required: true,
+      // required: true,
       index: true,
     },
     productName: {

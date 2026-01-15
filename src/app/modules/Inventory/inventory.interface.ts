@@ -29,6 +29,7 @@ export interface IInventory {
     endDate: Date;
     bookingId: Types.ObjectId;
   }[];
+  categories?: string[];
 }
 
 export interface InventoryCheckData {

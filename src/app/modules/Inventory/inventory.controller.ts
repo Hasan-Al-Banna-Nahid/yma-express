@@ -11,7 +11,7 @@ import {
   getAvailableInventory,
   getBookedInventory,
   checkInventoryAvailability,
-  releaseExpiredCartItems,
+  // releaseExpiredCartItems,
 } from "./inventory.service";
 import Product from "../../modules/Product/product.model";
 import Inventory from "../../modules/Inventory/inventory.model";
@@ -19,83 +19,127 @@ import Inventory from "../../modules/Inventory/inventory.model";
 // inventory.controller.ts
 export const createInventoryItemHandler = asyncHandler(
   async (req: Request, res: Response) => {
-    const {
-      productId, // Get productId from body
-      productName,
-      description, // This is the inventory description
-      width,
-      length,
-      height,
-      isSensitive,
-      deliveryTime,
-      collectionTime,
-      rentalPrice,
-      quantity,
-      category,
-      warehouse,
-      vendor,
-      minBookingDays,
-      maxBookingDays,
-      status,
-    } = req.body;
+    console.log("📦 Request body keys:", Object.keys(req.body));
+    console.log("📦 Request body values:", req.body);
+    console.log("📦 Files received:", req.files?.length || 0);
 
-    console.log("Request body:", req.body); // Debug log
-
-    // Check if product exists OR create it
-    let product;
-    if (productId) {
-      product = await Product.findById(productId);
-      if (!product) {
-        throw new ApiError("Product not found with given ID", 404);
-      }
-    } else if (productName) {
-      // Create new product if productId not provided
-      product = await Product.create({
-        title: productName,
-        description: description || "Product description",
-        category: category || "General",
-        status: "active",
-      });
-    } else {
-      throw new ApiError("Either productId or productName is required", 400);
+    // Log all fields to see what's actually coming in
+    for (const [key, value] of Object.entries(req.body)) {
+      console.log(`📋 ${key}: ${value} (type: ${typeof value})`);
     }
 
-    // Handle file uploads
+    // Destructure with defaults to avoid undefined errors
+    const {
+      productName = "",
+      width = "",
+      length = "",
+      height = "",
+      isSensitive = "false",
+      deliveryTime = "",
+      collectionTime = "",
+      rentalPrice = "",
+      quantity = "",
+      categories = "",
+      warehouse = "",
+      vendor = "",
+      status = "available",
+    } = req.body;
+
+    // VALIDATION: Check required fields
+    const requiredFields = [
+      { field: "productName", value: productName },
+      { field: "width", value: width },
+      { field: "length", value: length },
+      { field: "height", value: height },
+      { field: "deliveryTime", value: deliveryTime },
+      { field: "collectionTime", value: collectionTime },
+      { field: "rentalPrice", value: rentalPrice },
+      { field: "quantity", value: quantity },
+      { field: "categories", value: categories },
+      { field: "warehouse", value: warehouse },
+      { field: "vendor", value: vendor },
+    ];
+
+    const missingFields = requiredFields
+      .filter((item) => !item.value || item.value.trim() === "")
+      .map((item) => item.field);
+
+    console.log("🔍 Missing fields:", missingFields);
+
+    if (missingFields.length > 0) {
+      throw new ApiError(
+        `Missing required fields: ${missingFields.join(", ")}`,
+        400
+      );
+    }
+
+    // Handle file uploads for images
     const images: string[] = [];
     if (req.files && Array.isArray(req.files)) {
+      console.log("📸 Processing uploaded files...");
       images.push(...req.files.map((file: Express.Multer.File) => file.path));
+      console.log("📸 Images paths:", images);
+    }
+
+    if (images.length === 0) {
+      throw new ApiError("At least one image is required", 400);
     }
 
     // Prepare inventory data
     const inventoryData = {
-      product: product._id, // Link to product
-      productName: product.name,
-      description, // Inventory description
+      productName: productName.trim(),
+      description: `${productName.trim()} - Available for rent`,
       dimensions: {
         width: parseFloat(width),
         length: parseFloat(length),
         height: parseFloat(height),
+        unit: "feet",
       },
       isSensitive: isSensitive === "true" || isSensitive === true,
-      images,
+      images: images,
       deliveryTime: parseInt(deliveryTime),
       collectionTime: parseInt(collectionTime),
       rentalPrice: parseFloat(rentalPrice),
       quantity: parseInt(quantity),
-      category,
-      warehouse,
-      vendor,
-      minBookingDays: parseInt(minBookingDays) || 1,
-      maxBookingDays: parseInt(maxBookingDays) || 30,
-      status: status || "available",
+      // Handle categories - could be string or array
+      category: Array.isArray(categories)
+        ? categories[0]
+        : typeof categories === "string"
+        ? categories.split(",")[0].trim()
+        : categories,
+      categories: Array.isArray(categories)
+        ? categories
+        : typeof categories === "string"
+        ? categories.split(",").map((cat: string) => cat.trim())
+        : [categories],
+      warehouse: warehouse,
+      vendor: vendor,
+      status: status,
     };
 
-    console.log("Inventory data to create:", inventoryData); // Debug log
+    console.log("✅ Final inventory data:", {
+      productName: inventoryData.productName,
+      categories: inventoryData.categories,
+      hasCategories: inventoryData.categories.length > 0,
+      category: inventoryData.category,
+    });
 
+    // Create inventory item
     const inventoryItem = await createInventoryItem(inventoryData);
 
+    console.log(`✅ Inventory item created: ${inventoryItem._id}`);
+
     ApiResponse(res, 201, "Inventory item created successfully", {
-      inventoryItem,
+      inventoryItem: {
+        id: inventoryItem._id,
+        productName: inventoryItem.productName,
+        quantity: inventoryItem.quantity,
+        warehouse: inventoryItem.warehouse,
+        vendor: inventoryItem.vendor,
+        rentalPrice: inventoryItem.rentalPrice,
+        status: inventoryItem.status,
+        categories: inventoryItem.categories,
+      },
     });
   }
 );
@@ -105,9 +149,12 @@ export const updateInventoryItemHandler = asyncHandler(
     const inventoryId = req.params.id;
     const updateData = req.body;
 
-    console.log("Update request body:", req.body); // Debug log
+    console.log("🔄 Update inventory request:", {
+      inventoryId,
+      updateData: Object.keys(updateData),
+    });
 
-    // Handle file uploads
+    // Handle file uploads - all optional
     if (req.files && Array.isArray(req.files) && req.files.length > 0) {
       const newImages = req.files.map((file: Express.Multer.File) => file.path);
       const existingItem = await Inventory.findById(inventoryId);
@@ -115,33 +162,53 @@ export const updateInventoryItemHandler = asyncHandler(
       updateData.images = [...existingImages, ...newImages];
     }
 
-    // Update dimensions if provided
-    if (req.body.width || req.body.length || req.body.height) {
-      updateData.dimensions = {
-        width: req.body.width ? parseFloat(req.body.width) : undefined,
-        length: req.body.length ? parseFloat(req.body.length) : undefined,
-        height: req.body.height ? parseFloat(req.body.height) : undefined,
-      };
-    }
+    // Parse numeric fields if provided (all optional)
+    const numericFields = [
+      "width",
+      "length",
+      "height",
+      "rentalPrice",
+      "quantity",
+      "deliveryTime",
+      "collectionTime",
+      "minBookingDays",
+      "maxBookingDays",
+    ];
 
-    // Parse numeric fields
-    if (req.body.rentalPrice)
-      updateData.rentalPrice = parseFloat(req.body.rentalPrice);
-    if (req.body.quantity) updateData.quantity = parseInt(req.body.quantity);
-    if (req.body.deliveryTime)
-      updateData.deliveryTime = parseInt(req.body.deliveryTime);
-    if (req.body.collectionTime)
-      updateData.collectionTime = parseInt(req.body.collectionTime);
-    if (req.body.minBookingDays)
-      updateData.minBookingDays = parseInt(req.body.minBookingDays);
-    if (req.body.maxBookingDays)
-      updateData.maxBookingDays = parseInt(req.body.maxBookingDays);
+    numericFields.forEach((field) => {
+      if (req.body[field] !== undefined && req.body[field] !== "") {
+        if (field === "width" || field === "length" || field === "height") {
+          if (!updateData.dimensions) updateData.dimensions = {};
+          updateData.dimensions[field] = parseFloat(req.body[field]);
+        } else {
+          updateData[field] = parseFloat(req.body[field]);
+        }
+      }
+    });
+
+    // Parse boolean fields if provided
     if (req.body.isSensitive !== undefined) {
       updateData.isSensitive =
         req.body.isSensitive === "true" || req.body.isSensitive === true;
     }
 
-    console.log("Update data to save:", updateData); // Debug log
+    // Update product if productName is provided
+    if (req.body.productName) {
+      const inventoryItem = await Inventory.findById(inventoryId);
+      if (inventoryItem && inventoryItem.product) {
+        await Product.findByIdAndUpdate(
+          inventoryItem.product,
+          {
+            name: req.body.productName,
+            title: req.body.productName,
+          },
+          { new: true }
+        );
+        updateData.productName = req.body.productName;
+      }
+    }
+
+    console.log("📋 Update data to save:", updateData);
 
     const inventoryItem = await updateInventoryItem(inventoryId, updateData);
 
@@ -151,6 +218,7 @@ export const updateInventoryItemHandler = asyncHandler(
   }
 );
 
+// Keep all other functions exactly as they are
 export const getInventoryItemHandler = asyncHandler(
   async (req: Request, res: Response) => {
     const inventoryItem = await getInventoryItem(req.params.id);
@@ -251,15 +319,15 @@ export const checkInventoryAvailabilityHandler = asyncHandler(
   }
 );
 
-export const releaseExpiredCartItemsHandler = asyncHandler(
-  async (req: Request, res: Response) => {
-    const count = await releaseExpiredCartItems();
-
-    ApiResponse(res, 200, "Expired cart items released successfully", {
-      count,
-    });
-  }
-);
+// export const releaseExpiredCartItemsHandler = asyncHandler(
+//   async (req: Request, res: Response) => {
+//     const count = await releaseExpiredCartItems();
+//
+//     ApiResponse(res, 200, "Expired cart items released successfully", {
+//       count,
+//     });
+//   }
+// );
 
 // New endpoint for product availability
 export const checkProductAvailabilityHandler = asyncHandler(

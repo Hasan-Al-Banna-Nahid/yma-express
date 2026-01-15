@@ -8,7 +8,7 @@ import {
   getAvailableInventoryHandler,
   getBookedInventoryHandler,
   checkInventoryAvailabilityHandler,
-  releaseExpiredCartItemsHandler,
+  // releaseExpiredCartItemsHandler,
   checkProductAvailabilityHandler,
 } from "./inventory.controller";
 import { protectRoute } from "../../middlewares/auth.middleware";
@@ -31,7 +31,7 @@ router.get("/", getInventoryItemsHandler);
 router.get("/available", getAvailableInventoryHandler);
 router.get("/booked", getBookedInventoryHandler);
 router.get("/check", checkInventoryAvailabilityHandler);
-router.get("/release-expired", releaseExpiredCartItemsHandler);
+// router.get("/release-expired", releaseExpiredCartItemsHandler);
 router.get("/:id", getInventoryItemHandler);
 router.patch("/:id", upload.array("images", 10), updateInventoryItemHandler);
 router.delete("/:id", deleteInventoryItemHandler);
