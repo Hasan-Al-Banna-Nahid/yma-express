@@ -3,14 +3,13 @@ import Inventory from "./inventory.model";
 import { IInventory } from "./inventory.interface";
 import Booking from "../../modules/Bookings/booking.model";
 
-export const createInventoryItem = async (inventoryData: IInventory) => {
+// inventory.service.ts
+export const createInventoryItem = async (inventoryData: any) => {
   // Check required fields
   const requiredFields = [
     "product",
     "productName",
     "description",
-    "dimensions",
-    "images",
     "deliveryTime",
     "collectionTime",
     "rentalPrice",
@@ -21,13 +20,14 @@ export const createInventoryItem = async (inventoryData: IInventory) => {
   ];
 
   for (const field of requiredFields) {
-    if (!inventoryData[field as keyof IInventory]) {
+    if (!inventoryData[field]) {
       throw new ApiError(`${field} is required`, 400);
     }
   }
 
   // Validate dimensions
   if (
+    !inventoryData.dimensions ||
     !inventoryData.dimensions.width ||
     !inventoryData.dimensions.length ||
     !inventoryData.dimensions.height
@@ -43,14 +43,19 @@ export const createInventoryItem = async (inventoryData: IInventory) => {
     throw new ApiError("At least one image is required", 400);
   }
 
-  const inventoryItem = await Inventory.create({
-    ...inventoryData,
-    date: inventoryData.date || new Date(),
-    status: inventoryData.status || "available",
-    isSensitive: inventoryData.isSensitive || false,
-    minBookingDays: inventoryData.minBookingDays || 1,
-    maxBookingDays: inventoryData.maxBookingDays || 30,
+  const inventoryItem = await Inventory.create(inventoryData);
+  return inventoryItem;
+};
+
+export const updateInventoryItem = async (id: string, updateData: any) => {
+  const inventoryItem = await Inventory.findByIdAndUpdate(id, updateData, {
+    new: true,
+    runValidators: true,
   });
+
+  if (!inventoryItem) {
+    throw new ApiError("No inventory item found with that ID", 404);
+  }
 
   return inventoryItem;
 };
@@ -70,22 +75,6 @@ export const getInventoryItems = async (filter: any = {}) => {
   return await Inventory.find(filter)
     .populate("product", "name price stock")
     .sort({ createdAt: -1 });
-};
-
-export const updateInventoryItem = async (
-  id: string,
-  updateData: Partial<IInventory>
-) => {
-  const inventoryItem = await Inventory.findByIdAndUpdate(id, updateData, {
-    new: true,
-    runValidators: true,
-  });
-
-  if (!inventoryItem) {
-    throw new ApiError("No inventory item found with that ID", 404);
-  }
-
-  return inventoryItem;
 };
 
 export const deleteInventoryItem = async (id: string) => {

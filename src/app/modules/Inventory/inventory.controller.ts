@@ -13,12 +13,139 @@ import {
   checkInventoryAvailability,
   releaseExpiredCartItems,
 } from "./inventory.service";
+import Product from "../../modules/Product/product.model";
+import Inventory from "../../modules/Inventory/inventory.model";
 
+// inventory.controller.ts
 export const createInventoryItemHandler = asyncHandler(
   async (req: Request, res: Response) => {
-    const inventoryItem = await createInventoryItem(req.body);
+    const {
+      productId, // Get productId from body
+      productName,
+      description, // This is the inventory description
+      width,
+      length,
+      height,
+      isSensitive,
+      deliveryTime,
+      collectionTime,
+      rentalPrice,
+      quantity,
+      category,
+      warehouse,
+      vendor,
+      minBookingDays,
+      maxBookingDays,
+      status,
+    } = req.body;
+
+    console.log("Request body:", req.body); // Debug log
+
+    // Check if product exists OR create it
+    let product;
+    if (productId) {
+      product = await Product.findById(productId);
+      if (!product) {
+        throw new ApiError("Product not found with given ID", 404);
+      }
+    } else if (productName) {
+      // Create new product if productId not provided
+      product = await Product.create({
+        title: productName,
+        description: description || "Product description",
+        category: category || "General",
+        status: "active",
+      });
+    } else {
+      throw new ApiError("Either productId or productName is required", 400);
+    }
+
+    // Handle file uploads
+    const images: string[] = [];
+    if (req.files && Array.isArray(req.files)) {
+      images.push(...req.files.map((file: Express.Multer.File) => file.path));
+    }
+
+    // Prepare inventory data
+    const inventoryData = {
+      product: product._id, // Link to product
+      productName: product.name,
+      description, // Inventory description
+      dimensions: {
+        width: parseFloat(width),
+        length: parseFloat(length),
+        height: parseFloat(height),
+      },
+      isSensitive: isSensitive === "true" || isSensitive === true,
+      images,
+      deliveryTime: parseInt(deliveryTime),
+      collectionTime: parseInt(collectionTime),
+      rentalPrice: parseFloat(rentalPrice),
+      quantity: parseInt(quantity),
+      category,
+      warehouse,
+      vendor,
+      minBookingDays: parseInt(minBookingDays) || 1,
+      maxBookingDays: parseInt(maxBookingDays) || 30,
+      status: status || "available",
+    };
+
+    console.log("Inventory data to create:", inventoryData); // Debug log
+
+    const inventoryItem = await createInventoryItem(inventoryData);
 
     ApiResponse(res, 201, "Inventory item created successfully", {
+      inventoryItem,
+    });
+  }
+);
+
+export const updateInventoryItemHandler = asyncHandler(
+  async (req: Request, res: Response) => {
+    const inventoryId = req.params.id;
+    const updateData = req.body;
+
+    console.log("Update request body:", req.body); // Debug log
+
+    // Handle file uploads
+    if (req.files && Array.isArray(req.files) && req.files.length > 0) {
+      const newImages = req.files.map((file: Express.Multer.File) => file.path);
+      const existingItem = await Inventory.findById(inventoryId);
+      const existingImages = existingItem?.images || [];
+      updateData.images = [...existingImages, ...newImages];
+    }
+
+    // Update dimensions if provided
+    if (req.body.width || req.body.length || req.body.height) {
+      updateData.dimensions = {
+        width: req.body.width ? parseFloat(req.body.width) : undefined,
+        length: req.body.length ? parseFloat(req.body.length) : undefined,
+        height: req.body.height ? parseFloat(req.body.height) : undefined,
+      };
+    }
+
+    // Parse numeric fields
+    if (req.body.rentalPrice)
+      updateData.rentalPrice = parseFloat(req.body.rentalPrice);
+    if (req.body.quantity) updateData.quantity = parseInt(req.body.quantity);
+    if (req.body.deliveryTime)
+      updateData.deliveryTime = parseInt(req.body.deliveryTime);
+    if (req.body.collectionTime)
+      updateData.collectionTime = parseInt(req.body.collectionTime);
+    if (req.body.minBookingDays)
+      updateData.minBookingDays = parseInt(req.body.minBookingDays);
+    if (req.body.maxBookingDays)
+      updateData.maxBookingDays = parseInt(req.body.maxBookingDays);
+    if (req.body.isSensitive !== undefined) {
+      updateData.isSensitive =
+        req.body.isSensitive === "true" || req.body.isSensitive === true;
+    }
+
+    console.log("Update data to save:", updateData); // Debug log
+
+    const inventoryItem = await updateInventoryItem(inventoryId, updateData);
+
+    ApiResponse(res, 200, "Inventory item updated successfully", {
       inventoryItem,
     });
   }
@@ -40,16 +167,6 @@ export const getInventoryItemsHandler = asyncHandler(
 
     ApiResponse(res, 200, "Inventory items retrieved successfully", {
       inventoryItems,
-    });
-  }
-);
-
-export const updateInventoryItemHandler = asyncHandler(
-  async (req: Request, res: Response) => {
-    const inventoryItem = await updateInventoryItem(req.params.id, req.body);
-
-    ApiResponse(res, 200, "Inventory item updated successfully", {
-      inventoryItem,
     });
   }
 );
