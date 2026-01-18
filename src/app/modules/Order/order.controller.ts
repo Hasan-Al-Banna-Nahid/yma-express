@@ -218,31 +218,10 @@ export const getOrderStatsHandler = asyncHandler(
   }
 );
 
-export const getTodayRevenueHandler = asyncHandler(
+export const getDashboardStatsHandler = asyncHandler(
   async (req: Request, res: Response) => {
-    const revenue = await orderService.getTodayRevenue();
-    ApiResponse(res, 200, "Today's revenue", { revenue });
-  }
-);
-
-export const getPendingConfirmationsHandler = asyncHandler(
-  async (req: Request, res: Response) => {
-    const count = await orderService.getPendingConfirmationsCount();
-    ApiResponse(res, 200, "Pending confirmations count", { count });
-  }
-);
-
-export const getTodayBookingsHandler = asyncHandler(
-  async (req: Request, res: Response) => {
-    const bookings = await orderService.getTodayBookings();
-    ApiResponse(res, 200, "Today's bookings", { bookings });
-  }
-);
-
-export const getTodayDeliveriesHandler = asyncHandler(
-  async (req: Request, res: Response) => {
-    const deliveries = await orderService.getTodayDeliveries();
-    ApiResponse(res, 200, "Today's deliveries", { deliveries });
+    const stats = await orderService.getDashboardStats();
+    ApiResponse(res, 200, "Dashboard stats retrieved successfully", stats);
   }
 );
 
