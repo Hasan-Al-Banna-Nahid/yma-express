@@ -1,65 +1,43 @@
+import Inventory from "../../modules/Inventory/inventory.model";
 import ApiError from "../../utils/apiError";
-import Inventory from "./inventory.model";
-import { IInventory } from "./inventory.interface";
-import Booking from "../../modules/Bookings/booking.model";
 
-export const createInventoryItem = async (inventoryData: IInventory) => {
-  // Check required fields
-  const requiredFields = [
-    "product",
-    "productName",
-    "description",
-    "dimensions",
-    "images",
-    "deliveryTime",
-    "collectionTime",
-    "rentalPrice",
-    "quantity",
-    "category",
-    "warehouse",
-    "vendor",
-  ];
+// inventory.service.ts
+export const createInventoryItem = async (inventoryData: any) => {
+  // No validation here - controller already handled it
+  // Just create the inventory item
 
-  for (const field of requiredFields) {
-    if (!inventoryData[field as keyof IInventory]) {
-      throw new ApiError(`${field} is required`, 400);
-    }
-  }
-
-  // Validate dimensions
-  if (
-    !inventoryData.dimensions.width ||
-    !inventoryData.dimensions.length ||
-    !inventoryData.dimensions.height
-  ) {
-    throw new ApiError(
-      "Width, length, and height are required in dimensions",
-      400
-    );
-  }
-
-  // Validate images
-  if (!inventoryData.images || inventoryData.images.length === 0) {
-    throw new ApiError("At least one image is required", 400);
-  }
-
-  const inventoryItem = await Inventory.create({
-    ...inventoryData,
-    date: inventoryData.date || new Date(),
-    status: inventoryData.status || "available",
-    isSensitive: inventoryData.isSensitive || false,
-    minBookingDays: inventoryData.minBookingDays || 1,
-    maxBookingDays: inventoryData.maxBookingDays || 30,
+  console.log("🛠️ Service: Creating inventory item with data:", {
+    productName: inventoryData.productName,
+    quantity: inventoryData.quantity,
+    warehouse: inventoryData.warehouse,
+    vendor: inventoryData.vendor,
   });
+
+  const inventoryItem = await Inventory.create(inventoryData);
+
+  console.log("✅ Service: Inventory item created:", inventoryItem._id);
 
   return inventoryItem;
 };
 
+export const updateInventoryItem = async (id: string, updateData: any) => {
+  console.log("🛠️ Service: Updating inventory item:", id);
+
+  const inventoryItem = await Inventory.findByIdAndUpdate(id, updateData, {
+    new: true,
+    runValidators: true, // MongoDB validators still run
+  });
+
+  if (!inventoryItem) {
+    throw new ApiError("No inventory item found with that ID", 404);
+  }
+
+  console.log("✅ Service: Inventory item updated:", inventoryItem._id);
+  return inventoryItem;
+};
+
 export const getInventoryItem = async (id: string) => {
-  const inventoryItem = await Inventory.findById(id).populate(
-    "product",
-    "name price"
-  );
+  const inventoryItem = await Inventory.findById(id);
   if (!inventoryItem) {
     throw new ApiError("No inventory item found with that ID", 404);
   }
@@ -67,36 +45,10 @@ export const getInventoryItem = async (id: string) => {
 };
 
 export const getInventoryItems = async (filter: any = {}) => {
-  return await Inventory.find(filter)
-    .populate("product", "name price stock")
-    .sort({ createdAt: -1 });
+  return await Inventory.find(filter).sort({ createdAt: -1 });
 };
 
-export const updateInventoryItem = async (
-  id: string,
-  updateData: Partial<IInventory>
-) => {
-  const inventoryItem = await Inventory.findByIdAndUpdate(id, updateData, {
-    new: true,
-    runValidators: true,
-  });
-
-  if (!inventoryItem) {
-    throw new ApiError("No inventory item found with that ID", 404);
-  }
-
-  return inventoryItem;
-};
-
-export const deleteInventoryItem = async (id: string) => {
-  const inventoryItem = await Inventory.findByIdAndDelete(id);
-
-  if (!inventoryItem) {
-    throw new ApiError("No inventory item found with that ID", 404);
-  }
-
-  return inventoryItem;
-};
+// Update other functions that might depend on product field
 
 export const getAvailableInventory = async (
   productId: string,
@@ -105,7 +57,8 @@ export const getAvailableInventory = async (
   warehouse?: string
 ) => {
   const query: any = {
-    product: productId,
+    // Changed from product: productId to productName for filtering
+    productName: { $regex: productId, $options: "i" },
     status: "available",
   };
 
@@ -113,7 +66,6 @@ export const getAvailableInventory = async (
     query.warehouse = warehouse;
   }
 
-  // Get inventory items and check if they're booked for these dates
   const inventoryItems = await Inventory.find(query);
 
   const availableItems = [];
@@ -147,7 +99,8 @@ export const getBookedInventory = async (
   warehouse?: string
 ) => {
   const query: any = {
-    product: productId,
+    // Changed from product: productId to productName
+    productName: { $regex: productId, $options: "i" },
     status: "booked",
     "bookedDates.startDate": { $lte: endDate },
     "bookedDates.endDate": { $gte: startDate },
@@ -167,18 +120,45 @@ export const checkInventoryAvailability = async (
   quantity: number
 ) => {
   try {
-    const result = await Inventory.checkAvailability(
-      productId,
-      new Date(startDate),
-      new Date(endDate),
-      quantity
-    );
+    // Since we don't have product ID, we'll check by productName
+    const inventoryItems = await Inventory.find({
+      productName: { $regex: productId, $options: "i" },
+      status: "available",
+    });
+
+    let availableQuantity = 0;
+    const availableItems = [];
+
+    for (const item of inventoryItems) {
+      let isBooked = false;
+
+      if (item.bookedDates && item.bookedDates.length > 0) {
+        for (const booking of item.bookedDates) {
+          const bookingStart = new Date(booking.startDate);
+          const bookingEnd = new Date(booking.endDate);
+
+          if (!(endDate < bookingStart || startDate > bookingEnd)) {
+            isBooked = true;
+            break;
+          }
+        }
+      }
+
+      if (!isBooked) {
+        availableQuantity += item.quantity;
+        availableItems.push(item);
+      }
+    }
+
+    const isAvailable = availableQuantity >= quantity;
 
     return {
-      isAvailable: result.isAvailable,
-      availableQuantity: result.availableQuantity,
-      message: result.message,
-      inventoryItems: result.inventoryItems.map((item) => ({
+      isAvailable,
+      availableQuantity,
+      message: isAvailable
+        ? `Available: ${availableQuantity} items`
+        : `Only ${availableQuantity} items available`,
+      inventoryItems: availableItems.map((item) => ({
         id: item._id,
         productName: item.productName,
         quantity: item.quantity,
@@ -198,31 +178,15 @@ export const checkInventoryAvailability = async (
     };
   }
 };
+export const deleteInventoryItem = async (id: string) => {
+  console.log(`🗑️ Service: Deleting inventory item with ID: ${id}`);
 
-export const releaseExpiredCartItems = async () => {
-  const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
+  const inventoryItem = await Inventory.findByIdAndDelete(id);
 
-  const expiredBookings = await Booking.find({
-    status: "pending",
-    createdAt: { $lte: thirtyMinutesAgo },
-  });
-
-  for (const booking of expiredBookings) {
-    try {
-      // Use the model's static method
-      await Inventory.releaseInventory(
-        (booking._id as unknown as string).toString()
-      );
-
-      // Delete the booking
-      await Booking.findByIdAndDelete(booking._id);
-    } catch (error) {
-      console.error(
-        `Error releasing inventory for booking ${booking._id}:`,
-        error
-      );
-    }
+  if (!inventoryItem) {
+    throw new ApiError("No inventory item found with that ID", 404);
   }
 
-  return expiredBookings.length;
+  console.log(`✅ Service: Successfully deleted: ${inventoryItem.productName}`);
+  return inventoryItem;
 };

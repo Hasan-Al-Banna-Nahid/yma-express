@@ -199,6 +199,7 @@ LocationSchema.virtual("deliverySummary").get(function (this: ILocation) {
   };
 });
 
-const Location = mongoose.model<ILocation>("Location", LocationSchema);
-
-export default Location;
+export const LocationModel = mongoose.model<ILocation>(
+  "Location",
+  LocationSchema
+);

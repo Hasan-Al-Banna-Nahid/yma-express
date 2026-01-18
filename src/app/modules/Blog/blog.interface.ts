@@ -1,14 +1,22 @@
 import { Types } from "mongoose";
 
 export type BlogStatus = "draft" | "published" | "archived" | "scheduled";
-
+export interface IAuthor {
+  _id?: Types.ObjectId;
+  name: string;
+  email?: string;
+  avatar?: string;
+  profilePicture?: string;
+  bio?: string;
+}
 export interface IBlog {
   _id?: Types.ObjectId;
   title: string;
+  author?: Types.ObjectId | IAuthor;
+
   subtitle?: string;
   description: string;
   images?: string[];
-  author?: Types.ObjectId;
   category?: string;
   tags?: string[];
   status: BlogStatus;
@@ -19,6 +27,9 @@ export interface IBlog {
   customField3?: string;
   customField4?: string;
   customField5?: string;
+  customField6?: string;
+  customField7?: string;
+  customField8?: string;
   isFeatured?: boolean;
   seoTitle?: string;
   seoDescription?: string;
@@ -28,6 +39,8 @@ export interface IBlog {
   readTime?: number;
   createdAt?: Date;
   updatedAt?: Date;
+  authorName?: string;
+  authorImage?: string;
 }
 
 export interface CreateBlogData {

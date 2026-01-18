@@ -5,26 +5,45 @@ export type IBlogModel = IBlog & mongoose.Document;
 
 const blogSchema = new Schema(
   {
+    author: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+    },
+
+    // Add author details directly in blog
+    authorDetails: {
+      name: {
+        type: String,
+        trim: true,
+      },
+      avatar: {
+        type: String,
+      },
+      profilePicture: {
+        type: String,
+      },
+      bio: {
+        type: String,
+        maxlength: [500, "Bio cannot exceed 500 characters"],
+      },
+      designation: {
+        type: String,
+        trim: true,
+      },
+    },
     title: {
       type: String,
       required: [true, "Blog title is required"],
       trim: true,
       maxlength: [200, "Title cannot exceed 200 characters"],
     },
-    subtitle: {
-      type: String,
-      trim: true,
-      maxlength: [300, "Subtitle cannot exceed 300 characters"],
-    },
+
     description: {
       type: String,
       required: [true, "Blog description is required"],
     },
     images: [String],
-    author: {
-      type: Schema.Types.ObjectId,
-      ref: "User",
-    },
+
     category: {
       type: String,
       trim: true,
@@ -42,11 +61,24 @@ const blogSchema = new Schema(
     scheduledAt: {
       type: Date,
     },
-    customField1: { type: String, trim: true },
-    customField2: { type: String, trim: true },
-    customField3: { type: String, trim: true },
-    customField4: { type: String, trim: true },
-    customField5: { type: String, trim: true },
+    customField1: String,
+    customField2: String,
+    customField3: String,
+    customField4: String,
+    customField5: String,
+    customField6: String,
+    customField7: String,
+    customField8: String,
+    subtitle: String,
+    // Add these author fields:
+    authorName: {
+      type: String,
+      required: true,
+    },
+    authorImage: {
+      type: String,
+      default: "",
+    },
     isFeatured: {
       type: Boolean,
       default: false,

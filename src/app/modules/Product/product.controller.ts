@@ -4,6 +4,8 @@ import * as productService from "./product.service";
 import ApiError from "../../utils/apiError";
 import { Types } from "mongoose";
 import Category from "../Category/category.model";
+import { uploadToCloudinary } from "../../utils/cloudinary.util";
+
 // Add these functions to your existing product.controller.ts
 
 /* =========================
@@ -248,8 +250,131 @@ const validateRequiredFields = (
   return missing;
 };
 
+/* =========================
+   CREATE PRODUCT WITH FILE UPLOAD
+========================= */
 export const createProduct = asyncHandler(
   async (req: Request, res: Response, next: NextFunction) => {
+    console.log("=== CREATE PRODUCT CONTROLLER START ===");
+    console.log("Request headers:", req.headers["content-type"]);
+    console.log("Request body keys:", Object.keys(req.body));
+    console.log("Request files type:", typeof req.files);
+
+    // Check if files exist in the request
+    if (!req.files) {
+      console.log("ERROR: No files found in request");
+      throw new ApiError("No files uploaded. Please upload images.", 400);
+    }
+
+    // Debug the files structure
+    const files = req.files as any;
+    console.log("Files object structure:", JSON.stringify(files, null, 2));
+    console.log("Files object keys:", Object.keys(files));
+
+    // Extract files with proper type handling
+    let imageCoverFile: Express.Multer.File | undefined;
+    let imageFiles: Express.Multer.File[] = [];
+
+    // Handle imageCover - check multiple possible field names
+    if (files.imageCover && files.imageCover.length > 0) {
+      imageCoverFile = files.imageCover[0];
+    } else if (files["imageCover[]"] && files["imageCover[]"].length > 0) {
+      imageCoverFile = files["imageCover[]"][0];
+    } else if (Array.isArray(files) && files.length > 0) {
+      // If files is an array (unlikely but possible)
+      const fileArray = files as Express.Multer.File[];
+      imageCoverFile = fileArray[0];
+      console.log(
+        "Found imageCover in files array:",
+        imageCoverFile.originalname
+      );
+    }
+
+    if (!imageCoverFile) {
+      console.log("ERROR: No imageCover file found");
+      throw new ApiError("Cover image is required", 400);
+    }
+
+    // Handle images - check multiple possible field names
+    if (
+      files.images &&
+      Array.isArray(files.images) &&
+      files.images.length > 0
+    ) {
+      imageFiles = files.images;
+      console.log(`Found ${imageFiles.length} images in 'images' field`);
+    } else if (
+      files["images[]"] &&
+      Array.isArray(files["images[]"]) &&
+      files["images[]"].length > 0
+    ) {
+      imageFiles = files["images[]"];
+      console.log(`Found ${imageFiles.length} images in 'images[]' field`);
+    } else if (files.image && files.image.length > 0) {
+      // Check singular 'image' field
+      imageFiles = Array.isArray(files.image) ? files.image : [files.image];
+      console.log(`Found ${imageFiles.length} images in 'image' field`);
+    }
+
+    // If still no images, check if there's a single file that's not the cover
+    if (imageFiles.length === 0) {
+      // Check all file fields
+      for (const fieldName in files) {
+        if (fieldName !== "imageCover" && fieldName !== "imageCover[]") {
+          const fieldFiles = files[fieldName];
+          if (Array.isArray(fieldFiles) && fieldFiles.length > 0) {
+            imageFiles = fieldFiles;
+            console.log(
+              `Found ${imageFiles.length} images in '${fieldName}' field`
+            );
+            break;
+          }
+        }
+      }
+    }
+
+    if (imageFiles.length === 0) {
+      console.log("ERROR: No product images found");
+      throw new ApiError("At least one product image is required", 400);
+    }
+
+    if (imageFiles.length > 5) {
+      throw new ApiError("Maximum 5 images allowed", 400);
+    }
+
+    console.log(
+      `Processing: 1 cover image and ${imageFiles.length} product images`
+    );
+
+    // Upload files to Cloudinary
+    let imageCoverUrl = "";
+    let imageUrls: string[] = [];
+
+    try {
+      console.log("Uploading cover image to Cloudinary...");
+      imageCoverUrl = await uploadToCloudinary(imageCoverFile);
+      console.log("Cover image uploaded successfully:", imageCoverUrl);
+
+      console.log("Uploading product images to Cloudinary...");
+      for (let i = 0; i < imageFiles.length; i++) {
+        const file = imageFiles[i];
+        console.log(
+          `Uploading product image ${i + 1}/${imageFiles.length}: ${
+            file.originalname
+          }`
+        );
+        const url = await uploadToCloudinary(file);
+        imageUrls.push(url);
+        console.log(`Image ${i + 1} uploaded: ${url}`);
+      }
+      console.log("All images uploaded successfully");
+    } catch (error: any) {
+      console.error("Cloudinary upload error:", error);
+      throw new ApiError(`Failed to upload images: ${error.message}`, 500);
+    }
+
+    // Get and validate text fields from request body
+    console.log("Processing request body fields...");
     const {
       name,
       description,
@@ -263,114 +388,622 @@ export const createProduct = asyncHandler(
       maxGroupSize,
       difficulty,
       categories,
-      images,
-      imageCover,
       location,
       dimensions,
       availableFrom,
       availableUntil,
       size,
-      active = true,
+      active = "true",
       stock,
-      isSensitive,
+      isSensitive = "false",
       material,
       design,
       ageRange,
       safetyFeatures,
       qualityAssurance,
+      deliveryTimeOptions,
+      collectionTimeOptions,
+      defaultDeliveryTime,
+      defaultCollectionTime,
+      deliveryTimeFee,
+      collectionTimeFee,
     } = req.body;
 
-    // Validate categories exist and are active
-    if (!Array.isArray(categories) || categories.length === 0) {
-      throw new ApiError("At least one category is required", 400);
-    }
-
-    // Check if all categories exist and are active
-    const existingCategories = await Category.find({
-      _id: { $in: categories },
-      isActive: true,
-    }).select("_id");
-
-    if (existingCategories.length !== categories.length) {
-      throw new ApiError("One or more categories are invalid or inactive", 400);
-    }
-
-    // Validate location if provided
-    const locationData = location
-      ? {
-          state: location.state || "",
-          city: location.city || "",
-        }
-      : {
-          state: "",
-          city: "",
-        };
-
-    // Validate dimensions if provided
-    const dimensionsData = dimensions
-      ? {
-          length: dimensions.length || 0,
-          width: dimensions.width || 0,
-          height: dimensions.height || 0,
-        }
-      : {
-          length: 0,
-          width: 0,
-          height: 0,
-        };
-
-    const productData: any = {
+    // Log received fields for debugging
+    console.log("Received fields:", {
       name,
-      description,
-      summary,
+      description: description ? `${description.substring(0, 50)}...` : "empty",
       price,
-      perDayPrice,
-      perWeekPrice,
-      deliveryAndCollection,
-      priceDiscount,
-      duration,
-      maxGroupSize,
-      difficulty,
       categories,
-      images,
-      imageCover,
-      location: locationData,
-      dimensions: dimensionsData,
-      availableFrom: availableFrom ? new Date(availableFrom) : new Date(),
-      availableUntil: availableUntil ? new Date(availableUntil) : undefined,
-      size,
-      active,
-      stock: stock || 0,
-      isSensitive: isSensitive || false,
       material,
       design,
-      safetyFeatures,
+    });
+
+    // Validate required fields
+    const missingFields = [];
+    if (!name) missingFields.push("name");
+    if (!description) missingFields.push("description");
+    if (!price) missingFields.push("price");
+    if (!material) missingFields.push("material");
+    if (!design) missingFields.push("design");
+    if (!categories) missingFields.push("categories");
+
+    if (missingFields.length > 0) {
+      console.log("ERROR: Missing required fields:", missingFields);
+      throw new ApiError(
+        `Missing required fields: ${missingFields.join(", ")}`,
+        400
+      );
+    }
+
+    // Parse categories
+    let categoriesArray: string[] = [];
+    try {
+      if (Array.isArray(categories)) {
+        categoriesArray = categories;
+      } else if (typeof categories === "string") {
+        // Try JSON first
+        try {
+          const parsed = JSON.parse(categories);
+          if (Array.isArray(parsed)) {
+            categoriesArray = parsed;
+          } else {
+            categoriesArray = [parsed];
+          }
+        } catch {
+          // If not JSON, try comma-separated
+          categoriesArray = categories
+            .split(",")
+            .map((cat) => cat.trim())
+            .filter((cat) => cat.length > 0);
+        }
+      }
+
+      if (categoriesArray.length === 0) {
+        throw new ApiError("At least one category is required", 400);
+      }
+
+      console.log("Categories parsed:", categoriesArray);
+    } catch (error: any) {
+      throw new ApiError(`Invalid categories: ${error.message}`, 400);
+    }
+
+    // Helper function to parse JSON fields
+    const parseJsonField = (field: any, fieldName: string): any => {
+      if (!field && field !== 0 && field !== false) return undefined;
+
+      if (typeof field === "object") return field;
+
+      if (typeof field === "string") {
+        try {
+          return JSON.parse(field);
+        } catch {
+          return field;
+        }
+      }
+
+      return field;
     };
 
-    if (ageRange) {
-      productData.ageRange = {
-        min: ageRange.min || 0,
-        max: ageRange.max || 0,
-        unit: ageRange.unit || "years",
-      };
+    // Helper function to parse numeric fields
+    const parseNumber = (value: any): number | undefined => {
+      if (value === undefined || value === null || value === "")
+        return undefined;
+      const num = parseFloat(value);
+      return isNaN(num) ? undefined : num;
+    };
+
+    // Helper function to parse boolean fields
+    const parseBoolean = (value: any): boolean => {
+      if (value === undefined || value === null) return false;
+      if (typeof value === "boolean") return value;
+      if (typeof value === "string") {
+        return value.toLowerCase() === "true" || value === "1";
+      }
+      if (typeof value === "number") return value !== 0;
+      return Boolean(value);
+    };
+
+    // Build product data object
+    const productData: any = {
+      name: String(name),
+      description: String(description),
+      summary: summary ? String(summary) : undefined,
+      price: parseNumber(price) || 0,
+      perDayPrice: parseNumber(perDayPrice),
+      perWeekPrice: parseNumber(perWeekPrice),
+      deliveryAndCollection: deliveryAndCollection
+        ? String(deliveryAndCollection)
+        : "",
+      priceDiscount: parseNumber(priceDiscount),
+      duration: duration ? String(duration) : "",
+      maxGroupSize: parseInt(String(maxGroupSize || 1)) || 1,
+      difficulty: (difficulty as "easy" | "medium" | "difficult") || "medium",
+      categories: categoriesArray,
+      images: imageUrls,
+      imageCover: imageCoverUrl,
+      location: {
+        state: "",
+        city: "",
+      },
+      dimensions: {
+        length: 1,
+        width: 1,
+        height: 1,
+      },
+      availableFrom: availableFrom ? new Date(availableFrom) : new Date(),
+      availableUntil: availableUntil
+        ? new Date(availableUntil)
+        : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+      size: size ? String(size) : undefined,
+      active: parseBoolean(active),
+      stock: parseInt(String(stock || 0)) || 0,
+      isSensitive: parseBoolean(isSensitive),
+      material: String(material),
+      design: String(design),
+      ageRange: {
+        min: 0,
+        max: 0,
+        unit: "years" as "years" | "months",
+      },
+      safetyFeatures: [],
+      qualityAssurance: {
+        isCertified: false,
+      },
+      deliveryTimeOptions: ["8am-12pm", "12pm-4pm", "4pm-8pm"],
+      collectionTimeOptions: ["before_5pm", "after_5pm", "next_day"],
+      defaultDeliveryTime: "8am-12pm",
+      defaultCollectionTime: "before_5pm",
+      deliveryTimeFee: 0,
+      collectionTimeFee: 0,
+    };
+
+    // Parse location
+    try {
+      const parsedLocation = parseJsonField(location, "location");
+      if (parsedLocation) {
+        if (typeof parsedLocation === "object") {
+          if (parsedLocation.state)
+            productData.location.state = String(parsedLocation.state);
+          if (parsedLocation.city)
+            productData.location.city = String(parsedLocation.city);
+        } else {
+          productData.location.state = String(parsedLocation);
+        }
+      }
+    } catch (error) {
+      console.warn("Failed to parse location:", error);
     }
 
-    if (qualityAssurance) {
-      productData.qualityAssurance = {
-        isCertified: qualityAssurance.isCertified || false,
-        certification: qualityAssurance.certification || "",
-        warrantyPeriod: qualityAssurance.warrantyPeriod || 0,
-        warrantyDetails: qualityAssurance.warrantyDetails || "",
-      };
+    // Parse dimensions
+    try {
+      const parsedDimensions = parseJsonField(dimensions, "dimensions");
+      if (parsedDimensions && typeof parsedDimensions === "object") {
+        if (parsedDimensions.length)
+          productData.dimensions.length =
+            parseNumber(parsedDimensions.length) || 1;
+        if (parsedDimensions.width)
+          productData.dimensions.width =
+            parseNumber(parsedDimensions.width) || 1;
+        if (parsedDimensions.height)
+          productData.dimensions.height =
+            parseNumber(parsedDimensions.height) || 1;
+      }
+    } catch (error) {
+      console.warn("Failed to parse dimensions:", error);
     }
 
-    const product = await productService.createProduct(productData);
+    // Parse age range
+    try {
+      const parsedAgeRange = parseJsonField(ageRange, "ageRange");
+      if (parsedAgeRange && typeof parsedAgeRange === "object") {
+        if (parsedAgeRange.min !== undefined)
+          productData.ageRange.min = parseInt(String(parsedAgeRange.min)) || 0;
+        if (parsedAgeRange.max !== undefined)
+          productData.ageRange.max = parseInt(String(parsedAgeRange.max)) || 0;
+        if (
+          parsedAgeRange.unit &&
+          ["years", "months"].includes(parsedAgeRange.unit)
+        ) {
+          productData.ageRange.unit = parsedAgeRange.unit;
+        }
+      }
+    } catch (error) {
+      console.warn("Failed to parse ageRange:", error);
+    }
 
-    res.status(201).json({
-      status: "success",
-      message: "Product created successfully",
-      data: { product },
+    // Parse safety features
+    try {
+      const parsedSafetyFeatures = parseJsonField(
+        safetyFeatures,
+        "safetyFeatures"
+      );
+      if (parsedSafetyFeatures) {
+        if (Array.isArray(parsedSafetyFeatures)) {
+          productData.safetyFeatures = parsedSafetyFeatures.map(String);
+        } else if (typeof parsedSafetyFeatures === "string") {
+          productData.safetyFeatures = [parsedSafetyFeatures];
+        }
+      }
+    } catch (error) {
+      console.warn("Failed to parse safetyFeatures:", error);
+    }
+
+    // Parse quality assurance
+    try {
+      const parsedQA = parseJsonField(qualityAssurance, "qualityAssurance");
+      if (parsedQA) {
+        productData.qualityAssurance = {
+          isCertified: parseBoolean(parsedQA.isCertified),
+          certification: parsedQA.certification
+            ? String(parsedQA.certification)
+            : undefined,
+          warrantyPeriod: parsedQA.warrantyPeriod
+            ? String(parsedQA.warrantyPeriod)
+            : undefined,
+          warrantyDetails: parsedQA.warrantyDetails
+            ? String(parsedQA.warrantyDetails)
+            : undefined,
+        };
+      }
+    } catch (error) {
+      console.warn("Failed to parse qualityAssurance:", error);
+    }
+
+    // Parse delivery/collection options
+    try {
+      const parsedDeliveryOptions = parseJsonField(
+        deliveryTimeOptions,
+        "deliveryTimeOptions"
+      );
+      if (parsedDeliveryOptions && Array.isArray(parsedDeliveryOptions)) {
+        productData.deliveryTimeOptions = parsedDeliveryOptions.map(String);
+      }
+    } catch (error) {
+      console.warn("Failed to parse deliveryTimeOptions:", error);
+    }
+
+    try {
+      const parsedCollectionOptions = parseJsonField(
+        collectionTimeOptions,
+        "collectionTimeOptions"
+      );
+      if (parsedCollectionOptions && Array.isArray(parsedCollectionOptions)) {
+        productData.collectionTimeOptions = parsedCollectionOptions.map(String);
+      }
+    } catch (error) {
+      console.warn("Failed to parse collectionTimeOptions:", error);
+    }
+
+    if (defaultDeliveryTime)
+      productData.defaultDeliveryTime = String(defaultDeliveryTime);
+    if (defaultCollectionTime)
+      productData.defaultCollectionTime = String(defaultCollectionTime);
+    if (deliveryTimeFee)
+      productData.deliveryTimeFee = parseNumber(deliveryTimeFee) || 0;
+    if (collectionTimeFee)
+      productData.collectionTimeFee = parseNumber(collectionTimeFee) || 0;
+
+    console.log("Product data prepared. Creating product...");
+    console.log("Product data summary:", {
+      name: productData.name,
+      price: productData.price,
+      categories: productData.categories.length,
+      images: productData.images.length,
+      coverImage: !!productData.imageCover,
+      material: productData.material,
+      design: productData.design,
     });
+
+    // Create the product
+    try {
+      const product = await productService.createProduct(productData);
+      console.log("Product created successfully with ID:", product._id);
+
+      res.status(201).json({
+        status: "success",
+        message: "Product created successfully",
+        data: { product },
+      });
+    } catch (error: any) {
+      console.error("Error creating product in service:", error);
+      throw new ApiError(`Failed to create product: ${error.message}`, 500);
+    }
+  }
+);
+
+/* =========================
+   UPDATE PRODUCT WITH FILE UPLOAD
+========================= */
+export const updateProduct = asyncHandler(
+  async (req: Request, res: Response, next: NextFunction) => {
+    const productId = req.params.id;
+    console.log("=== UPDATE PRODUCT CONTROLLER START ===");
+    console.log("Updating product ID:", productId);
+
+    const files = req.files as any;
+    const updateData: any = {};
+
+    console.log("Update files received:", files ? Object.keys(files) : "none");
+    console.log("Update body received:", req.body);
+
+    // Handle file uploads
+    if (files) {
+      // Handle new cover image
+      if (files.newImageCover && files.newImageCover.length > 0) {
+        const newImageCover = files.newImageCover[0];
+        console.log("Uploading new cover image:", newImageCover.originalname);
+        try {
+          const newCoverUrl = await uploadToCloudinary(newImageCover);
+          updateData.newImageCover = newCoverUrl;
+          console.log("New cover image uploaded:", newCoverUrl);
+        } catch (error: any) {
+          throw new ApiError(
+            `Failed to upload cover image: ${error.message}`,
+            500
+          );
+        }
+      } else if (
+        files["newImageCover[]"] &&
+        files["newImageCover[]"].length > 0
+      ) {
+        const newImageCover = files["newImageCover[]"][0];
+        console.log(
+          "Uploading new cover image from array:",
+          newImageCover.originalname
+        );
+        try {
+          const newCoverUrl = await uploadToCloudinary(newImageCover);
+          updateData.newImageCover = newCoverUrl;
+          console.log("New cover image uploaded:", newCoverUrl);
+        } catch (error: any) {
+          throw new ApiError(
+            `Failed to upload cover image: ${error.message}`,
+            500
+          );
+        }
+      }
+
+      // Handle new product images
+      let newImages: Express.Multer.File[] = [];
+      if (
+        files.newImages &&
+        Array.isArray(files.newImages) &&
+        files.newImages.length > 0
+      ) {
+        newImages = files.newImages;
+        console.log(
+          `Found ${newImages.length} new images in 'newImages' field`
+        );
+      } else if (
+        files["newImages[]"] &&
+        Array.isArray(files["newImages[]"]) &&
+        files["newImages[]"].length > 0
+      ) {
+        newImages = files["newImages[]"];
+        console.log(
+          `Found ${newImages.length} new images in 'newImages[]' field`
+        );
+      }
+
+      if (newImages.length > 0) {
+        if (newImages.length > 5) {
+          throw new ApiError("Maximum 5 images allowed", 400);
+        }
+
+        console.log("Uploading new product images to Cloudinary...");
+        try {
+          const newImageUrls = await Promise.all(
+            newImages.map(async (file: Express.Multer.File, index: number) => {
+              console.log(
+                `Uploading new image ${index + 1}:`,
+                file.originalname
+              );
+              const url = await uploadToCloudinary(file);
+              console.log(`New image ${index + 1} uploaded:`, url);
+              return url;
+            })
+          );
+          updateData.newImages = newImageUrls;
+          console.log("All new images uploaded successfully");
+        } catch (error: any) {
+          throw new ApiError(`Failed to upload images: ${error.message}`, 500);
+        }
+      }
+    }
+
+    // Process text fields from body
+    const textFields = [
+      "name",
+      "description",
+      "summary",
+      "price",
+      "perDayPrice",
+      "perWeekPrice",
+      "deliveryAndCollection",
+      "priceDiscount",
+      "duration",
+      "maxGroupSize",
+      "difficulty",
+      "categories",
+      "size",
+      "active",
+      "stock",
+      "isSensitive",
+      "material",
+      "design",
+      "location",
+      "dimensions",
+      "availableFrom",
+      "availableUntil",
+      "ageRange",
+      "safetyFeatures",
+      "qualityAssurance",
+      "deliveryTimeOptions",
+      "collectionTimeOptions",
+      "defaultDeliveryTime",
+      "defaultCollectionTime",
+      "deliveryTimeFee",
+      "collectionTimeFee",
+    ];
+
+    // Helper function to parse field value
+    const parseFieldValue = (value: any, fieldName: string): any => {
+      if (value === undefined || value === null || value === "") {
+        return undefined;
+      }
+
+      // Handle JSON strings
+      if (typeof value === "string") {
+        if (
+          (value.startsWith("{") && value.endsWith("}")) ||
+          (value.startsWith("[") && value.endsWith("]"))
+        ) {
+          try {
+            return JSON.parse(value);
+          } catch {
+            // If JSON parsing fails, return as string
+            return value;
+          }
+        }
+      }
+
+      return value;
+    };
+
+    // Add fields from request body
+    textFields.forEach((field) => {
+      if (req.body[field] !== undefined && req.body[field] !== "") {
+        updateData[field] = parseFieldValue(req.body[field], field);
+      }
+    });
+
+    // Helper function to convert value
+    const convertValue = (
+      value: any,
+      type: "number" | "int" | "bool" | "date"
+    ): any => {
+      if (value === undefined || value === null) return undefined;
+
+      switch (type) {
+        case "number":
+          const num = parseFloat(String(value));
+          return isNaN(num) ? undefined : num;
+        case "int":
+          const int = parseInt(String(value), 10);
+          return isNaN(int) ? undefined : int;
+        case "bool":
+          if (typeof value === "boolean") return value;
+          if (typeof value === "string") {
+            return value.toLowerCase() === "true" || value === "1";
+          }
+          if (typeof value === "number") return value !== 0;
+          return Boolean(value);
+        case "date":
+          try {
+            return new Date(value);
+          } catch {
+            return undefined;
+          }
+        default:
+          return value;
+      }
+    };
+
+    // Convert numeric fields
+    const numericFields = [
+      "price",
+      "perDayPrice",
+      "perWeekPrice",
+      "priceDiscount",
+      "deliveryTimeFee",
+      "collectionTimeFee",
+    ];
+    numericFields.forEach((field) => {
+      if (updateData[field] !== undefined) {
+        updateData[field] = convertValue(updateData[field], "number");
+      }
+    });
+
+    // Convert integer fields
+    const intFields = ["maxGroupSize", "stock"];
+    intFields.forEach((field) => {
+      if (updateData[field] !== undefined) {
+        updateData[field] = convertValue(updateData[field], "int");
+      }
+    });
+
+    // Convert boolean fields
+    if (updateData.active !== undefined) {
+      updateData.active = convertValue(updateData.active, "bool");
+    }
+    if (updateData.isSensitive !== undefined) {
+      updateData.isSensitive = convertValue(updateData.isSensitive, "bool");
+    }
+
+    // Convert date fields
+    if (updateData.availableFrom !== undefined) {
+      updateData.availableFrom = convertValue(updateData.availableFrom, "date");
+    }
+    if (updateData.availableUntil !== undefined) {
+      updateData.availableUntil = convertValue(
+        updateData.availableUntil,
+        "date"
+      );
+    }
+
+    // Handle categories if provided
+    if (updateData.categories !== undefined) {
+      let categoriesArray: string[] = [];
+
+      if (Array.isArray(updateData.categories)) {
+        categoriesArray = updateData.categories;
+      } else if (typeof updateData.categories === "string") {
+        try {
+          // Try JSON first
+          const parsed = JSON.parse(updateData.categories);
+          if (Array.isArray(parsed)) {
+            categoriesArray = parsed;
+          } else {
+            categoriesArray = [parsed];
+          }
+        } catch {
+          // If not JSON, try comma-separated
+          categoriesArray = updateData.categories
+            .split(",")
+            .map((cat: string) => cat.trim())
+            .filter((cat: string) => cat.length > 0);
+        }
+      }
+
+      if (categoriesArray.length > 0) {
+        updateData.categories = categoriesArray;
+      } else {
+        delete updateData.categories;
+      }
+    }
+
+    console.log("Update data prepared:", {
+      fields: Object.keys(updateData),
+      hasFiles: !!(updateData.newImageCover || updateData.newImages),
+    });
+
+    // Update the product
+    try {
+      const product = await productService.updateProduct(productId, updateData);
+      console.log("Product updated successfully");
+
+      res.status(200).json({
+        status: "success",
+        message: "Product updated successfully",
+        data: {
+          product,
+        },
+      });
+    } catch (error: any) {
+      console.error("Error updating product:", error);
+      throw new ApiError(`Failed to update product: ${error.message}`, 500);
+    }
   }
 );
 
@@ -419,111 +1052,6 @@ export const getProduct = asyncHandler(
 
     res.status(200).json({
       status: "success",
-      data: {
-        product,
-      },
-    });
-  }
-);
-
-export const updateProduct = asyncHandler(
-  async (req: Request, res: Response, next: NextFunction) => {
-    const productId = req.params.id;
-    const updateData = req.body;
-
-    // Enhanced validation for all fields
-    if (updateData.categories) {
-      if (!Array.isArray(updateData.categories)) {
-        throw new ApiError("Categories must be an array", 400);
-      }
-      for (const categoryId of updateData.categories) {
-        if (!Types.ObjectId.isValid(categoryId)) {
-          throw new ApiError(`Invalid category ID: ${categoryId}`, 400);
-        }
-      }
-    }
-
-    if (updateData.dimensions) {
-      const { length, width, height } = updateData.dimensions;
-      if (length !== undefined && length < 1) {
-        throw new ApiError("Length must be at least 1 foot", 400);
-      }
-      if (width !== undefined && width < 1) {
-        throw new ApiError("Width must be at least 1 foot", 400);
-      }
-      if (height !== undefined && height < 1) {
-        throw new ApiError("Height must be at least 1 foot", 400);
-      }
-    }
-
-    if (updateData.ageRange) {
-      const { min, max, unit } = updateData.ageRange;
-
-      if (min !== undefined && min < 0) {
-        throw new ApiError("Minimum age cannot be negative", 400);
-      }
-
-      if (max !== undefined && max < 0) {
-        throw new ApiError("Maximum age cannot be negative", 400);
-      }
-
-      if (min !== undefined && max !== undefined && max < min) {
-        throw new ApiError("Maximum age must be greater than minimum age", 400);
-      }
-
-      if (unit !== undefined && !["years", "months"].includes(unit)) {
-        throw new ApiError("Age unit must be 'years' or 'months'", 400);
-      }
-    }
-
-    if (updateData.safetyFeatures !== undefined) {
-      if (!Array.isArray(updateData.safetyFeatures)) {
-        throw new ApiError("Safety features must be an array", 400);
-      }
-      if (updateData.safetyFeatures.length === 0) {
-        throw new ApiError("At least one safety feature is required", 400);
-      }
-    }
-
-    if (updateData.qualityAssurance) {
-      if (
-        updateData.qualityAssurance.isCertified !== undefined &&
-        typeof updateData.qualityAssurance.isCertified !== "boolean"
-      ) {
-        throw new ApiError("Certification status must be boolean", 400);
-      }
-    }
-
-    if (updateData.price !== undefined && updateData.price < 0) {
-      throw new ApiError("Price cannot be negative", 400);
-    }
-
-    if (updateData.stock !== undefined && updateData.stock < 0) {
-      throw new ApiError("Stock cannot be negative", 400);
-    }
-
-    if (updateData.maxGroupSize !== undefined && updateData.maxGroupSize < 1) {
-      throw new ApiError("Max group size must be at least 1", 400);
-    }
-
-    // Validate date range if both dates are provided
-    if (updateData.availableFrom && updateData.availableUntil) {
-      const startDate = new Date(updateData.availableFrom);
-      const endDate = new Date(updateData.availableUntil);
-
-      if (startDate > endDate) {
-        throw new ApiError(
-          "Available from date cannot be after available until date",
-          400
-        );
-      }
-    }
-
-    const product = await productService.updateProduct(productId, updateData);
-
-    res.status(200).json({
-      status: "success",
-      message: "Product updated successfully",
       data: {
         product,
       },
@@ -707,6 +1235,10 @@ export const markAsTopPick = asyncHandler(
 /* =========================
    GET FREQUENTLY BOUGHT TOGETHER
 ========================= */
+
+/* =========================
+   GET FREQUENTLY BOUGHT TOGETHER WITH ENHANCED FIELDS
+========================= */
 export const getFrequentlyBoughtTogether = asyncHandler(
   async (req: Request, res: Response, next: NextFunction) => {
     const { productIds } = req.body;
@@ -740,12 +1272,83 @@ export const getFrequentlyBoughtTogether = asyncHandler(
       limit
     );
 
+    // Get booked dates for all recommended products
+    const recommendedProductIds = recommendations
+      .filter((p) => p && p._id)
+      .map((p) => (p._id as unknown as string).toString());
+
+    const bookedDatesMap = await productService.getBookedDatesForProducts(
+      recommendedProductIds
+    );
+
+    // Enhance recommendations with additional fields
+    const enhancedRecommendations = await Promise.all(
+      recommendations.map(async (product: any) => {
+        if (!product) return null;
+
+        const productId = product._id?.toString();
+
+        return {
+          id: productId,
+          name: product.name,
+          description: product.description,
+          price: product.price,
+          discount: product.discount || 0,
+          discountPrice: product.discountPrice || product.price,
+          dimensions: product.dimensions || {
+            length: 0,
+            width: 0,
+            height: 0,
+          },
+          images: product.images || [], // Return all images
+          imageCover: product.imageCover, // Also include cover separately
+          material: product.material,
+          design: product.design,
+          ageRange: product.ageRange,
+          safetyFeatures: product.safetyFeatures || [],
+          qualityAssurance: product.qualityAssurance,
+          location: product.location,
+          categories: product.categories,
+          bookedDates: bookedDatesMap[productId] || [],
+          frequentlyBoughtDetails: product.frequentlyBoughtTogether?.find(
+            (item: any) => {
+              const itemId =
+                item.productId?._id?.toString() || item.productId?.toString();
+              return productIds.includes(itemId);
+            }
+          ),
+          metadata: {
+            isAvailable: product.stock > 0,
+            stock: product.stock,
+            active: product.active,
+            hasDiscount: (product.discount || 0) > 0,
+            totalImages: (product.images || []).length,
+          },
+        };
+      })
+    ).then((results) => results.filter((r) => r !== null));
+
     res.status(200).json({
       status: "success",
       message: "Frequently bought together products",
       data: {
-        recommendations,
-        count: recommendations.length,
+        recommendations: enhancedRecommendations,
+        count: enhancedRecommendations.length,
+        requestedProducts: productIds,
+        metadata: {
+          includes: [
+            "discount",
+            "dimensions",
+            "images",
+            "bookedDates",
+            "material",
+            "design",
+            "ageRange",
+            "safetyFeatures",
+          ],
+          requestedProducts: productIds.length,
+          foundProducts: enhancedRecommendations.length,
+        },
       },
     });
   }
@@ -830,6 +1433,191 @@ export const recordPurchase = asyncHandler(
     res.status(200).json({
       status: "success",
       message: "Purchase recorded for recommendation analytics",
+    });
+  }
+);
+/* =========================
+   ADD FREQUENTLY BOUGHT TOGETHER PRODUCTS (Admin Only)
+========================= */
+/* =========================
+   ADD FREQUENTLY BOUGHT TOGETHER PRODUCTS (Admin Only)
+========================= */
+/* =========================
+   CREATE FREQUENTLY BOUGHT RELATIONSHIPS (Admin Only)
+========================= */
+/* =========================
+   CREATE FREQUENTLY BOUGHT RELATIONSHIPS WITH FILE UPLOAD
+========================= */
+export const createFrequentlyBoughtRelationships = asyncHandler(
+  async (req: Request, res: Response, next: NextFunction) => {
+    const { productIds } = req.body;
+    const files = req.files as any;
+
+    // Validate input
+    if (!productIds || !Array.isArray(productIds)) {
+      throw new ApiError("Product IDs array is required", 400);
+    }
+
+    if (productIds.length < 2) {
+      throw new ApiError("At least 2 product IDs are required", 400);
+    }
+
+    // Validate each product ID
+    for (const id of productIds) {
+      if (!Types.ObjectId.isValid(id)) {
+        throw new ApiError(`Invalid product ID: ${id}`, 400);
+      }
+    }
+
+    // Extract additional data for product updates
+    const {
+      discount,
+      dimensions,
+      // Other update fields can be added here
+    } = req.body;
+
+    // Prepare update data for each product
+    const productUpdates: { [productId: string]: any } = {};
+
+    // Process files if uploaded
+    if (files) {
+      // Handle image cover updates
+      if (files.newImageCover && files.newImageCover.length > 0) {
+        try {
+          const newImageCover = files.newImageCover[0];
+          const coverUrl = await uploadToCloudinary(newImageCover);
+
+          // Apply cover to first product or all products? Let's apply to first product
+          const firstProductId = productIds[0];
+          productUpdates[firstProductId] = productUpdates[firstProductId] || {};
+          productUpdates[firstProductId].imageCover = coverUrl;
+
+          console.log(
+            `Updated cover image for product ${firstProductId}: ${coverUrl}`
+          );
+        } catch (error: any) {
+          console.error("Failed to upload cover image:", error);
+        }
+      }
+
+      // Handle additional images
+      if (files["images[]"] && files["images[]"].length > 0) {
+        const newImages = files["images[]"];
+        try {
+          const imageUrls = await Promise.all(
+            newImages.map(async (file: Express.Multer.File) => {
+              return await uploadToCloudinary(file);
+            })
+          );
+
+          // Apply images to products - you can decide logic here
+          // For example, apply to all products or specific ones
+          productIds.forEach((productId, index) => {
+            if (index < imageUrls.length) {
+              productUpdates[productId] = productUpdates[productId] || {};
+              productUpdates[productId].$push =
+                productUpdates[productId].$push || {};
+              productUpdates[productId].$push.images = {
+                $each: [imageUrls[index]],
+                $position: 0,
+              };
+            }
+          });
+        } catch (error: any) {
+          console.error("Failed to upload images:", error);
+        }
+      }
+    }
+
+    // Process other update fields
+    if (discount !== undefined) {
+      const discountValue = parseFloat(discount);
+      if (!isNaN(discountValue) && discountValue >= 0 && discountValue <= 100) {
+        productIds.forEach((productId) => {
+          productUpdates[productId] = productUpdates[productId] || {};
+          productUpdates[productId].discount = discountValue;
+        });
+      }
+    }
+
+    if (dimensions) {
+      try {
+        const parsedDimensions =
+          typeof dimensions === "string" ? JSON.parse(dimensions) : dimensions;
+
+        if (parsedDimensions && typeof parsedDimensions === "object") {
+          const { length, width, height } = parsedDimensions;
+
+          productIds.forEach((productId) => {
+            productUpdates[productId] = productUpdates[productId] || {};
+            productUpdates[productId].dimensions = {
+              length: parseFloat(length) || 1,
+              width: parseFloat(width) || 1,
+              height: parseFloat(height) || 1,
+            };
+          });
+        }
+      } catch (error) {
+        console.warn("Failed to parse dimensions:", error);
+      }
+    }
+
+    // Create frequently bought relationships
+    const updatedProducts =
+      await productService.createFrequentlyBoughtRelationships(
+        productIds,
+        productUpdates
+      );
+
+    res.status(200).json({
+      status: "success",
+      message:
+        "Frequently bought relationships created successfully with updates",
+      data: {
+        products: updatedProducts.map((product) => ({
+          id: product._id,
+          name: product.name,
+          price: product.price,
+          discount: product.discount || 0,
+          discountPrice: product.discount || product.price,
+          dimensions: product.dimensions || { length: 0, width: 0, height: 0 },
+          images: product.images || [],
+          imageCover: product.imageCover,
+          frequentlyBoughtTogether: product.frequentlyBoughtTogether?.map(
+            (item: any) => ({
+              productId: item.productId?._id || item.productId,
+              productName: item.productId?.name || "Unknown",
+              frequency: item.frequency,
+              confidence: item.confidence,
+            })
+          ),
+        })),
+        count: updatedProducts.length,
+        metadata: {
+          filesUploaded: files ? Object.keys(files).length : 0,
+          fieldsUpdated: Object.keys(productUpdates).length,
+          totalProducts: productIds.length,
+        },
+      },
+    });
+  }
+);
+
+export const getAllFrequentRelationships = asyncHandler(
+  async (req: Request, res: Response, next: NextFunction) => {
+    const relationships = await productService.getAllFrequentRelationships();
+
+    res.status(200).json({
+      status: "success",
+      message: "All frequently bought relationships fetched successfully",
+      data: {
+        relationships,
+        count: relationships.length,
+        totalConnections: relationships.reduce(
+          (sum, product) => sum + product.frequentlyBought.length,
+          0
+        ),
+      },
     });
   }
 );

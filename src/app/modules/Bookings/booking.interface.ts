@@ -91,6 +91,13 @@ export interface IBooking {
   refundedAt?: Date;
   createdAt?: Date;
   updatedAt?: Date;
+  startDate?: Date;
+  endDate?: Date;
+  bookedDates?: Array<{
+    date: Date;
+    itemIndex: number;
+    quantity: number;
+  }>;
 }
 
 export interface CreateBookingData {

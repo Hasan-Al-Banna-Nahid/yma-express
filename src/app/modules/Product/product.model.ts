@@ -5,6 +5,54 @@ export type IProductModel = IProduct & mongoose.Document;
 
 const productSchema: Schema = new Schema(
   {
+    discount: {
+      type: Number,
+      min: 0,
+      max: 100,
+      default: 0,
+    },
+
+    dimensions: {
+      length: {
+        type: Number,
+        required: [true, "Length is required"],
+        min: [1, "Length must be at least 1 foot"],
+      },
+      width: {
+        type: Number,
+        required: [true, "Width is required"],
+        min: [1, "Width must be at least 1 foot"],
+      },
+      height: {
+        type: Number,
+        required: [true, "Height is required"],
+        min: [1, "Height must be at least 1 foot"],
+      },
+    },
+
+    images: [String], // Already exists - this is the array of images
+
+    bookedDates: [
+      {
+        startDate: {
+          type: Date,
+          required: true,
+        },
+        endDate: {
+          type: Date,
+          required: true,
+        },
+        bookingId: {
+          type: Schema.Types.ObjectId,
+          ref: "Booking",
+        },
+        status: {
+          type: String,
+          enum: ["confirmed", "pending", "cancelled"],
+          default: "confirmed",
+        },
+      },
+    ],
     isTopPick: {
       type: Boolean,
       default: false,
@@ -107,7 +155,6 @@ const productSchema: Schema = new Schema(
         ref: "Category",
       },
     ],
-    images: [String],
     imageCover: {
       type: String,
       required: [true, "Image cover is required"],
@@ -128,23 +175,7 @@ const productSchema: Schema = new Schema(
         trim: true,
       },
     },
-    dimensions: {
-      length: {
-        type: Number,
-        required: [true, "Length is required"],
-        min: [1, "Length must be at least 1 foot"],
-      },
-      width: {
-        type: Number,
-        required: [true, "Width is required"],
-        min: [1, "Width must be at least 1 foot"],
-      },
-      height: {
-        type: Number,
-        required: [true, "Height is required"],
-        min: [1, "Height must be at least 1 foot"],
-      },
-    },
+
     availableFrom: {
       type: Date,
       required: [true, "Available from date is required"],
@@ -276,19 +307,81 @@ const productSchema: Schema = new Schema(
         },
       },
     ],
+    deliveryTimeOptions: {
+      type: [String],
+      default: ["8am-12pm", "12pm-4pm", "4pm-8pm"],
+      enum: ["8am-12pm", "12pm-4pm", "4pm-8pm", "after_8pm"],
+    },
+    collectionTimeOptions: {
+      type: [String],
+      default: ["before_5pm", "after_5pm", "next_day"],
+      enum: ["before_5pm", "after_5pm", "next_day"],
+    },
+    defaultDeliveryTime: {
+      type: String,
+      default: "8am-12pm",
+      enum: ["8am-12pm", "12pm-4pm", "4pm-8pm", "after_8pm"],
+    },
+    defaultCollectionTime: {
+      type: String,
+      default: "before_5pm",
+      enum: ["before_5pm", "after_5pm", "next_day"],
+    },
+    deliveryTimeFee: {
+      type: Number,
+      default: 0,
+      min: [0, "Delivery time fee cannot be negative"],
+    },
+    collectionTimeFee: {
+      type: Number,
+      default: 0,
+      min: [0, "Collection time fee cannot be negative"],
+    },
   },
+
   {
     timestamps: true,
     toJSON: { virtuals: true },
     toObject: { virtuals: true },
   }
 );
-
+// In productSchema.index section, add:
+productSchema.index({ "frequentlyBoughtTogether.frequency": -1 });
 productSchema.virtual("dimensions.area").get(function (this: IProductModel) {
   return this.dimensions.length * this.dimensions.width;
 });
-productSchema.index({ "frequentlyBoughtTogether.frequency": -1 });
+productSchema.virtual("discountPrice").get(function (this: IProductModel) {
+  if (this.discount && this.discount > 0) {
+    return this.price - (this.price * this.discount) / 100;
+  }
+  return this.price;
+});
 
+// Add virtual for available dates
+productSchema.virtual("availableDates").get(function (this: IProductModel) {
+  const now = new Date();
+  const availableFrom = new Date(this.availableFrom);
+  const availableUntil = new Date(this.availableUntil);
+
+  // Return array of available dates (simplified)
+  return {
+    from: availableFrom > now ? availableFrom : now,
+    until: availableUntil,
+    isAvailable:
+      this.stock > 0 && now >= availableFrom && now <= availableUntil,
+  };
+});
+productSchema.index({ "frequentlyBoughtTogether.frequency": -1 });
+productSchema.virtual("deliveryInfo").get(function (this: IProductModel) {
+  return {
+    deliveryTimes: this.deliveryTimeOptions,
+    defaultDelivery: this.defaultDeliveryTime,
+    deliveryFee: this.deliveryTimeFee,
+    collectionTimes: this.collectionTimeOptions,
+    defaultCollection: this.defaultCollectionTime,
+    collectionFee: this.collectionTimeFee,
+  };
+});
 productSchema
   .virtual("formattedDimensions")
   .get(function (this: IProductModel) {

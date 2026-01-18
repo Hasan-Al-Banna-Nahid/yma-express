@@ -11,6 +11,7 @@ import {
   IShippingAddress,
   IPaymentDetails,
   IBookingStatusHistory,
+  PaymentMethod,
 } from "./booking.interface";
 import { EmailService } from "./email.service";
 import Inventory from "../../modules/Inventory/inventory.model";
@@ -24,12 +25,18 @@ export class BookingService {
     session.startTransaction();
 
     try {
+      console.log("🚀 [DEBUG] createBooking called");
+      console.log("👤 User ID:", userId);
+      console.log("📋 Items count:", data.items?.length);
+
       // Validation
       if (!data.items?.length) {
+        console.log("❌ No items in booking");
         throw new ApiError("Booking items are required", 400);
       }
 
       if (!data.shippingAddress || !data.paymentMethod) {
+        console.log("❌ Missing shipping address or payment method");
         throw new ApiError(
           "Shipping address and payment method are required",
           400
@@ -40,28 +47,52 @@ export class BookingService {
       const bookingItems: IBookingItem[] = [];
       const tempBookingId = new mongoose.Types.ObjectId();
 
+      console.log("🆔 Temporary Booking ID:", tempBookingId);
+
       // Process each item
-      for (const item of data.items) {
+      for (const [index, item] of data.items.entries()) {
+        console.log(`\n🔍 Processing item ${index + 1}:`);
+        console.log("   Product ID:", item.productId);
+        console.log("   Quantity:", item.quantity);
+        console.log("   Start Date:", item.startDate);
+        console.log("   End Date:", item.endDate);
+
         const product = await Product.findById(item.productId).session(session);
         if (!product) {
+          console.log(`❌ Product not found: ${item.productId}`);
           throw new ApiError(`Product not found: ${item.productId}`, 404);
         }
 
+        console.log(`✅ Product found: ${product.name}`);
+
         if (!item.startDate || !item.endDate) {
+          console.log("❌ Missing start or end date");
           throw new ApiError("Start date and end date are required", 400);
         }
 
         const startDate = new Date(item.startDate);
         const endDate = new Date(item.endDate);
+
+        // Normalize dates
+        startDate.setHours(0, 0, 0, 0);
+        endDate.setHours(23, 59, 59, 999);
+
         const totalDays = Math.ceil(
           (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
         );
 
+        console.log("📅 Date Analysis:");
+        console.log("   Start Date (normalized):", startDate.toISOString());
+        console.log("   End Date (normalized):", endDate.toISOString());
+        console.log("   Total Days:", totalDays);
+
         if (totalDays < 1) {
+          console.log("❌ Total days less than 1");
           throw new ApiError("Minimum booking is 1 day", 400);
         }
 
         // Check inventory availability
+        console.log("🔍 Checking inventory availability...");
         const availability = await Inventory.checkAvailability(
           product._id.toString(),
           startDate,
@@ -69,15 +100,42 @@ export class BookingService {
           item.quantity
         );
 
+        console.log("📊 Availability Result:", {
+          isAvailable: availability.isAvailable,
+          availableQuantity: availability.availableQuantity,
+          message: availability.message,
+          availableItemsCount: availability.inventoryItems?.length,
+        });
+
         if (!availability.isAvailable) {
+          console.log("❌ Inventory not available");
+
+          // Debug: Check what's actually in the inventory
+          console.log("🔍 DEBUG: Checking raw inventory data...");
+          const rawInventory = await Inventory.find({
+            product: product._id,
+          });
+
+          console.log("📊 Raw inventory found:", rawInventory.length);
+          rawInventory.forEach((inv, idx) => {
+            console.log(`  Inventory ${idx + 1}:`);
+            console.log(`    ID: ${inv._id}`);
+            console.log(`    Status: ${inv.status}`);
+            console.log(`    Quantity: ${inv.quantity}`);
+            console.log(`    Warehouse: ${inv.warehouse}`);
+            console.log(`    Booked Dates: ${inv.bookedDates?.length || 0}`);
+          });
+
           throw new ApiError(
-            `Inventory not available: ${availability.message}`,
+            `"${product.name}" is not available for the selected dates. ${availability.message}`,
             400
           );
         }
 
+        console.log("✅ Inventory available, proceeding to reserve...");
+
         // Reserve inventory
-        await Inventory.reserveInventory(
+        const reservedItems = await Inventory.reserveInventory(
           product._id.toString(),
           startDate,
           endDate,
@@ -85,10 +143,25 @@ export class BookingService {
           tempBookingId
         );
 
+        console.log("✅ Reserved items:", reservedItems?.length || 0);
+
+        if (!reservedItems || reservedItems.length === 0) {
+          console.log("❌ Failed to reserve inventory");
+          throw new ApiError(
+            `Failed to reserve inventory for ${product.name}`,
+            400
+          );
+        }
+
         // Calculate price
         const rentalFee = product.price;
         const itemTotal = rentalFee * item.quantity * totalDays;
         subTotal += itemTotal;
+
+        console.log("💰 Price Calculation:");
+        console.log("   Rental Fee:", rentalFee);
+        console.log("   Item Total:", itemTotal);
+        console.log("   Subtotal:", subTotal);
 
         bookingItems.push({
           product: product._id,
@@ -99,9 +172,8 @@ export class BookingService {
           endDate,
           totalDays,
           rentalType: item.rentalType,
-          warehouse:
-            availability.inventoryItems[0]?.warehouse || "Main Warehouse",
-          vendor: availability.inventoryItems[0]?.vendor || "YMA Suppliers",
+          warehouse: reservedItems[0]?.warehouse || "Main Warehouse",
+          vendor: reservedItems[0]?.vendor || "YMA Suppliers",
           rentalFee,
         });
       }
@@ -127,8 +199,14 @@ export class BookingService {
 
       const totalAmount = subTotal + deliveryFee + collectionFee;
 
+      console.log("💰 Fee Calculation:");
+      console.log("   Delivery Fee:", deliveryFee);
+      console.log("   Collection Fee:", collectionFee);
+      console.log("   Total Amount:", totalAmount);
+
       // Generate booking number
       const bookingNumber = await Booking.generateBookingNumber();
+      console.log("📝 Booking Number:", bookingNumber);
 
       const paymentDetails: IPaymentDetails = {
         method: data.paymentMethod,
@@ -159,6 +237,30 @@ export class BookingService {
         },
       ];
 
+      // Collect all booked dates from all items
+      const allBookedDates = [];
+      for (let i = 0; i < data.items.length; i++) {
+        const item = data.items[i];
+        const startDate = new Date(item.startDate);
+        const endDate = new Date(item.endDate);
+        startDate.setHours(0, 0, 0, 0);
+        endDate.setHours(23, 59, 59, 999);
+
+        const totalDays = Math.ceil(
+          (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
+        );
+
+        for (let day = 0; day < totalDays; day++) {
+          const currentDate = new Date(startDate);
+          currentDate.setDate(currentDate.getDate() + day);
+          allBookedDates.push({
+            date: currentDate,
+            itemIndex: i,
+            quantity: item.quantity,
+          });
+        }
+      }
+
       const bookingData = {
         _id: tempBookingId,
         bookingNumber,
@@ -178,23 +280,29 @@ export class BookingService {
         customerNotes: data.customerNotes,
         estimatedDeliveryDate: bookingItems[0]?.startDate,
         estimatedCollectionDate: bookingItems[0]?.endDate,
+        bookedDates: allBookedDates,
       };
 
+      console.log("💾 Creating booking in database...");
       const bookingResult = await Booking.create([bookingData], { session });
       const booking = bookingResult[0];
+      console.log("✅ Booking created:", booking._id);
 
       // Update inventory with actual booking ID
+      console.log("🔄 Updating inventory with actual booking ID...");
       await Inventory.updateMany(
         { "bookedDates.bookingId": tempBookingId },
         { $set: { "bookedDates.$.bookingId": booking._id } }
       ).session(session);
 
       await session.commitTransaction();
+      console.log("✅ Transaction committed successfully");
 
       const populatedBooking = await this.getBookingById(
-        (booking._id as unknown as string).toString()
+        (booking._id as string).toString()
       );
 
+      console.log("📧 Sending confirmation emails...");
       // Send emails
       await EmailService.sendBookingConfirmation(populatedBooking);
       await EmailService.sendAdminNotification(
@@ -202,11 +310,14 @@ export class BookingService {
         "New Booking Created"
       );
 
-      return populatedBooking;
+      console.log("✅ Booking process completed successfully!");
+      return populatedBooking; // ← THIS IS THE CRITICAL RETURN STATEMENT
     } catch (error) {
+      console.error("❌ Error in createBooking:", error);
       await session.abortTransaction();
       throw error;
     } finally {
+      console.log("🔚 Ending session");
       session.endSession();
     }
   }
@@ -435,6 +546,68 @@ export class BookingService {
           ? counts.totalRevenue / counts.totalBookings
           : 0,
     };
+  }
+  // booking.service.ts - Add these methods
+  static async syncWithOrder(orderId: string): Promise<IBookingDocument> {
+    try {
+      // Import Order model (ensure proper path)
+      const Order = require("../Order/order.model").default;
+
+      const order = await Order.findById(orderId)
+        .populate("items.product")
+        .populate("user");
+
+      if (!order) {
+        throw new ApiError("Order not found", 404);
+      }
+
+      // Convert order to booking data
+      const bookingData: CreateBookingData = {
+        items: order.items.map((item: any) => ({
+          productId: item.product._id.toString(),
+          quantity: item.quantity,
+          startDate: item.startDate || new Date(),
+          endDate:
+            item.endDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // Default 7 days
+          rentalType: item.rentalType || "daily",
+        })),
+        shippingAddress: order.shippingAddress,
+        paymentMethod: order.payment.method as PaymentMethod,
+        invoiceType: order.invoiceType || "regular",
+        customerNotes: order.notes,
+      };
+
+      // Create booking from order
+      const booking = await this.createBooking(order.user._id, bookingData);
+
+      // Update order with booking reference
+      order.booking = booking._id;
+      await order.save();
+
+      return booking;
+    } catch (error) {
+      console.error("Error syncing order to booking:", error);
+      throw error;
+    }
+  }
+
+  static async getBookingsByOrderId(
+    orderId: string
+  ): Promise<IBookingDocument[]> {
+    const Order = require("../Order/order.model").default;
+
+    const orders = await Order.find({ _id: orderId })
+      .populate("booking")
+      .exec();
+
+    const bookingIds = orders
+      .filter((order: any) => order.booking)
+      .map((order: any) => order.booking);
+
+    return await Booking.find({ _id: { $in: bookingIds } })
+      .populate("user", "name email")
+      .populate("items.product", "name price")
+      .exec();
   }
 }
 

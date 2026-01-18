@@ -3,10 +3,10 @@ import ApiError from "../../utils/apiError";
 import { Types } from "mongoose";
 import { CreateBlogData, UpdateBlogData, BlogFilter } from "./blog.interface";
 
-export const createBlog = async (
-  blogData: CreateBlogData
-): Promise<IBlogModel> => {
+export const createBlog = async (blogData: any): Promise<any> => {
+  console.log("Service creating blog with:", blogData); // Debug log
   const blog = await Blog.create(blogData);
+  console.log("Blog created:", blog); // Debug log
   return blog;
 };
 
@@ -99,24 +99,30 @@ export const getBlogBySlug = async (slug: string): Promise<IBlogModel> => {
 
 export const updateBlog = async (
   blogId: string,
-  updateData: UpdateBlogData
-): Promise<IBlogModel> => {
-  if (!Types.ObjectId.isValid(blogId)) {
-    throw new ApiError("Invalid blog ID", 400);
+  updateData: any
+): Promise<any> => {
+  console.log("Updating blog with:", updateData); // Debug log
+
+  // Clean updateData - remove undefined fields
+  const cleanUpdateData: any = {};
+  for (const [key, value] of Object.entries(updateData)) {
+    if (value !== undefined && value !== null && value !== "") {
+      cleanUpdateData[key] = value;
+    }
   }
 
-  const blog = await Blog.findByIdAndUpdate(blogId, updateData, {
+  console.log("Clean update data:", cleanUpdateData); // Debug log
+
+  const blog = await Blog.findByIdAndUpdate(blogId, cleanUpdateData, {
     new: true,
     runValidators: true,
-  })
-    .populate("author", "name email avatar")
-    .lean();
+  });
 
   if (!blog) {
-    throw new ApiError("Blog not found", 404);
+    throw new Error("Blog not found");
   }
 
-  return blog as IBlogModel;
+  return blog;
 };
 
 export const deleteBlog = async (blogId: string): Promise<void> => {
