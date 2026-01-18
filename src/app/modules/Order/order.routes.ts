@@ -8,10 +8,7 @@ import {
   deleteOrderHandler,
   getAllOrdersHandler,
   getOrderStatsHandler,
-  getTodayRevenueHandler,
-  getPendingConfirmationsHandler,
-  getTodayBookingsHandler,
-  getTodayDeliveriesHandler,
+  getDashboardStatsHandler,
   getRevenueOverTimeHandler,
   getOrderSummaryHandler,
   updateOrderStatusHandler,
@@ -46,10 +43,7 @@ router.get("/:orderId/invoice/preview", previewInvoiceHandler);
 // ==================== ADMIN ROUTES ====================
 router.get("/admin/all", isAdmin, getAllOrdersHandler); // Get all orders with filters
 router.get("/admin/stats", isAdmin, getOrderStatsHandler); // Get order statistics
-router.get("/admin/revenue/today", isAdmin, getTodayRevenueHandler); // Today's revenue
-router.get("/admin/pending-count", isAdmin, getPendingConfirmationsHandler); // Pending confirmations
-router.get("/admin/bookings/today", isAdmin, getTodayBookingsHandler); // Today's bookings
-router.get("/admin/deliveries/today", isAdmin, getTodayDeliveriesHandler); // Today's deliveries
+router.get("/admin/dashboard-stats", isAdmin, getDashboardStatsHandler); // Get dashboard stats
 router.get("/admin/revenue/over-time", isAdmin, getRevenueOverTimeHandler); // Revenue over time for charts
 router.get("/admin/summary/:orderId", isAdmin, getOrderSummaryHandler); // Order summary with user info
 router.get("/admin/search", isAdmin, searchOrdersHandler); // Search orders

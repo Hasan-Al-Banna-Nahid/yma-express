@@ -734,6 +734,33 @@ export const getTodayDeliveries = async (): Promise<IOrderDocument[]> => {
     .limit(20);
 };
 
+// NEW: Get dashboard stats
+export const getDashboardStats = async (): Promise<{
+  todayRevenue: number;
+  pendingConfirmations: number;
+  todayBookings: IOrderDocument[];
+  todayDeliveries: IOrderDocument[];
+}> => {
+  const [
+    todayRevenue,
+    pendingConfirmations,
+    todayBookings,
+    todayDeliveries,
+  ] = await Promise.all([
+    getTodayRevenue(),
+    getPendingConfirmationsCount(),
+    getTodayBookings(),
+    getTodayDeliveries(),
+  ]);
+
+  return {
+    todayRevenue,
+    pendingConfirmations,
+    todayBookings,
+    todayDeliveries,
+  };
+};
+
 // NEW: Get revenue over time for charts
 export const getRevenueOverTime = async (
   startDate: Date,
