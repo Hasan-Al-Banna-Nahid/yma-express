@@ -3,7 +3,6 @@ import { Request, Response, NextFunction } from "express";
 import asyncHandler from "../utils/asyncHandler";
 import ApiError from "../utils/apiError";
 import { IUser } from "../modules/Auth/user.interface";
-import { protect as verifyAccessToken } from "../modules/Auth/auth.service";
 import jwt from "jsonwebtoken";
 import User from "../modules/Auth/user.model";
 
@@ -34,8 +33,8 @@ export const protectRoute = async (
     }
 
     // 2️⃣ Cookie token (Browser)
-    else if (req.cookies?.token) {
-      token = req.cookies.token;
+    else if (req.cookies?.accessToken) {
+      token = req.cookies.accessToken;
     }
 
     if (!token) {

@@ -10,7 +10,6 @@ import {
   updatePasswordHandler,
   getMe,
   updateMe,
-  protectRoute,
   // NEW IMPORTS
   registerWithVerification,
   verifyEmail,
@@ -18,7 +17,7 @@ import {
   checkVerificationStatus,
 } from "./auth.controller";
 import { upload } from "../../utils/cloudinary.util";
-
+import { protectRoute } from "../../middlewares/auth.middleware";
 const router = express.Router();
 
 // ==================== PUBLIC ROUTES ====================
@@ -30,7 +29,7 @@ router.post("/register", upload.single("photo"), register);
 router.post(
   "/register-with-verification",
   upload.single("photo"),
-  registerWithVerification
+  registerWithVerification,
 );
 
 // Email verification routes

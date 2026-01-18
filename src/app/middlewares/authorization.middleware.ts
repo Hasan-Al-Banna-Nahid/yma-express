@@ -3,8 +3,7 @@ import ApiError from "../utils/apiError";
 import { IUser } from "../modules/Auth/user.interface";
 import mongoose from "mongoose";
 import asyncHandler from "../utils/asyncHandler";
-import { protect as verifyAccessToken } from "../modules/Auth/auth.service";
-
+import { protectRoute as protect } from "@app/middlewares/auth.middleware";
 type AuthenticatedRequest = Request & { user?: IUser };
 
 // ---------------------------------------------
@@ -32,7 +31,7 @@ export const restrictTo = (...allowedRoles: string[]) => {
 export const canManageUser = (
   req: Request,
   _res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   const aReq = req as AuthenticatedRequest;
 
@@ -59,42 +58,42 @@ export const canManageUser = (
 
   next();
 };
-export const protectRoute = asyncHandler(
-  async (req: Request, _res: Response, next: NextFunction) => {
-    const cookieToken = (req as any).cookies?.accessToken as string | undefined;
-    const headerToken = req.headers.authorization?.startsWith("Bearer ")
-      ? req.headers.authorization.split(" ")[1]
-      : undefined;
-
-    let tokenToUse: string | undefined = cookieToken || headerToken;
-
-    // Debug logging
-    console.log("🔐 Auth Debug:", {
-      hasCookieToken: !!cookieToken,
-      hasHeaderToken: !!headerToken,
-      tokenToUse: tokenToUse ? "Present" : "Missing",
-    });
-
-    if (!tokenToUse) throw new ApiError("No token provided", 401);
-
-    const currentUser = await verifyAccessToken(tokenToUse);
-
-    // Debug user info - check if role is present
-    console.log("👤 User Debug:", {
-      userId: currentUser._id,
-      email: currentUser.email,
-      role: currentUser.role,
-      hasRole: !!currentUser.role,
-      isActive: currentUser.active,
-    });
-
-    // Ensure role exists
-    if (!currentUser.role) {
-      console.error("❌ User role is missing!");
-      throw new ApiError("User role not found", 401);
-    }
-
-    (req as AuthenticatedRequest).user = currentUser;
-    next();
-  }
-);
+// export const protectRoute = asyncHandler(
+//   async (req: Request, _res: Response, next: NextFunction) => {
+//     const cookieToken = (req as any).cookies?.accessToken as string | undefined;
+//     const headerToken = req.headers.authorization?.startsWith("Bearer ")
+//       ? req.headers.authorization.split(" ")[1]
+//       : undefined;
+//
+//     let tokenToUse: string | undefined = cookieToken || headerToken;
+//
+//     // Debug logging
+//     console.log("🔐 Auth Debug:", {
+//       hasCookieToken: !!cookieToken,
+//       hasHeaderToken: !!headerToken,
+//       tokenToUse: tokenToUse ? "Present" : "Missing",
+//     });
+//
+//     if (!tokenToUse) throw new ApiError("No token provided", 401);
+//
+//     const currentUser = await verifyAccessToken(tokenToUse);
+//
+//     // Debug user info - check if role is present
+//     console.log("👤 User Debug:", {
+//       userId: currentUser._id,
+//       email: currentUser.email,
+//       role: currentUser.role,
+//       hasRole: !!currentUser.role,
+//       isActive: currentUser.active,
+//     });
+//
+//     // Ensure role exists
+//     if (!currentUser.role) {
+//       console.error("❌ User role is missing!");
+//       throw new ApiError("User role not found", 401);
+//     }
+//
+//     (req as AuthenticatedRequest).user = currentUser;
+//     next();
+//   }
+// );

@@ -1,356 +1,247 @@
-import { Request, Response, NextFunction } from "express";
-import { CustomerService, CustomerFilterOptions } from "./customer.service";
+import { Request, Response } from "express";
+import asyncHandler from "../../utils/asyncHandler";
+import ApiError from "../../utils/apiError";
+import { ApiResponse } from "../../utils/apiResponse";
+import * as customerService from "./customer.service";
 import mongoose from "mongoose";
 
-export class CustomerController {
-  // Get all customers with filters
-  static async getAllCustomers(
-    req: Request,
-    res: Response,
-    next: NextFunction
-  ) {
-    try {
-      const {
-        search,
-        phone,
-        name,
-        email,
-        city,
-        tags,
-        minOrders,
-        maxOrders,
-        minSpent,
-        maxSpent,
-        startDate,
-        endDate,
-        isFavorite,
-        page = "1",
-        limit = "10",
-        sortBy = "lastOrderDate",
-        sortOrder = "desc",
-      } = req.query;
+export const getAllCustomersHandler = asyncHandler(
+  async (req: Request, res: Response) => {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 20;
 
-      const filters: CustomerFilterOptions = {
-        search: search as string,
-        phone: phone as string,
-        name: name as string,
-        email: email as string,
-        city: city as string,
-        tags: tags ? (tags as string).split(",") : undefined,
-        minOrders: minOrders ? parseInt(minOrders as string) : undefined,
-        maxOrders: maxOrders ? parseInt(maxOrders as string) : undefined,
-        minSpent: minSpent ? parseFloat(minSpent as string) : undefined,
-        maxSpent: maxSpent ? parseFloat(maxSpent as string) : undefined,
-        startDate: startDate ? new Date(startDate as string) : undefined,
-        endDate: endDate ? new Date(endDate as string) : undefined,
-        isFavorite:
-          isFavorite === "true"
-            ? true
-            : isFavorite === "false"
+    const filters = {
+      search: req.query.search as string,
+      phone: req.query.phone as string,
+      email: req.query.email as string,
+      name: req.query.name as string,
+      city: req.query.city as string,
+      postcode: req.query.postcode as string,
+      customerType: req.query.customerType as "retail" | "corporate",
+      tags: req.query.tags ? (req.query.tags as string).split(",") : undefined,
+      minOrders: req.query.minOrders
+        ? parseInt(req.query.minOrders as string)
+        : undefined,
+      maxOrders: req.query.maxOrders
+        ? parseInt(req.query.maxOrders as string)
+        : undefined,
+      minSpent: req.query.minSpent
+        ? parseFloat(req.query.minSpent as string)
+        : undefined,
+      maxSpent: req.query.maxSpent
+        ? parseFloat(req.query.maxSpent as string)
+        : undefined,
+      startDate: req.query.startDate
+        ? new Date(req.query.startDate as string)
+        : undefined,
+      endDate: req.query.endDate
+        ? new Date(req.query.endDate as string)
+        : undefined,
+      isFavorite:
+        req.query.isFavorite === "true"
+          ? true
+          : req.query.isFavorite === "false"
             ? false
             : undefined,
-        page: parseInt(page as string),
-        limit: parseInt(limit as string),
-        sortBy: sortBy as string,
-        sortOrder: sortOrder as "asc" | "desc",
-      };
+      hasNotes:
+        req.query.hasNotes === "true"
+          ? true
+          : req.query.hasNotes === "false"
+            ? false
+            : undefined,
+    };
 
-      const result = await CustomerService.getAllCustomers(filters);
+    const result = await customerService.getAllCustomers(page, limit, filters);
 
-      res.status(200).json({
-        success: true,
-        data: result,
-      });
-    } catch (error) {
-      next(error);
+    ApiResponse(res, 200, "Customers retrieved successfully", result);
+  },
+);
+
+export const getCustomerByIdHandler = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { id } = req.params;
+
+    const customer = await customerService.getCustomerById(id);
+
+    ApiResponse(res, 200, "Customer retrieved successfully", { customer });
+  },
+);
+
+export const getCustomerByUserIdHandler = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { userId } = req.params;
+
+    const customer = await customerService.getCustomerByUserId(userId);
+
+    ApiResponse(res, 200, "Customer retrieved successfully", { customer });
+  },
+);
+
+export const searchCustomersHandler = asyncHandler(
+  async (req: Request, res: Response) => {
+    const searchTerm = req.query.q as string;
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 20;
+
+    if (!searchTerm || searchTerm.trim().length < 2) {
+      throw new ApiError("Search term must be at least 2 characters", 400);
     }
-  }
 
-  // Get customer by ID with order history
-  static async getCustomerById(
-    req: Request,
-    res: Response,
-    next: NextFunction
-  ) {
-    try {
-      const { id } = req.params;
+    const result = await customerService.searchCustomers(
+      searchTerm,
+      page,
+      limit,
+    );
 
-      if (!mongoose.Types.ObjectId.isValid(id)) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid customer ID",
-        });
-      }
+    ApiResponse(res, 200, "Customers search results", result);
+  },
+);
 
-      const customerData = await CustomerService.getCustomerById(id);
+export const getCustomerOrderHistoryHandler = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { customerId } = req.params;
 
-      if (!customerData) {
-        return res.status(404).json({
-          success: false,
-          message: "Customer not found",
-        });
-      }
+    const result = await customerService.getCustomerOrderHistory(customerId);
 
-      res.status(200).json({
-        success: true,
-        data: customerData,
-      });
-    } catch (error) {
-      next(error);
+    ApiResponse(res, 200, "Customer order history retrieved", result);
+  },
+);
+
+export const getCustomerStatsHandler = asyncHandler(
+  async (req: Request, res: Response) => {
+    const stats = await customerService.getCustomerStats();
+
+    ApiResponse(res, 200, "Customer statistics retrieved", stats);
+  },
+);
+
+export const updateCustomerHandler = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const updateData = req.body;
+
+    // Validate ObjectId
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      throw new ApiError("Invalid customer ID", 400);
     }
-  }
 
-  // Update customer
-  static async updateCustomer(req: Request, res: Response, next: NextFunction) {
-    try {
-      const { id } = req.params;
-      const updateData = req.body;
+    const customer = await customerService.updateCustomer(id, updateData);
 
-      if (!mongoose.Types.ObjectId.isValid(id)) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid customer ID",
-        });
-      }
+    ApiResponse(res, 200, "Customer updated successfully", { customer });
+  },
+);
 
-      const updatedCustomer = await CustomerService.updateCustomer(
-        id,
-        updateData
-      );
+export const deleteCustomerHandler = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { id } = req.params;
 
-      if (!updatedCustomer) {
-        return res.status(404).json({
-          success: false,
-          message: "Customer not found",
-        });
-      }
-
-      res.status(200).json({
-        success: true,
-        data: updatedCustomer,
-      });
-    } catch (error) {
-      next(error);
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      throw new ApiError("Invalid customer ID", 400);
     }
-  }
 
-  // Toggle favorite status
-  static async toggleFavorite(req: Request, res: Response, next: NextFunction) {
-    try {
-      const { id } = req.params;
+    await customerService.deleteCustomer(id);
 
-      if (!mongoose.Types.ObjectId.isValid(id)) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid customer ID",
-        });
-      }
+    ApiResponse(res, 200, "Customer deleted successfully");
+  },
+);
 
-      const updatedCustomer = await CustomerService.toggleFavorite(id);
+export const getCustomersByDateRangeHandler = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { startDate, endDate } = req.query;
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 50;
 
-      if (!updatedCustomer) {
-        return res.status(404).json({
-          success: false,
-          message: "Customer not found",
-        });
-      }
-
-      res.status(200).json({
-        success: true,
-        data: updatedCustomer,
-        message: `Customer ${
-          updatedCustomer.isFavorite ? "added to" : "removed from"
-        } favorites`,
-      });
-    } catch (error) {
-      next(error);
+    if (!startDate || !endDate) {
+      throw new ApiError("startDate and endDate are required", 400);
     }
-  }
 
-  // Add tag to customer
-  static async addTag(req: Request, res: Response, next: NextFunction) {
-    try {
-      const { id } = req.params;
-      const { tag } = req.body;
+    const result = await customerService.getCustomersByDateRange(
+      new Date(startDate as string),
+      new Date(endDate as string),
+      page,
+      limit,
+    );
 
-      if (!mongoose.Types.ObjectId.isValid(id)) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid customer ID",
-        });
-      }
+    ApiResponse(res, 200, "Customers by date range", result);
+  },
+);
 
-      if (!tag || typeof tag !== "string") {
-        return res.status(400).json({
-          success: false,
-          message: "Tag is required and must be a string",
-        });
-      }
+export const toggleFavoriteHandler = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { id } = req.params;
 
-      const updatedCustomer = await CustomerService.addTag(id, tag.trim());
+    const customer = await customerService.toggleFavorite(id);
 
-      if (!updatedCustomer) {
-        return res.status(404).json({
-          success: false,
-          message: "Customer not found",
-        });
-      }
+    ApiResponse(res, 200, "Customer favorite status updated", { customer });
+  },
+);
 
-      res.status(200).json({
-        success: true,
-        data: updatedCustomer,
-        message: "Tag added successfully",
-      });
-    } catch (error) {
-      next(error);
+export const addCustomerTagHandler = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const { tag } = req.body;
+
+    if (!tag || tag.trim().length === 0) {
+      throw new ApiError("Tag is required", 400);
     }
-  }
 
-  // Remove tag from customer
-  static async removeTag(req: Request, res: Response, next: NextFunction) {
-    try {
-      const { id } = req.params;
-      const { tag } = req.body;
+    const customer = await customerService.addCustomerTag(id, tag.trim());
 
-      if (!mongoose.Types.ObjectId.isValid(id)) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid customer ID",
-        });
-      }
+    ApiResponse(res, 200, "Tag added to customer", { customer });
+  },
+);
 
-      if (!tag || typeof tag !== "string") {
-        return res.status(400).json({
-          success: false,
-          message: "Tag is required and must be a string",
-        });
-      }
+export const removeCustomerTagHandler = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const { tag } = req.body;
 
-      const updatedCustomer = await CustomerService.removeTag(id, tag.trim());
-
-      if (!updatedCustomer) {
-        return res.status(404).json({
-          success: false,
-          message: "Customer not found",
-        });
-      }
-
-      res.status(200).json({
-        success: true,
-        data: updatedCustomer,
-        message: "Tag removed successfully",
-      });
-    } catch (error) {
-      next(error);
+    if (!tag || tag.trim().length === 0) {
+      throw new ApiError("Tag is required", 400);
     }
-  }
 
-  // Get customer statistics
-  static async getCustomerStats(
-    req: Request,
-    res: Response,
-    next: NextFunction
-  ) {
-    try {
-      const stats = await CustomerService.getCustomerStats();
+    const customer = await customerService.removeCustomerTag(id, tag.trim());
 
-      res.status(200).json({
-        success: true,
-        data: stats,
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
+    ApiResponse(res, 200, "Tag removed from customer", { customer });
+  },
+);
 
-  // Search customers
-  static async searchCustomers(
-    req: Request,
-    res: Response,
-    next: NextFunction
-  ) {
-    try {
-      const { term } = req.query;
+export const getCustomerAnalyticsHandler = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { startDate, endDate } = req.query;
 
-      if (!term || typeof term !== "string") {
-        return res.status(400).json({
-          success: false,
-          message: "Search term is required",
-        });
-      }
+    const today = new Date();
+    const thirtyDaysAgo = new Date(today);
+    thirtyDaysAgo.setDate(today.getDate() - 30);
 
-      const customers = await CustomerService.searchCustomers(term.trim());
+    const start = startDate ? new Date(startDate as string) : thirtyDaysAgo;
+    const end = endDate ? new Date(endDate as string) : today;
 
-      res.status(200).json({
-        success: true,
-        data: customers,
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
+    // Get customer stats
+    const stats = await customerService.getCustomerStats();
 
-  // Delete customer
-  static async deleteCustomer(req: Request, res: Response, next: NextFunction) {
-    try {
-      const { id } = req.params;
+    // Get customers by date range
+    const customersByDate = await customerService.getCustomersByDateRange(
+      start,
+      end,
+      1,
+      1000,
+    );
 
-      if (!mongoose.Types.ObjectId.isValid(id)) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid customer ID",
-        });
-      }
+    // Calculate customer growth
+    const customerGrowth = {
+      total: stats.totalCustomers,
+      newToday: stats.newCustomersToday,
+      repeatRate:
+        stats.totalCustomers > 0
+          ? (stats.repeatCustomers / stats.totalCustomers) * 100
+          : 0,
+    };
 
-      const deleted = await CustomerService.deleteCustomer(id);
-
-      if (!deleted) {
-        return res.status(404).json({
-          success: false,
-          message: "Customer not found",
-        });
-      }
-
-      res.status(200).json({
-        success: true,
-        message: "Customer deleted successfully",
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  // Get customer by user ID
-  static async getCustomerByUserId(
-    req: Request,
-    res: Response,
-    next: NextFunction
-  ) {
-    try {
-      const { userId } = req.params;
-
-      if (!mongoose.Types.ObjectId.isValid(userId)) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid user ID",
-        });
-      }
-
-      const customer = await CustomerService.getCustomerByUserId(userId);
-
-      if (!customer) {
-        return res.status(404).json({
-          success: false,
-          message: "Customer not found",
-        });
-      }
-
-      res.status(200).json({
-        success: true,
-        data: customer,
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
-}
+    ApiResponse(res, 200, "Customer analytics retrieved", {
+      stats,
+      customerGrowth,
+      recentCustomers: customersByDate.data.slice(0, 10),
+    });
+  },
+);
