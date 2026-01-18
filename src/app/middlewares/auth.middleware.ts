@@ -20,51 +20,56 @@ declare global {
 export const protectRoute = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
-    // 1. Get token from header
     let token;
-    const authHeader = req.headers.authorization;
 
-    if (authHeader && authHeader.startsWith("Bearer ")) {
-      token = authHeader.split(" ")[1];
+    // 1️⃣ Bearer token (Postman / mobile / API)
+    if (
+      req.headers.authorization &&
+      req.headers.authorization.startsWith("Bearer ")
+    ) {
+      token = req.headers.authorization.split(" ")[1];
     }
 
-    // Check if token exists
+    // 2️⃣ Cookie token (Browser)
+    else if (req.cookies?.token) {
+      token = req.cookies.token;
+    }
+
     if (!token) {
       return next(
-        new ApiError("You are not logged in. Please log in to get access.", 401)
+        new ApiError(
+          "You are not logged in. Please log in to get access.",
+          401,
+        ),
       );
     }
 
-    // 2. Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET!) as {
       id: string;
       iat: number;
       exp: number;
     };
 
-    // 3. Check if user still exists
     const user = await User.findById(decoded.id).select("+active");
 
     if (!user) {
       return next(
-        new ApiError("The user belonging to this token no longer exists.", 401)
+        new ApiError("The user belonging to this token no longer exists.", 401),
       );
     }
 
-    // 4. Check if user changed password after token was issued
     if (user.changedPasswordAfter(decoded.iat)) {
       return next(
         new ApiError(
           "User recently changed password. Please log in again.",
-          401
-        )
+          401,
+        ),
       );
     }
 
-    // 5. Grant access to protected route
     req.user = user;
     next();
   } catch (error: any) {
@@ -73,7 +78,7 @@ export const protectRoute = async (
     }
     if (error.name === "TokenExpiredError") {
       return next(
-        new ApiError("Your token has expired. Please log in again!", 401)
+        new ApiError("Your token has expired. Please log in again!", 401),
       );
     }
     next(error);
@@ -101,7 +106,7 @@ export function restrictTo(...roles: Array<IUser["role"]>) {
         `Unauthorized - Required roles: ${roles.join(", ")}, Your role: ${
           aReq.user.role
         }`,
-        403
+        403,
       );
     }
     next();
