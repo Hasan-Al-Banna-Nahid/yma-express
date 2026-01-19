@@ -712,8 +712,7 @@ export const getTodayBookings = async (): Promise<IOrderDocument[]> => {
   })
     .populate("user", "name email phone")
     .populate("items.product", "name imageCover price")
-    .sort({ createdAt: -1 })
-    .limit(20);
+    .sort({ createdAt: -1 });
 };
 
 // NEW: Get today's deliveries
@@ -730,16 +729,15 @@ export const getTodayDeliveries = async (): Promise<IOrderDocument[]> => {
   })
     .populate("user", "name email phone")
     .populate("items.product", "name imageCover price")
-    .sort({ deliveryDate: -1 })
-    .limit(20);
+    .sort({ deliveryDate: -1 });
 };
 
 // NEW: Get dashboard stats
 export const getDashboardStats = async (): Promise<{
   todayRevenue: number;
   pendingConfirmations: number;
-  todayBookings: IOrderDocument[];
-  todayDeliveries: IOrderDocument[];
+  todayBookings: number;
+  todayDeliveries: number;
 }> => {
   const [
     todayRevenue,
@@ -749,8 +747,8 @@ export const getDashboardStats = async (): Promise<{
   ] = await Promise.all([
     getTodayRevenue(),
     getPendingConfirmationsCount(),
-    getTodayBookings(),
-    getTodayDeliveries(),
+    (await getTodayBookings()).length,
+    (await getTodayDeliveries()).length,
   ]);
 
   return {
