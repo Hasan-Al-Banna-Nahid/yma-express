@@ -3,13 +3,18 @@ import * as adminController from "./admin.controller";
 import { protectRoute } from "../../middlewares/auth.middleware";
 import { isAdmin } from "../../middlewares/role.middleware";
 import { upload } from "../../utils/cloudinary.util";
+import { updateAdminSettings } from "./admin.controller";
 
 const router = express.Router();
 
 // Protect all admin routes
 router.use(protectRoute);
 router.use(isAdmin);
-
+router.put(
+  "/settings",
+  upload.array("photo", 1), // Accept single file with field name 'photo'
+  updateAdminSettings,
+);
 // ==================== USER MANAGEMENT ====================
 router.get("/users", adminController.getAllUsers);
 router.get("/users/:id", adminController.getUserById);

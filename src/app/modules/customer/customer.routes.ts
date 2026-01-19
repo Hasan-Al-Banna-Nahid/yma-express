@@ -1,31 +1,46 @@
 import express from "express";
-import { CustomerController } from "./customer.controller";
-import { restrictTo } from "../../middlewares/authorization.middleware";
+import {
+  getAllCustomersHandler,
+  getCustomerByIdHandler,
+  getCustomerByUserIdHandler,
+  searchCustomersHandler,
+  getCustomerOrderHistoryHandler,
+  getCustomerStatsHandler,
+  updateCustomerHandler,
+  deleteCustomerHandler,
+  getCustomersByDateRangeHandler,
+  toggleFavoriteHandler,
+  addCustomerTagHandler,
+  removeCustomerTagHandler,
+  getCustomerAnalyticsHandler,
+} from "./customer.controller";
 import { protectRoute } from "../../middlewares/auth.middleware";
+import { restrictTo } from "../../middlewares/authorization.middleware";
 const router = express.Router();
 
-// Public routes
-router.get("/search", CustomerController.searchCustomers);
+// Public routes (with authentication)
+router.get(
+  "/search",
+  protectRoute,
+  restrictTo("admin", "superadmin"),
+  searchCustomersHandler,
+);
 
-// Protected routes (require authentication)
+// Protected routes for admins/superadmins only
 router.use(protectRoute);
-
-// Admin only routes
 router.use(restrictTo("admin", "superadmin"));
 
-// Customer management
-router.get("/", CustomerController.getAllCustomers);
-router.get("/stats", CustomerController.getCustomerStats);
-router.get("/user/:userId", CustomerController.getCustomerByUserId);
-
-// Customer CRUD operations
-router.get("/:id", CustomerController.getCustomerById);
-router.put("/:id", CustomerController.updateCustomer);
-router.delete("/:id", CustomerController.deleteCustomer);
-
-// Customer actions
-router.patch("/:id/favorite", CustomerController.toggleFavorite);
-router.post("/:id/tags", CustomerController.addTag);
-router.delete("/:id/tags", CustomerController.removeTag);
+router.get("/", getAllCustomersHandler);
+router.get("/stats", getCustomerStatsHandler);
+router.get("/analytics", getCustomerAnalyticsHandler);
+router.get("/date-range", getCustomersByDateRangeHandler);
+router.get("/:id", getCustomerByIdHandler);
+router.get("/user/:userId", getCustomerByUserIdHandler);
+router.get("/:customerId/orders", getCustomerOrderHistoryHandler);
+router.put("/:id", updateCustomerHandler);
+router.delete("/:id", deleteCustomerHandler);
+router.patch("/:id/favorite", toggleFavoriteHandler);
+router.post("/:id/tags", addCustomerTagHandler);
+router.delete("/:id/tags", removeCustomerTagHandler);
 
 export default router;

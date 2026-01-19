@@ -33,14 +33,16 @@ import { AuthenticatedRequest } from "../../middlewares/auth.middleware"; // Imp
 export const setAuthCookies = (
   res: Response,
   accessToken: string,
-  refreshToken: string
+  refreshToken: string,
 ) => {
+  const isProd = process.env.NODE_ENV === "production";
+
   res.cookie("accessToken", accessToken, {
     httpOnly: true,
-    secure: true,
-    sameSite: "none",
+    secure: isProd, // ❗ important
+    sameSite: isProd ? "none" : "lax",
     path: "/",
-    maxAge: 60 * 60 * 1000, // 1h
+    maxAge: 60 * 60 * 1000,
   });
 
   res.cookie("refreshToken", refreshToken, {
@@ -118,7 +120,7 @@ export const refreshTokenHandler = asyncHandler(
 
     // Find user with hashed token
     const user = await User.findById(payload.id).select(
-      "+refreshTokenHash +refreshTokenExpiresAt"
+      "+refreshTokenHash +refreshTokenExpiresAt",
     );
     if (!user) throw new ApiError("User not found", 401);
 
@@ -154,7 +156,7 @@ export const refreshTokenHandler = asyncHandler(
       user: sanitizeUser(user),
       tokens: rotated,
     });
-  }
+  },
 );
 
 // ---------------- public: forgot password ----------------
@@ -178,7 +180,7 @@ export const forgotPasswordHandler = asyncHandler(
           message: "Check your email for reset instructions",
           note: "If you don't see the email, check your spam folder",
           expiresIn: "10 minutes",
-        }
+        },
       );
     } catch (error: any) {
       // Still return success for security (don't reveal if email exists)
@@ -192,10 +194,10 @@ export const forgotPasswordHandler = asyncHandler(
           message: "Check your email for reset instructions",
           note: "If you don't see the email, check your spam folder",
           expiresIn: "10 minutes",
-        }
+        },
       );
     }
-  }
+  },
 );
 // In auth.controller.ts - add this function
 export const verifyResetToken = asyncHandler(
@@ -232,7 +234,7 @@ export const verifyResetToken = asyncHandler(
         ? Math.floor((user.passwordResetExpires.getTime() - Date.now()) / 60000)
         : 0, // minutes remaining
     });
-  }
+  },
 );
 // In auth.controller.ts - create this function
 // Add this function to your auth.controller.ts
@@ -529,7 +531,7 @@ export const renderResetPage = asyncHandler(
     `;
 
     res.send(html);
-  }
+  },
 );
 // ---------------- public: render reset page ----------------
 export async function renderResetPasswordPage(req: Request, res: Response) {
@@ -642,7 +644,7 @@ export const resetPasswordHandler = asyncHandler(
       redirectTo: `${process.env.FRONTEND_URL}/login?reset=success`,
       timestamp: new Date().toISOString(),
     });
-  }
+  },
 );
 
 // ---------------- protected: update password ----------------
@@ -656,7 +658,7 @@ export const updatePasswordHandler = asyncHandler(
       aReq.user.id,
       currentPassword,
       newPassword,
-      newPasswordConfirm
+      newPasswordConfirm,
     );
 
     // Invalidate old refresh and rotate
@@ -671,7 +673,7 @@ export const updatePasswordHandler = asyncHandler(
       user: sanitizeUser(user),
       tokens: rotated,
     });
-  }
+  },
 );
 
 // ---------------- protected: me ----------------
@@ -725,7 +727,7 @@ export const updateMe = asyncHandler(async (req: Request, res: Response) => {
   }
 
   let userDoc = await User.findById(aReq.user.id).select(
-    "+password +refreshTokenHash +refreshTokenExpiresAt"
+    "+password +refreshTokenHash +refreshTokenExpiresAt",
   );
   if (!userDoc) throw new ApiError("User not found", 404);
 
@@ -742,7 +744,7 @@ export const updateMe = asyncHandler(async (req: Request, res: Response) => {
     if (!currentPassword || !newPassword || !newPasswordConfirm) {
       throw new ApiError(
         "To change password, provide currentPassword, newPassword and newPasswordConfirm.",
-        400
+        400,
       );
     }
 
@@ -797,7 +799,7 @@ export const protectRoute = asyncHandler(
     const currentUser = await verifyAccessTokenService(tokenToUse);
     (req as AuthenticatedRequest).user = currentUser;
     next();
-  }
+  },
 );
 
 /* =========================
@@ -833,7 +835,7 @@ export const registerWithVerification = asyncHandler(
       name,
       email,
       password,
-      photo
+      photo,
     );
 
     ApiResponse(
@@ -846,9 +848,9 @@ export const registerWithVerification = asyncHandler(
           "Verification email sent. Please check your inbox (and spam folder).",
         hasTemporaryPassword: !!result.temporaryPassword,
         expiresIn: "24 hours",
-      }
+      },
     );
-  }
+  },
 );
 
 /* =========================
@@ -1273,7 +1275,7 @@ export const resendVerification = asyncHandler(
       expiresIn: "24 hours",
       rateLimit: "Maximum 3 requests per hour",
     });
-  }
+  },
 );
 
 /* =========================
@@ -1288,7 +1290,7 @@ export const checkVerificationStatus = asyncHandler(
     }
 
     const user = await User.findOne({ email }).select(
-      "email name isEmailVerified verificationAttempts createdAt"
+      "email name isEmailVerified verificationAttempts createdAt",
     );
 
     if (!user) {
@@ -1301,7 +1303,7 @@ export const checkVerificationStatus = asyncHandler(
           exists: false, // For internal use only
           message:
             "If your email exists and is not verified, you can request a new verification link.",
-        }
+        },
       );
     }
 
@@ -1316,7 +1318,7 @@ export const checkVerificationStatus = asyncHandler(
         ? "Email is already verified. You can login normally."
         : "Email is not verified. Please check your inbox for verification link.",
     });
-  }
+  },
 );
 // ---------------- public: logout ----------------
 export const logout = asyncHandler(async (req: Request, res: Response) => {

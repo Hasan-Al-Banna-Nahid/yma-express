@@ -1,4 +1,4 @@
-import { Request, Response } from "express";
+import { NextFunction, Request, Response } from "express";
 import mongoose from "mongoose";
 import asyncHandler from "../../utils/asyncHandler";
 import ApiError from "../../utils/apiError";
@@ -6,12 +6,169 @@ import { ApiResponse } from "../../utils/apiResponse";
 import User from "../Auth/user.model";
 import { uploadToCloudinary } from "../../utils/cloudinary.util";
 import Order from "../Order/order.model"; // Import your Order model
+import fs from "fs";
+import path from "path";
 
 type AuthenticatedRequest = Request & { user: any };
 
 // ==================== ADMIN USER MANAGEMENT ====================
 // ==================== ORDER STATISTICS ====================
 
+// Assuming you have cloudinary setup
+
+// Define the update fields interface
+interface IUpdateAdminSettings {
+  name?: string;
+  email?: string;
+  photo?: string;
+}
+
+export const updateAdminSettings = asyncHandler(
+  async (req: Request, res: Response, next: NextFunction) => {
+    // Get user ID from authenticated request
+    const userId = (req as any).user._id;
+
+    // Find the user
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return next(new ApiError("User not found", 404));
+    }
+
+    // Extract allowed fields from request body
+    const { firstName, lastName, name, email } = req.body;
+
+    // Prepare update data
+    const updateData: IUpdateAdminSettings = {};
+
+    // Handle name update
+    // Option 1: If using separate first/last name
+    if (firstName || lastName) {
+      updateData.name = `${firstName || ""} ${lastName || ""}`.trim();
+    }
+    // Option 2: If using single name field directly
+    else if (name && name !== user.name) {
+      updateData.name = name.trim();
+    }
+
+    // Handle email update with validation
+    if (email && email !== user.email) {
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return next(new ApiError("Please provide a valid email address", 400));
+      }
+
+      // Check if email already exists for another user
+      const existingUser = await User.findOne({
+        email: email.toLowerCase(),
+        _id: { $ne: userId },
+      });
+
+      if (existingUser) {
+        return next(new ApiError("Email already in use", 400));
+      }
+
+      updateData.email = email.toLowerCase();
+      // Optional: Mark email as unverified when changed
+      // updateData.isEmailVerified = false;
+    }
+
+    // Handle photo upload from multer files
+    if (req.files && Array.isArray(req.files) && req.files.length > 0) {
+      try {
+        const file = req.files[0] as Express.Multer.File;
+
+        // Validate file type
+        const allowedMimeTypes = [
+          "image/jpeg",
+          "image/png",
+          "image/jpg",
+          "image/gif",
+          "image/webp",
+        ];
+        if (!allowedMimeTypes.includes(file.mimetype)) {
+          return next(new ApiError("Only image files are allowed!", 400));
+        }
+
+        // Validate file size (max 10MB)
+        const maxSize = 10 * 1024 * 1024; // 10MB
+        if (file.size > maxSize) {
+          return next(new ApiError("File size must be less than 10MB", 400));
+        }
+
+        // Upload to Cloudinary using your uploadToCloudinary function
+        // Since you're using multer-storage-cloudinary, the file is already uploaded
+        // and the URL is stored in file.path
+
+        if (file.path && typeof file.path === "string") {
+          updateData.photo = file.path; // Cloudinary URL is already in file.path
+        } else {
+          // Fallback: If file.path doesn't exist, upload using buffer
+          const uploadResult = await uploadToCloudinary(
+            file.buffer,
+            "admin-profiles",
+          );
+          updateData.photo = uploadResult;
+        }
+      } catch (error: any) {
+        console.error("Error uploading photo:", error);
+        return next(
+          new ApiError(`Failed to upload profile photo: ${error.message}`, 500),
+        );
+      }
+    }
+    // Alternative: Handle photo as base64 string from request body
+    else if (req.body.photo && req.body.photo.startsWith("data:image/")) {
+      try {
+        const uploadResult = await uploadToCloudinary(
+          req.body.photo,
+          "admin-profiles",
+        );
+        updateData.photo = uploadResult;
+      } catch (error: any) {
+        return next(
+          new ApiError(`Failed to upload photo: ${error.message}`, 500),
+        );
+      }
+    }
+
+    // If no data to update
+    if (Object.keys(updateData).length === 0) {
+      return next(new ApiError("No fields to update", 400));
+    }
+
+    // Update the user (only allowed fields)
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { $set: updateData }, // Only update specified fields
+      {
+        new: true,
+        runValidators: true,
+        context: "query", // This helps with validation
+      },
+    ).select(
+      "-password -refreshTokenHash -passwordResetToken -emailVerificationToken",
+    );
+
+    if (!updatedUser) {
+      return next(new ApiError("Failed to update user settings", 500));
+    }
+
+    // Send response
+    ApiResponse(res, 200, "Admin settings updated successfully", {
+      user: {
+        id: updatedUser._id,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        photo: updatedUser.photo,
+        role: updatedUser.role,
+        isEmailVerified: updatedUser.isEmailVerified,
+        active: updatedUser.active,
+      },
+    });
+  },
+);
 export const getOrderStatistics = asyncHandler(
   async (req: Request, res: Response) => {
     const today = new Date();
@@ -94,7 +251,7 @@ export const getOrderStatistics = asyncHandler(
       },
       timestamp: new Date(),
     });
-  }
+  },
 );
 
 // ==================== DASHBOARD SUMMARY ====================
@@ -194,7 +351,7 @@ export const getDashboardSummary = asyncHandler(
         })),
       },
     });
-  }
+  },
 );
 // Get all users with pagination
 export const getAllUsers = asyncHandler(async (req: Request, res: Response) => {
@@ -408,7 +565,7 @@ export const activateUser = asyncHandler(
     await user.save();
 
     ApiResponse(res, 200, "User activated successfully");
-  }
+  },
 );
 
 // Change user password (admin can reset password)
@@ -436,7 +593,7 @@ export const changeUserPassword = asyncHandler(
     await user.save();
 
     ApiResponse(res, 200, "Password updated successfully");
-  }
+  },
 );
 
 // ==================== ADMIN STATISTICS ====================
@@ -482,7 +639,7 @@ export const getSystemStats = asyncHandler(
         },
       },
     });
-  }
+  },
 );
 
 // Get user activity summary
@@ -536,7 +693,7 @@ export const getUserActivity = asyncHandler(
       usersByRole,
       activeStatus,
     });
-  }
+  },
 );
 // ==================== ROLE MANAGEMENT ====================
 
@@ -592,7 +749,7 @@ export const changeUserRole = asyncHandler(
     ApiResponse(res, 200, "User role updated successfully", {
       user: userResponse,
     });
-  }
+  },
 );
 
 // Bulk change roles
@@ -622,7 +779,7 @@ export const bulkChangeRoles = asyncHandler(
 
     // Validate all IDs
     const invalidIds = userIds.filter(
-      (id: string) => !mongoose.Types.ObjectId.isValid(id)
+      (id: string) => !mongoose.Types.ObjectId.isValid(id),
     );
     if (invalidIds.length > 0) {
       throw new ApiError(`Invalid user IDs: ${invalidIds.join(", ")}`, 400);
@@ -647,7 +804,7 @@ export const bulkChangeRoles = asyncHandler(
         role: user.role,
       })),
     });
-  }
+  },
 );
 
 // Get all users by specific role
@@ -686,7 +843,7 @@ export const getUsersByRole = asyncHandler(
         pages: Math.ceil(total / Number(limit)),
       },
     });
-  }
+  },
 );
 
 // Get role statistics
@@ -721,5 +878,5 @@ export const getRoleStats = asyncHandler(
     ApiResponse(res, 200, "Role statistics retrieved", {
       stats: roleStats,
     });
-  }
+  },
 );
