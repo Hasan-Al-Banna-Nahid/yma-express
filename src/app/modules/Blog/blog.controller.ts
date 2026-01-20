@@ -3,7 +3,7 @@ import asyncHandler from "../../utils/asyncHandler";
 import * as blogService from "./blog.service";
 import ApiError from "../../utils/apiError";
 import { uploadToCloudinary } from "../../utils/cloudinary.util";
-import { BlogFilter } from "./blog.interface";
+import { BlogFilter, BlogStatus } from "./blog.interface";
 
 export const createBlog = asyncHandler(async (req: Request, res: Response) => {
   const {
@@ -105,17 +105,22 @@ export const updateBlog = asyncHandler(async (req: Request, res: Response) => {
   });
 });
 
-// Get all blogs with filters and pagination
 export const getAllBlogs = asyncHandler(async (req: Request, res: Response) => {
+  console.log("=== CONTROLLER DEBUG ===");
+  console.log("Raw req.query:", req.query);
+
   const page = parseInt(req.query.page as string) || 1;
   const limit = parseInt(req.query.limit as string) || 10;
 
   // Build filters from query params
   const filters: BlogFilter = {};
 
-  // Status filter
-  if (req.query.status) {
-    filters.status = req.query.status as any;
+  // Handle "all" status
+  if (req.query.status && req.query.status !== "all") {
+    const validStatuses = ["draft", "published", "archived", "scheduled"];
+    if (validStatuses.includes(req.query.status as string)) {
+      filters.status = req.query.status as BlogStatus;
+    }
   }
 
   // Category filter
@@ -123,39 +128,67 @@ export const getAllBlogs = asyncHandler(async (req: Request, res: Response) => {
     filters.category = req.query.category as string;
   }
 
-  // Author filter
+  // Author filter (can be author ID or author name)
   if (req.query.author) {
     filters.author = req.query.author as string;
   }
 
   // Tags filter
   if (req.query.tags) {
-    const tags = req.query.tags as string;
-    filters.tags = tags.split(",").map((tag) => tag.trim());
+    const tags = (req.query.tags as string)
+      .split(",")
+      .map((tag) => tag.trim())
+      .filter((tag) => tag.length > 0);
+    if (tags.length > 0) {
+      filters.tags = tags;
+    }
   }
 
   // Featured filter
-  if (req.query.featured) {
+  if (req.query.featured !== undefined) {
     filters.isFeatured = req.query.featured === "true";
   }
 
-  // Search filter
-  if (req.query.search) {
-    filters.search = req.query.search as string;
+  // Search filter - support multiple parameter names
+  if (req.query.search || req.query.name || req.query.q) {
+    const searchTerm = (req.query.search ||
+      req.query.name ||
+      req.query.q) as string;
+    if (searchTerm.trim()) {
+      filters.search = searchTerm.trim();
+    }
   }
 
   // Date range filters
   if (req.query.startDate) {
-    filters.startDate = new Date(req.query.startDate as string);
-  }
-  if (req.query.endDate) {
-    filters.endDate = new Date(req.query.endDate as string);
+    const startDate = new Date(req.query.startDate as string);
+    if (!isNaN(startDate.getTime())) {
+      filters.startDate = startDate;
+    }
   }
 
-  // Published only filter (default true for public)
+  if (req.query.endDate) {
+    const endDate = new Date(req.query.endDate as string);
+    if (!isNaN(endDate.getTime())) {
+      filters.endDate = endDate;
+    }
+  }
+
+  // Published only filter
   if (req.query.publishedOnly !== undefined) {
     filters.publishedOnly = req.query.publishedOnly === "true";
   }
+
+  // Also handle isPublished for backward compatibility
+  if (
+    req.query.isPublished !== undefined &&
+    filters.publishedOnly === undefined
+  ) {
+    filters.publishedOnly = req.query.isPublished === "true";
+  }
+
+  console.log("Controller filters built:", filters);
+  console.log("=== END CONTROLLER DEBUG ===\n");
 
   const result = await blogService.getAllBlogs(filters, page, limit);
 
@@ -169,10 +202,11 @@ export const getAllBlogs = asyncHandler(async (req: Request, res: Response) => {
         total: result.total,
         pages: result.pages,
       },
-      filters: {
-        status: filters.status,
-        category: filters.category,
-        search: filters.search,
+      filters: filters,
+      debug: {
+        queryParams: req.query,
+        appliedFilters: filters,
+        totalFound: result.total,
       },
     },
   });
@@ -197,7 +231,7 @@ export const getBlogBySlug = asyncHandler(
       success: true,
       data: { blog },
     });
-  }
+  },
 );
 
 // Delete blog
@@ -248,7 +282,7 @@ export const togglePublishStatus = asyncHandler(
     ) {
       throw new ApiError(
         "Valid status is required (draft, published, archived, scheduled)",
-        400
+        400,
       );
     }
 
@@ -259,7 +293,7 @@ export const togglePublishStatus = asyncHandler(
       message: `Blog status updated to ${status}`,
       data: { blog },
     });
-  }
+  },
 );
 
 // Get blog statistics
@@ -271,5 +305,5 @@ export const getBlogStats = asyncHandler(
       success: true,
       data: { stats },
     });
-  }
+  },
 );
