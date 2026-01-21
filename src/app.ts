@@ -4,6 +4,7 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import path from "path";
 import dotenv from "dotenv";
+import compression from "compression";
 
 dotenv.config();
 // Import routes
@@ -24,6 +25,9 @@ import newsletterRoutes from "./app/modules/newsletter/newsletter.routes"; // Ad
 import blogRoutes from "./app/modules/Blog/blog.routes"; // Add this line
 import promoRoutes from "./app/modules/promos/promos.routes";
 import customerRoutes from "./app/modules/customer/customer.routes";
+import { requestPerformance } from "./app/middlewares/performance.middleware";
+import { globalCache } from "./app/middlewares/globalCache";
+import mongoose from "mongoose";
 
 const app = express();
 
@@ -54,7 +58,7 @@ app.use(
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
-  })
+  }),
 );
 
 app.use(express.json({ limit: "10mb" }));
@@ -64,6 +68,8 @@ app.use(cookieParser());
 
 app.set("view engine", "ejs");
 app.set("views", path.join(process.cwd(), "src", "app", "views"));
+app.use(requestPerformance);
+app.use(globalCache);
 
 // Auth routes
 app.use("/api/v1/auth", authRouter);
@@ -84,6 +90,12 @@ app.use("/api/v1", newsletterRoutes);
 app.use("/api/v1/blogs", blogRoutes);
 app.use("/api/v1", promoRoutes);
 app.use("/api/v1/customers", customerRoutes);
+mongoose.set("debug", (collection, method, query) => {
+  if (method === "find" && Object.keys(query).length === 0) {
+    console.warn(`⚠️ FULL SCAN on ${collection}`);
+  }
+});
+app.use(compression());
 
 // Health check
 app.get("/healthz", (_req, res) => res.json({ ok: true }));
@@ -92,7 +104,7 @@ app.get("/healthz", (_req, res) => res.json({ ok: true }));
 app.use((req, res) =>
   res
     .status(404)
-    .json({ status: "fail", message: "Not Found", path: req.originalUrl })
+    .json({ status: "fail", message: "Not Found", path: req.originalUrl }),
 );
 app.use(globalErrorHandler);
 
