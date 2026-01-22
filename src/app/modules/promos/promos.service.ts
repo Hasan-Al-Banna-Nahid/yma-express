@@ -10,6 +10,7 @@ import {
   OrderItemWithProduct,
   OrdersWithProductsResponse,
   OrderQueryParams,
+  DiscountType,
 } from "./promos.interface";
 import Order from "../../modules/Order/order.model";
 import mongoose from "mongoose";
@@ -339,53 +340,113 @@ export class PromoService {
     return await Promo.findByIdAndDelete(id);
   }
 
-  // Apply promo (simulate usage)
   async applyPromo(
-    promoId: string,
+    identifier: string, // promoName or _id
     orderAmount: number,
-    customerId?: string,
   ): Promise<{ success: boolean; discount: number; message?: string }> {
-    const promo = await Promo.findById(promoId);
+    // 1️⃣ Find promo by _id or name
+    let promo: IPromo | null;
+    if (mongoose.Types.ObjectId.isValid(identifier)) {
+      promo = await Promo.findById(identifier).lean();
+    } else {
+      promo = await Promo.findOne({ promoName: identifier }).lean();
+    }
 
-    if (!promo) {
+    if (!promo)
       return { success: false, discount: 0, message: "Promo not found" };
-    }
 
-    // First validate
+    // 2️⃣ Validate promo
     const validation = await this.validatePromo(promo.promoName, orderAmount);
-    if (!validation.valid) {
+    if (!validation.valid)
       return { success: false, discount: 0, message: validation.message };
-    }
 
-    // Calculate discount
+    // 3️⃣ Calculate discount
     let discount = 0;
-    if (promo.discountType === "percentage") {
-      discount = (orderAmount * promo.discountPercentage) / 100;
-      if (promo.maxDiscountValue && discount > promo.maxDiscountValue) {
-        discount = promo.maxDiscountValue;
-      }
-    } else if (promo.discountType === "fixed_amount") {
-      discount = promo.discount;
-    } else if (promo.discountType === "free_shipping") {
-      discount = promo.discount;
+    switch (promo.discountType) {
+      case DiscountType.PERCENTAGE:
+        discount = (orderAmount * promo.discountPercentage) / 100;
+        if (promo.maxDiscountValue && discount > promo.maxDiscountValue) {
+          discount = promo.maxDiscountValue;
+        }
+        break;
+      case DiscountType.FIXED_AMOUNT:
+      case DiscountType.FREE_SHIPPING:
+        discount = promo.discount;
+        break;
     }
 
-    // Update promo stats WITHOUT changing status
-    promo.usage += 1;
-    promo.totalUsage += 1;
-    promo.totalDiscount += discount;
-    promo.totalRevenue += orderAmount;
-    promo.avgDiscountPerOrder = promo.totalDiscount / promo.totalUsage;
-
-    // Only change status if usage limit reached
-    if (promo.totalUsageLimit && promo.totalUsage >= promo.totalUsageLimit) {
-      promo.status = PromoStatus.INACTIVE;
-      promo.availability = false;
-    }
-
-    await promo.save();
+    // 4️⃣ Atomic update of stats
+    await Promo.findByIdAndUpdate(
+      promo._id,
+      {
+        $inc: {
+          usage: 1,
+          totalUsage: 1,
+          totalDiscount: discount,
+          totalRevenue: orderAmount,
+        },
+        $set: {
+          status:
+            promo.totalUsageLimit &&
+            promo.totalUsage + 1 >= promo.totalUsageLimit
+              ? PromoStatus.INACTIVE
+              : promo.status,
+          availability:
+            promo.totalUsageLimit &&
+            promo.totalUsage + 1 >= promo.totalUsageLimit
+              ? false
+              : promo.availability,
+          avgDiscountPerOrder:
+            (promo.totalDiscount + discount) / (promo.totalUsage + 1),
+        },
+      },
+      { new: true },
+    );
 
     return { success: true, discount };
+  }
+
+  async validatePromo(
+    promoName: string,
+    orderAmount: number,
+  ): Promise<{ valid: boolean; discount?: number; message?: string }> {
+    const promo = await Promo.findOne({ promoName }).lean();
+    if (!promo) return { valid: false, message: "Promo not found" };
+
+    const now = new Date();
+    if (!promo.availability)
+      return { valid: false, message: "Promo is not available" };
+    if (promo.status !== PromoStatus.ACTIVE)
+      return { valid: false, message: `Promo is ${promo.status}` };
+    if (now < promo.validityPeriod.from)
+      return { valid: false, message: "Promo not yet started" };
+    if (now > promo.validityPeriod.to)
+      return { valid: false, message: "Promo has expired" };
+    if (promo.minimumOrderValue && orderAmount < promo.minimumOrderValue)
+      return {
+        valid: false,
+        message: `Minimum order value ${promo.minimumOrderValue} required`,
+      };
+    if (promo.totalUsageLimit && promo.totalUsage >= promo.totalUsageLimit)
+      return { valid: false, message: "Promo usage limit reached" };
+
+    // Calculate discount without applying
+    let discount = 0;
+    switch (promo.discountType) {
+      case DiscountType.PERCENTAGE:
+        discount = (orderAmount * promo.discountPercentage) / 100;
+        if (promo.maxDiscountValue && discount > promo.maxDiscountValue) {
+          discount = promo.maxDiscountValue;
+        }
+        break;
+
+      case DiscountType.FIXED_AMOUNT:
+      case DiscountType.FREE_SHIPPING:
+        discount = promo.discount;
+        break;
+    }
+
+    return { valid: true, discount };
   }
 
   // Get promo statistics
@@ -421,68 +482,5 @@ export class PromoService {
       status: PromoStatus.ACTIVE,
       availability: true,
     });
-  }
-
-  // Validate promo
-  async validatePromo(
-    promoName: string,
-    orderAmount: number,
-  ): Promise<{ valid: boolean; message?: string; discount?: number }> {
-    const promo = await Promo.findOne({ promoName });
-
-    if (!promo) {
-      return { valid: false, message: "Promo not found" };
-    }
-
-    // Check availability
-    if (!promo.availability) {
-      return { valid: false, message: "Promo is not available" };
-    }
-
-    // Check status
-    if (promo.status !== PromoStatus.ACTIVE) {
-      return { valid: false, message: `Promo is ${promo.status}` };
-    }
-
-    // Check validity period
-    const now = new Date();
-    if (now < promo.validityPeriod.from) {
-      return { valid: false, message: "Promo not yet started" };
-    }
-
-    if (now > promo.validityPeriod.to) {
-      return { valid: false, message: "Promo has expired" };
-    }
-
-    // Check minimum order value
-    if (promo.minimumOrderValue && orderAmount < promo.minimumOrderValue) {
-      return {
-        valid: false,
-        message: `Minimum order value of ${promo.minimumOrderValue} required`,
-      };
-    }
-
-    // Check total usage limit
-    if (promo.totalUsageLimit && promo.totalUsage >= promo.totalUsageLimit) {
-      return { valid: false, message: "Promo usage limit reached" };
-    }
-
-    // Calculate discount
-    let discount = 0;
-    if (promo.discountType === "percentage") {
-      discount = (orderAmount * promo.discountPercentage) / 100;
-      if (promo.maxDiscountValue && discount > promo.maxDiscountValue) {
-        discount = promo.maxDiscountValue;
-      }
-    } else if (promo.discountType === "fixed_amount") {
-      discount = promo.discount;
-    } else if (promo.discountType === "free_shipping") {
-      discount = promo.discount;
-    }
-
-    return {
-      valid: true,
-      discount,
-    };
   }
 }

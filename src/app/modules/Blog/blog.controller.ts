@@ -2,9 +2,8 @@ import { Request, Response } from "express";
 import asyncHandler from "../../utils/asyncHandler";
 import * as blogService from "./blog.service";
 import ApiError from "../../utils/apiError";
-import { uploadToCloudinary } from "../../utils/cloudinary.util";
-import { BlogFilter, BlogStatus } from "./blog.interface";
 
+// Create Blog
 export const createBlog = asyncHandler(async (req: Request, res: Response) => {
   const {
     title,
@@ -24,29 +23,28 @@ export const createBlog = asyncHandler(async (req: Request, res: Response) => {
 
   // Handle file uploads
   let blogImages: string[] = [];
-  let authorImage: string = ""; // Fixed: initialize as empty string
+  let authorImage: string = "";
 
   if (req.files) {
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
 
-    // Handle author image
+    // Author image
     if (files["authorImage"] && files["authorImage"][0]) {
-      authorImage = files["authorImage"][0].path; // Fixed: assign value
+      authorImage = files["authorImage"][0].path;
     }
 
-    // Handle blog images
+    // Blog images
     if (files["images"]) {
       blogImages = files["images"].map((file) => file.path);
     }
   }
 
-  // Fixed: Create blogData object with all fields
   const blogData = {
     title,
     description,
     subtitle,
     authorName,
-    authorImage, // Fixed: included authorImage
+    authorImage,
     images: blogImages,
     status: status || "draft",
     customField1: customField1 || "",
@@ -59,8 +57,6 @@ export const createBlog = asyncHandler(async (req: Request, res: Response) => {
     customField8: customField8 || "",
   };
 
-  console.log("Creating blog with data:", blogData); // Debug log
-
   const blog = await blogService.createBlog(blogData);
 
   res.status(201).json({
@@ -70,32 +66,25 @@ export const createBlog = asyncHandler(async (req: Request, res: Response) => {
   });
 });
 
-// Update blog
+// Update Blog
 export const updateBlog = asyncHandler(async (req: Request, res: Response) => {
   const blogId = req.params.id;
-  const updateData = req.body;
+  const updateData = { ...req.body }; // Clone body to avoid mutation
 
-  // Handle file uploads
   if (req.files) {
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
 
-    // Handle author image update
+    // Replace author image if new one uploaded
     if (files["authorImage"] && files["authorImage"][0]) {
-      updateData.authorImage = files["authorImage"][0].path; // Fixed: use authorImage field
+      updateData.authorImage = files["authorImage"][0].path;
     }
 
-    // Handle new blog images
+    // Replace blog images entirely if new images uploaded
     if (files["images"] && files["images"].length > 0) {
-      const newBlogImages = files["images"].map((file) => file.path);
-
-      // Get existing images and combine with new ones
-      const existingBlog = await blogService.getBlogById(blogId);
-      const existingImages = existingBlog.images || [];
-      updateData.images = [...existingImages, ...newBlogImages];
+      updateData.images = files["images"].map((file) => file.path);
     }
   }
 
-  // Fixed: Ensure all string fields are properly handled
   const blog = await blogService.updateBlog(blogId, updateData);
 
   res.status(200).json({
@@ -105,90 +94,37 @@ export const updateBlog = asyncHandler(async (req: Request, res: Response) => {
   });
 });
 
+// Get All Blogs
 export const getAllBlogs = asyncHandler(async (req: Request, res: Response) => {
-  console.log("=== CONTROLLER DEBUG ===");
-  console.log("Raw req.query:", req.query);
-
   const page = parseInt(req.query.page as string) || 1;
   const limit = parseInt(req.query.limit as string) || 10;
 
-  // Build filters from query params
-  const filters: BlogFilter = {};
+  const filters: any = {};
 
-  // Handle "all" status
   if (req.query.status && req.query.status !== "all") {
-    const validStatuses = ["draft", "published", "archived", "scheduled"];
-    if (validStatuses.includes(req.query.status as string)) {
-      filters.status = req.query.status as BlogStatus;
-    }
+    filters.status = req.query.status;
   }
-
-  // Category filter
-  if (req.query.category) {
-    filters.category = req.query.category as string;
-  }
-
-  // Author filter (can be author ID or author name)
-  if (req.query.author) {
-    filters.author = req.query.author as string;
-  }
-
-  // Tags filter
+  if (req.query.category) filters.category = req.query.category;
+  if (req.query.author) filters.author = req.query.author;
   if (req.query.tags) {
-    const tags = (req.query.tags as string)
+    filters.tags = (req.query.tags as string)
       .split(",")
       .map((tag) => tag.trim())
       .filter((tag) => tag.length > 0);
-    if (tags.length > 0) {
-      filters.tags = tags;
-    }
   }
-
-  // Featured filter
   if (req.query.featured !== undefined) {
     filters.isFeatured = req.query.featured === "true";
   }
-
-  // Search filter - support multiple parameter names
   if (req.query.search || req.query.name || req.query.q) {
-    const searchTerm = (req.query.search ||
+    filters.search = (req.query.search ||
       req.query.name ||
       req.query.q) as string;
-    if (searchTerm.trim()) {
-      filters.search = searchTerm.trim();
-    }
   }
 
-  // Date range filters
-  if (req.query.startDate) {
-    const startDate = new Date(req.query.startDate as string);
-    if (!isNaN(startDate.getTime())) {
-      filters.startDate = startDate;
-    }
-  }
-
-  if (req.query.endDate) {
-    const endDate = new Date(req.query.endDate as string);
-    if (!isNaN(endDate.getTime())) {
-      filters.endDate = endDate;
-    }
-  }
-
-  // Published only filter
-  if (req.query.publishedOnly !== undefined) {
-    filters.publishedOnly = req.query.publishedOnly === "true";
-  }
-
-  // Also handle isPublished for backward compatibility
-  if (
-    req.query.isPublished !== undefined &&
-    filters.publishedOnly === undefined
-  ) {
-    filters.publishedOnly = req.query.isPublished === "true";
-  }
-
-  console.log("Controller filters built:", filters);
-  console.log("=== END CONTROLLER DEBUG ===\n");
+  if (req.query.startDate)
+    filters.startDate = new Date(req.query.startDate as string);
+  if (req.query.endDate)
+    filters.endDate = new Date(req.query.endDate as string);
 
   const result = await blogService.getAllBlogs(filters, page, limit);
 
@@ -202,49 +138,32 @@ export const getAllBlogs = asyncHandler(async (req: Request, res: Response) => {
         total: result.total,
         pages: result.pages,
       },
-      filters: filters,
-      debug: {
-        queryParams: req.query,
-        appliedFilters: filters,
-        totalFound: result.total,
-      },
+      filters,
     },
   });
 });
 
-// Get blog by ID
+// Get Blog by ID
 export const getBlogById = asyncHandler(async (req: Request, res: Response) => {
   const blog = await blogService.getBlogById(req.params.id);
-
-  res.status(200).json({
-    success: true,
-    data: { blog },
-  });
+  res.status(200).json({ success: true, data: { blog } });
 });
 
-// Get blog by slug
+// Get Blog by Slug
 export const getBlogBySlug = asyncHandler(
   async (req: Request, res: Response) => {
     const blog = await blogService.getBlogBySlug(req.params.slug);
-
-    res.status(200).json({
-      success: true,
-      data: { blog },
-    });
+    res.status(200).json({ success: true, data: { blog } });
   },
 );
 
-// Delete blog
+// Delete Blog
 export const deleteBlog = asyncHandler(async (req: Request, res: Response) => {
   await blogService.deleteBlog(req.params.id);
-
-  res.status(200).json({
-    success: true,
-    message: "Blog deleted successfully",
-  });
+  res.status(200).json({ success: true, message: "Blog deleted successfully" });
 });
 
-// Search blogs
+// Search Blogs
 export const searchBlogs = asyncHandler(async (req: Request, res: Response) => {
   const query = req.query.q as string;
   const page = parseInt(req.query.page as string) || 1;
@@ -255,7 +174,6 @@ export const searchBlogs = asyncHandler(async (req: Request, res: Response) => {
   }
 
   const result = await blogService.searchBlogs(query.trim(), page, limit);
-
   res.status(200).json({
     success: true,
     data: {
@@ -270,7 +188,7 @@ export const searchBlogs = asyncHandler(async (req: Request, res: Response) => {
   });
 });
 
-// Toggle publish status
+// Toggle Publish Status
 export const togglePublishStatus = asyncHandler(
   async (req: Request, res: Response) => {
     const blogId = req.params.id;
@@ -296,14 +214,10 @@ export const togglePublishStatus = asyncHandler(
   },
 );
 
-// Get blog statistics
+// Get Blog Statistics
 export const getBlogStats = asyncHandler(
   async (req: Request, res: Response) => {
     const stats = await blogService.getBlogStats();
-
-    res.status(200).json({
-      success: true,
-      data: { stats },
-    });
+    res.status(200).json({ success: true, data: { stats } });
   },
 );

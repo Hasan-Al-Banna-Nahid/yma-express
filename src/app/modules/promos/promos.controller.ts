@@ -225,13 +225,16 @@ export class PromoController {
   // Apply promo
   async applyPromo(req: Request, res: Response) {
     try {
-      const { orderAmount, customerId } = req.body;
+      const { promo, orderAmount } = req.body;
 
-      const result = await promoService.applyPromo(
-        req.params.id,
-        orderAmount,
-        customerId,
-      );
+      if (!promo || !orderAmount) {
+        return res.status(400).json({
+          success: false,
+          message: "Promo and orderAmount are required",
+        });
+      }
+
+      const result = await promoService.applyPromo(promo, orderAmount);
 
       if (!result.success) {
         return res.status(400).json({
@@ -243,12 +246,14 @@ export class PromoController {
       res.status(200).json({
         success: true,
         discount: result.discount,
+        finalAmount: orderAmount - result.discount,
         message: "Promo applied successfully",
       });
     } catch (error: any) {
+      console.error("applyPromo error:", error);
       res.status(500).json({
         success: false,
-        message: error.message,
+        message: error.message || "Internal server error",
       });
     }
   }
@@ -291,19 +296,29 @@ export class PromoController {
   // Validate promo
   async validatePromo(req: Request, res: Response) {
     try {
-      const { promoName, orderAmount } = req.body;
-      const result = await promoService.validatePromo(promoName, orderAmount);
+      const { promo, orderAmount } = req.body;
+
+      if (!promo || orderAmount === undefined) {
+        return res.status(400).json({
+          success: false,
+          message: "Promo and orderAmount are required",
+        });
+      }
+
+      const result = await promoService.validatePromo(promo, orderAmount);
 
       res.status(200).json({
-        success: true,
-        valid: result.valid,
-        message: result.message,
-        discount: result.discount,
+        success: result.valid,
+        message:
+          result.message ||
+          (result.valid ? "Promo is valid" : "Promo is invalid"),
+        discount: result.valid ? result.discount : 0,
       });
     } catch (error: any) {
+      console.error("validatePromo error:", error);
       res.status(500).json({
         success: false,
-        message: error.message,
+        message: error.message || "Internal server error",
       });
     }
   }

@@ -1,41 +1,37 @@
-import express from "express";
+// src/routes/checkout.routes.ts
+import { Router } from "express";
 import {
-  createOrder,
-  checkStock,
-  checkDateAvailability,
-  getAvailableDates,
-  validatePromoCode,
-  getActivePromos,
-  applyPromoToCart, // Add this import
+  checkoutFromCart, // Main cart checkout
+  quickCheckout, // Direct products checkout
+  getCartSummary, // Cart summary
+  getOrderById,
+  getUserOrders,
+  getAllOrders,
+  updateOrderStatus,
+  cancelOrder,
+  checkAvailability,
+  calculateDeliveryFeeAPI,
 } from "./checkout.controller";
-import { protectRoute } from "../../middlewares/auth.middleware";
+// import { authenticate, authorize } from "../middlewares/auth.middleware";
 
-const router = express.Router();
+const router = Router();
 
-// All checkout routes require authentication
-router.use(protectRoute);
+// Public routes
+router.post("/", checkoutFromCart); // Main checkout from cart
+router.post("/quick", quickCheckout); // Quick checkout with products
+router.get("/cart-summary", getCartSummary); // Get cart summary
 
-// POST /api/v1/checkout - Create new order
-router.post("/", createOrder);
+// Utility routes
+router.post("/check-availability", checkAvailability);
+router.post("/calculate-delivery-fee", calculateDeliveryFeeAPI);
 
-// GET /api/v1/checkout/stock - Check stock for cart items
-router.get("/stock", checkStock);
+// Order routes
+router.get("/order/:orderId", getOrderById);
+router.get("/user/:userId/orders", getUserOrders);
 
-// POST /api/v1/checkout/check-availability - Check date availability
-router.post("/check-availability", checkDateAvailability);
-
-// GET /api/v1/checkout/available-dates/:productId - Get available dates for a product
-router.get("/available-dates/:productId", getAvailableDates);
-
-// ============ PROMO CODE ROUTES ============
-
-// POST /api/v1/checkout/validate-promo - Validate promo code
-router.post("/validate-promo", validatePromoCode);
-
-// GET /api/v1/checkout/promos - Get all active promos
-router.get("/promos", getActivePromos);
-
-// POST /api/v1/checkout/apply-promo - Apply promo code to cart
-router.post("/apply-promo", applyPromoToCart);
+// Admin routes
+// router.get("/all", authenticate, authorize("admin"), getAllOrders);
+// router.patch("/order/:orderId/status", authenticate, authorize("admin"), updateOrderStatus);
+// router.post("/order/:orderId/cancel", authenticate, cancelOrder);
 
 export default router;

@@ -15,7 +15,7 @@ router.get("/promos/active", promoController.getActivePromos);
 router.get("/promos/:id", promoController.getPromoById);
 router.put("/promos/:id", promoController.updatePromo);
 router.delete("/promos/:id", promoController.deletePromo);
-router.post("/promos/:id/apply", promoController.applyPromo);
+router.post("/promos/apply", promoController.applyPromo);
 router.post("/promos/validate", promoController.validatePromo);
 router.get("/promos/stats/overview", promoController.getPromoStats);
 

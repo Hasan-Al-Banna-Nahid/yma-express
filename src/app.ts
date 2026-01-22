@@ -4,8 +4,9 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import path from "path";
 import dotenv from "dotenv";
-import compression from "compression";
-
+// import compression from "compression";
+import cluster from "cluster";
+import os from "os";
 dotenv.config();
 // Import routes
 import authRouter from "./app/modules/Auth/auth.route";
@@ -70,8 +71,10 @@ app.set("view engine", "ejs");
 app.set("views", path.join(process.cwd(), "src", "app", "views"));
 app.use(requestPerformance);
 app.use(globalCache);
+if (cluster.isPrimary) {
+  os.cpus().forEach(() => cluster.fork());
+}
 
-// Auth routes
 app.use("/api/v1/auth", authRouter);
 
 // API routes
@@ -90,12 +93,8 @@ app.use("/api/v1", newsletterRoutes);
 app.use("/api/v1/blogs", blogRoutes);
 app.use("/api/v1", promoRoutes);
 app.use("/api/v1/customers", customerRoutes);
-mongoose.set("debug", (collection, method, query) => {
-  if (method === "find" && Object.keys(query).length === 0) {
-    console.warn(`⚠️ FULL SCAN on ${collection}`);
-  }
-});
-app.use(compression());
+
+// app.use(compression());
 
 // Health check
 app.get("/healthz", (_req, res) => res.json({ ok: true }));

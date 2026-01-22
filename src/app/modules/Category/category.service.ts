@@ -1,28 +1,35 @@
 import Category, { ICategoryModel } from "./category.model";
 import ApiError from "../../utils/apiError";
+import { CreateCategoryData, UpdateCategoryData } from "./category.interface";
 
+/**
+ * Create category (raw OR hardcoded)
+ * Name must be unique (case-insensitive)
+ */
 export const createCategory = async (
-  categoryData: Partial<ICategoryModel>
+  data: CreateCategoryData,
 ): Promise<ICategoryModel> => {
-  // Check for duplicate name (case-insensitive)
-  const existingCategory = await Category.findOne({
-    name: { $regex: new RegExp(`^${categoryData.name}$`, "i") },
+  const exists = await Category.findOne({
+    name: { $regex: new RegExp(`^${data.name}$`, "i") },
   });
 
-  if (existingCategory) {
-    throw new ApiError(
-      `Category with name "${categoryData.name}" already exists`,
-      400
-    );
+  if (exists) {
+    throw new ApiError(`Category with name "${data.name}" already exists`, 400);
   }
 
-  return await Category.create(categoryData);
+  return await Category.create(data);
 };
 
+/**
+ * Get all active categories
+ */
 export const getAllCategories = async (): Promise<ICategoryModel[]> => {
-  return await Category.find({ isActive: true }).sort({ name: 1 });
+  return Category.find({ isActive: true }).sort({ name: 1 });
 };
 
+/**
+ * Get category by ID
+ */
 export const getCategoryById = async (id: string): Promise<ICategoryModel> => {
   const category = await Category.findById(id);
 
@@ -33,21 +40,23 @@ export const getCategoryById = async (id: string): Promise<ICategoryModel> => {
   return category;
 };
 
+/**
+ * Update category
+ */
 export const updateCategory = async (
   id: string,
-  updateData: Partial<ICategoryModel>
+  updateData: UpdateCategoryData,
 ): Promise<ICategoryModel> => {
-  // If name is being updated, check for duplicates
   if (updateData.name) {
-    const existingCategory = await Category.findOne({
+    const exists = await Category.findOne({
       name: { $regex: new RegExp(`^${updateData.name}$`, "i") },
       _id: { $ne: id },
     });
 
-    if (existingCategory) {
+    if (exists) {
       throw new ApiError(
         `Category with name "${updateData.name}" already exists`,
-        400
+        400,
       );
     }
   }
@@ -64,6 +73,9 @@ export const updateCategory = async (
   return category;
 };
 
+/**
+ * Delete category
+ */
 export const deleteCategory = async (id: string): Promise<void> => {
   const category = await Category.findByIdAndDelete(id);
 
@@ -72,25 +84,31 @@ export const deleteCategory = async (id: string): Promise<void> => {
   }
 };
 
-export const seedHardcodedCategories = async (): Promise<ICategoryModel[]> => {
-  const hardcodedCategories = [
+/**
+ * Seed hardcoded categories (SAFE – no duplicates)
+ */
+export const seedCategories = async (): Promise<ICategoryModel[]> => {
+  const hardcoded = [
     { name: "Garden Games", description: "Outdoor games", isActive: true },
-    { name: "Soft Play", description: "Soft equipment", isActive: true },
-    { name: "Bouncy Castle", description: "Inflatables", isActive: true },
-    { name: "Fun Food", description: "Food catering", isActive: true },
-    { name: "Tower Castle", description: "Large structures", isActive: true },
+    { name: "Soft Play", description: "Soft play equipment", isActive: true },
+    {
+      name: "Bouncy Castle",
+      description: "Inflatable castles",
+      isActive: true,
+    },
+    { name: "Fun Food", description: "Food & catering", isActive: true },
+    { name: "Tower Castle", description: "Large castles", isActive: true },
   ];
 
-  const results = [];
+  const results: ICategoryModel[] = [];
 
-  for (const categoryData of hardcodedCategories) {
-    // Check if category already exists (case-insensitive)
+  for (const item of hardcoded) {
     let category = await Category.findOne({
-      name: { $regex: new RegExp(`^${categoryData.name}$`, "i") },
+      name: { $regex: new RegExp(`^${item.name}$`, "i") },
     });
 
     if (!category) {
-      category = await Category.create(categoryData);
+      category = await Category.create(item);
     }
 
     results.push(category);
@@ -99,8 +117,11 @@ export const seedHardcodedCategories = async (): Promise<ICategoryModel[]> => {
   return results;
 };
 
+/**
+ * Get only hardcoded categories
+ */
 export const getHardcodedCategories = async (): Promise<ICategoryModel[]> => {
-  return await Category.find({
+  return Category.find({
     name: {
       $in: [
         "Garden Games",

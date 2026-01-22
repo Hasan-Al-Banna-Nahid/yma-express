@@ -62,18 +62,18 @@ const cartSchema: Schema = new Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 // Calculate totals before saving
 cartSchema.pre("save", function (this: ICartModel, next) {
   this.totalItems = this.items.reduce(
     (total: number, item: ICartItem) => total + item.quantity,
-    0
+    0,
   );
   this.totalPrice = this.items.reduce(
     (total: number, item: ICartItem) => total + item.quantity * item.price,
-    0
+    0,
   );
   next();
 });
