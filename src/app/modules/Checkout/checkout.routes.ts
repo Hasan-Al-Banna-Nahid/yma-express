@@ -17,8 +17,8 @@ import {
 const router = Router();
 
 // Public routes
-router.post("/", checkoutFromCart); // Main checkout from cart
-router.post("/quick", quickCheckout); // Quick checkout with products
+// router.post("/", checkoutFromCart); // Main checkout from cart
+router.post("/", quickCheckout); // Quick checkout with products
 router.get("/cart-summary", getCartSummary); // Get cart summary
 
 // Utility routes

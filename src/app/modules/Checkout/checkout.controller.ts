@@ -19,6 +19,7 @@ import {
 
 // Import cart store
 import { cartStore } from "../Cart/cart.store";
+import Customer from "../../modules/customer/customer.model";
 
 // ==================== HELPER FUNCTIONS ====================
 
@@ -190,12 +191,62 @@ const validateAndProcessCartItems = async (cartItems: any[], session: any) => {
 };
 
 // ==================== MAIN CHECKOUT FUNCTION ====================
+// src/app/modules/Checkout/checkout.controller.ts
+// ... keep your existing imports
+
 export const checkoutFromCart = asyncHandler(
   async (req: Request, res: Response) => {
     const session = await mongoose.startSession();
     session.startTransaction();
 
     try {
+      // ──────────────────────────────────────────────
+      // Robust cartId extraction (handles string/array/undefined)
+      // ──────────────────────────────────────────────
+      let cartIdFromHeader: string | undefined;
+      const rawHeader = req.headers["x-cart-id"];
+      if (typeof rawHeader === "string") {
+        cartIdFromHeader = rawHeader.trim();
+      } else if (Array.isArray(rawHeader) && rawHeader.length > 0) {
+        cartIdFromHeader = rawHeader[0].trim();
+      }
+
+      // Debug logging (keep for production troubleshooting, or remove later)
+      console.log("━━━━━━━━━━━━━━━━ CHECKOUT DEBUG ━━━━━━━━━━━━━━━━");
+      console.log("→ Timestamp             :", new Date().toISOString());
+      console.log("→ Raw x-cart-id header  :", JSON.stringify(rawHeader));
+      console.log(
+        "→ Extracted cartId      :",
+        cartIdFromHeader || "(missing/empty)",
+      );
+      console.log(
+        "→ cartStore has ID?     :",
+        cartIdFromHeader ? cartStore.has(cartIdFromHeader) : false,
+      );
+      console.log("→ All cart keys in store:", [...cartStore.keys()]);
+
+      const cart = getCartFromSession(cartIdFromHeader);
+
+      console.log("→ Cart found?           :", !!cart);
+      console.log("→ Items length          :", cart?.items?.length ?? "N/A");
+      if ((cart?.items?.length || 0) > 0) {
+        console.log(
+          "→ First item sample     :",
+          JSON.stringify(cart?.items[0], null, 2),
+        );
+      }
+      console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+
+      if (!cart || !cart.items || cart.items.length === 0) {
+        throw new ApiError(
+          "Your cart is empty. Please add items to cart before checkout.",
+          400,
+        );
+      }
+
+      // ──────────────────────────────────────────────
+      // Rest of your original logic (unchanged)
+      // ──────────────────────────────────────────────
       const {
         shippingAddress,
         paymentMethod = "cash_on_delivery",
@@ -213,7 +264,6 @@ export const checkoutFromCart = asyncHandler(
         promoCode,
       });
 
-      // ----------------- VALIDATE REQUIRED FIELDS -----------------
       if (!shippingAddress) {
         throw new ApiError("Shipping address is required", 400);
       }
@@ -257,20 +307,8 @@ export const checkoutFromCart = asyncHandler(
         throw new ApiError("Invalid payment method", 400);
       }
 
-      // ----------------- GET CART FROM SESSION -----------------
-      const cartId = req.headers["x-cart-id"] as string;
-      const cart = getCartFromSession(cartId);
-
-      if (!cart || !cart.items || cart.items.length === 0) {
-        throw new ApiError(
-          "Your cart is empty. Please add items to cart before checkout.",
-          400,
-        );
-      }
-
       console.log("📦 Cart items:", cart.items.length, "items");
 
-      // ----------------- CREATE OR GET USER -----------------
       const {
         user: orderUser,
         isNewUser,
@@ -283,7 +321,6 @@ export const checkoutFromCart = asyncHandler(
         session,
       );
 
-      // ----------------- PROCESS CART ITEMS -----------------
       const { orderItems, subtotalAmount } = await validateAndProcessCartItems(
         cart.items,
         session,
@@ -296,7 +333,6 @@ export const checkoutFromCart = asyncHandler(
         orderItems.length,
       );
 
-      // ----------------- CALCULATE FEES -----------------
       const deliveryFee = calculateDeliveryFee(
         shippingAddress.deliveryTime,
         shippingAddress.collectionTime,
@@ -318,7 +354,6 @@ export const checkoutFromCart = asyncHandler(
         keepOvernight: shippingAddress.keepOvernight,
       });
 
-      // ----------------- APPLY PROMO CODE -----------------
       let discount = 0;
       let appliedPromoCode = "";
 
@@ -344,7 +379,6 @@ export const checkoutFromCart = asyncHandler(
         totalAmount,
       });
 
-      // ----------------- CREATE ORDER -----------------
       const orderData = {
         user: orderUser._id,
         items: orderItems,
@@ -371,25 +405,20 @@ export const checkoutFromCart = asyncHandler(
       const createdOrder = new Order(orderData);
       await createdOrder.save({ session });
 
-      // ----------------- CLEAR CART -----------------
-      if (cartId && cartStore.has(cartId)) {
-        cartStore.delete(cartId);
-        console.log("🧹 Cart cleared:", cartId);
+      // Clear the cart from memory (using the extracted cartId)
+      if (cartIdFromHeader && cartStore.has(cartIdFromHeader)) {
+        cartStore.delete(cartIdFromHeader);
+        console.log("🧹 Cart cleared:", cartIdFromHeader);
       }
 
-      // ----------------- COMMIT TRANSACTION -----------------
       await session.commitTransaction();
       session.endSession();
 
-      // ----------------- SEND EMAILS -----------------
+      // Send emails (non-critical, won't fail the response)
       try {
-        // Send order confirmation to customer
         await sendOrderReceivedEmail(createdOrder);
-
-        // Send notification to admin
         await sendOrderNotificationToAdmin(createdOrder);
 
-        // Send credentials if new user
         if (isNewUser && password) {
           await sendUserCredentialsEmail(
             shippingAddress.email,
@@ -401,10 +430,8 @@ export const checkoutFromCart = asyncHandler(
         console.log("📧 All emails sent successfully");
       } catch (emailError) {
         console.error("⚠️ Email sending failed (non-critical):", emailError);
-        // Don't throw error - emails are non-critical
       }
 
-      // ----------------- RESPONSE -----------------
       const responseData: any = {
         order: createdOrder,
         cartCleared: true,
@@ -430,173 +457,6 @@ export const checkoutFromCart = asyncHandler(
       await session.abortTransaction();
       session.endSession();
       console.error("❌ Checkout error:", err.message, err.stack);
-      throw err;
-    }
-  },
-);
-
-// ==================== QUICK CHECKOUT (Direct products) ====================
-export const quickCheckout = asyncHandler(
-  async (req: Request, res: Response) => {
-    const session = await mongoose.startSession();
-    session.startTransaction();
-
-    try {
-      const {
-        shippingAddress,
-        products, // Direct products array
-        paymentMethod = "cash_on_delivery",
-        termsAccepted = true,
-        invoiceType = "regular",
-        promoCode,
-      } = req.body;
-
-      // Validate
-      if (!products || !Array.isArray(products) || products.length === 0) {
-        throw new ApiError("Products are required", 400);
-      }
-
-      const requiredFields = ["firstName", "lastName", "phone", "email"];
-      requiredFields.forEach((field) => {
-        if (!shippingAddress?.[field]) {
-          throw new ApiError(`${field} is required`, 400);
-        }
-      });
-
-      if (!termsAccepted) {
-        throw new ApiError("Terms must be accepted", 400);
-      }
-
-      // Create or get user
-      const {
-        user: orderUser,
-        isNewUser,
-        password,
-      } = await createOrGetUser(
-        shippingAddress.email,
-        shippingAddress.phone,
-        shippingAddress.firstName,
-        shippingAddress.lastName,
-        session,
-      );
-
-      // Process products
-      let subtotalAmount = 0;
-      const orderItems = [];
-
-      for (const productData of products) {
-        const product = await Product.findById(productData.productId).session(
-          session,
-        );
-        if (!product) {
-          throw new ApiError(`Product ${productData.productId} not found`, 404);
-        }
-
-        if (product.stock < productData.quantity) {
-          throw new ApiError(
-            `${product.name}: Available ${product.stock}, Requested ${productData.quantity}`,
-            400,
-          );
-        }
-
-        product.stock -= productData.quantity;
-        await product.save({ session });
-
-        orderItems.push({
-          product: product._id,
-          quantity: productData.quantity,
-          price: productData.price || product.price,
-          name: product.name,
-          startDate: productData.startDate,
-          endDate: productData.endDate,
-        });
-
-        subtotalAmount +=
-          (productData.price || product.price) * productData.quantity;
-      }
-
-      // Calculate fees
-      const deliveryFee = calculateDeliveryFee(
-        shippingAddress.deliveryTime,
-        shippingAddress.collectionTime,
-        shippingAddress.keepOvernight,
-      );
-
-      const overnightFee = shippingAddress.keepOvernight ? 30 : 0;
-      const amountBeforePromo = subtotalAmount + deliveryFee + overnightFee;
-
-      // Apply promo
-      let discount = 0;
-      let appliedPromoCode = "";
-
-      if (promoCode && promoCode.trim() !== "") {
-        const promoResult = await applyPromo(promoCode, amountBeforePromo);
-        discount = promoResult.discount;
-        appliedPromoCode = promoResult.promoCode;
-      }
-
-      const totalAmount = amountBeforePromo - discount;
-
-      // Create order
-      const orderData = {
-        user: orderUser._id,
-        items: orderItems,
-        subtotalAmount,
-        deliveryFee,
-        overnightFee,
-        discountAmount: discount,
-        totalAmount,
-        paymentMethod,
-        status: "pending",
-        shippingAddress,
-        termsAccepted,
-        invoiceType,
-        promoCode: appliedPromoCode || undefined,
-        estimatedDeliveryDate: orderItems[0]?.startDate || new Date(),
-      };
-
-      const createdOrder = new Order(orderData);
-      await createdOrder.save({ session });
-
-      await session.commitTransaction();
-      session.endSession();
-
-      // Send emails
-      try {
-        await sendOrderReceivedEmail(createdOrder);
-        await sendOrderNotificationToAdmin(createdOrder);
-
-        if (isNewUser && password) {
-          await sendUserCredentialsEmail(
-            shippingAddress.email,
-            shippingAddress.firstName,
-            password,
-          );
-        }
-      } catch (emailError) {
-        console.error("Email sending failed:", emailError);
-      }
-
-      // Response
-      const responseData: any = { order: createdOrder };
-
-      if (isNewUser) {
-        responseData.newAccount = {
-          created: true,
-          email: orderUser.email,
-          password,
-          message: "Account created. Check email for credentials.",
-        };
-      }
-
-      res.status(201).json({
-        success: true,
-        message: "Order placed successfully",
-        data: responseData,
-      });
-    } catch (err: any) {
-      await session.abortTransaction();
-      session.endSession();
       throw err;
     }
   },
@@ -920,5 +780,269 @@ export const calculateDeliveryFeeAPI = asyncHandler(
         },
       },
     });
+  },
+);
+// src/controllers/checkout.controller.ts
+
+export const quickCheckout = asyncHandler(
+  async (req: Request, res: Response) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+      const {
+        products,
+        shippingAddress,
+        paymentMethod = "cash_on_delivery",
+        termsAccepted = false,
+        invoiceType = "regular",
+        bankDetails,
+        promoCode,
+      } = req.body;
+
+      // ──────── VALIDATION ────────
+      if (!Array.isArray(products) || products.length === 0) {
+        throw new ApiError(
+          "At least one product is required for checkout",
+          400,
+        );
+      }
+
+      if (!shippingAddress) {
+        throw new ApiError("Shipping address is required", 400);
+      }
+
+      const requiredAddressFields = [
+        "firstName",
+        "lastName",
+        "phone",
+        "email",
+        "country",
+        "city",
+        "street",
+        "zipCode",
+      ];
+      for (const field of requiredAddressFields) {
+        if (!shippingAddress[field]?.trim()) {
+          throw new ApiError(`Shipping address ${field} is required`, 400);
+        }
+      }
+
+      if (!termsAccepted) {
+        throw new ApiError("You must accept terms and conditions", 400);
+      }
+
+      if (!["regular", "corporate"].includes(invoiceType)) {
+        throw new ApiError("Invalid invoice type", 400);
+      }
+
+      if (
+        invoiceType === "corporate" &&
+        (!bankDetails || !bankDetails.trim())
+      ) {
+        throw new ApiError("Bank details required for corporate invoice", 400);
+      }
+
+      if (!["cash_on_delivery", "online"].includes(paymentMethod)) {
+        throw new ApiError("Invalid payment method", 400);
+      }
+
+      // ──────── USER CREATION / LOOKUP ────────
+      const {
+        user: orderUser,
+        isNewUser,
+        password,
+      } = await createOrGetUser(
+        shippingAddress.email.trim().toLowerCase(),
+        shippingAddress.phone.trim(),
+        shippingAddress.firstName.trim(),
+        shippingAddress.lastName.trim(),
+        session,
+      );
+
+      // ──────── PROCESS PRODUCTS & STOCK ────────
+      let subtotalAmount = 0;
+      const orderItems: any[] = [];
+
+      for (const p of products) {
+        const { productId, quantity, startDate, endDate, rentalType } = p;
+
+        if (!productId || !mongoose.isValidObjectId(productId)) {
+          throw new ApiError(`Invalid product ID: ${productId}`, 400);
+        }
+
+        if (!Number.isInteger(quantity) || quantity < 1) {
+          throw new ApiError(
+            `Quantity must be positive integer for product ${productId}`,
+            400,
+          );
+        }
+
+        const product = await Product.findById(productId).session(session);
+        if (!product) {
+          throw new ApiError(`Product not found: ${productId}`, 404);
+        }
+
+        if (product.stock < quantity) {
+          throw new ApiError(
+            `${product.name || "Product"}: Only ${product.stock} available, requested ${quantity}`,
+            400,
+          );
+        }
+
+        // Reserve stock
+        product.stock -= quantity;
+        await product.save({ session });
+
+        const price = product.price; // or p.price if you allow override
+
+        orderItems.push({
+          product: product._id,
+          quantity,
+          price,
+          name: product.name,
+          startDate: startDate ? new Date(startDate) : undefined,
+          endDate: endDate ? new Date(endDate) : undefined,
+          rentalType,
+        });
+
+        subtotalAmount += price * quantity;
+      }
+
+      // ──────── FEES & PROMO ────────
+      const deliveryFee = calculateDeliveryFee(
+        shippingAddress.deliveryTime,
+        shippingAddress.collectionTime,
+        shippingAddress.keepOvernight,
+      );
+
+      const overnightFee = shippingAddress.keepOvernight ? 30 : 0;
+      const amountBeforePromo = subtotalAmount + deliveryFee + overnightFee;
+
+      let discount = 0;
+      let appliedPromo = "";
+
+      if (promoCode?.trim()) {
+        const promoResult = await applyPromo(
+          promoCode.trim(),
+          amountBeforePromo,
+        );
+        if (promoResult.success) {
+          discount = promoResult.discount;
+          appliedPromo = promoCode.trim();
+        }
+      }
+
+      const totalAmount = amountBeforePromo - discount;
+
+      // ──────── CREATE ORDER ────────
+      const orderData = {
+        user: orderUser._id,
+        items: orderItems,
+        subtotalAmount,
+        deliveryFee,
+        overnightFee,
+        discountAmount: discount,
+        totalAmount,
+        paymentMethod,
+        status: "pending",
+        shippingAddress: {
+          ...shippingAddress,
+          email: shippingAddress.email.trim().toLowerCase(),
+        },
+        termsAccepted: true,
+        invoiceType,
+        bankDetails:
+          invoiceType === "corporate" ? bankDetails?.trim() : undefined,
+        promoCode: appliedPromo || undefined,
+        estimatedDeliveryDate:
+          orderItems[0]?.startDate ||
+          new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        deviceInfo: req.headers["user-agent"] || "unknown",
+      };
+
+      const createdOrder = new Order(orderData);
+      await createdOrder.save({ session });
+
+      // ──────── CUSTOMER RECORD ────────
+      // In quickCheckout or checkoutFromCart controller
+      let customer = await Customer.findOne({
+        email: shippingAddress.email.toLowerCase().trim(),
+      });
+
+      if (!customer) {
+        customer = new Customer({
+          customerId: `CUST-${Date.now().toString(36).toUpperCase()}`,
+          name: `${shippingAddress.firstName} ${shippingAddress.lastName}`.trim(),
+          email: shippingAddress.email.trim().toLowerCase(),
+          phone: shippingAddress.phone?.trim(),
+          address: shippingAddress.street,
+          city: shippingAddress.city,
+          postcode: shippingAddress.zipCode,
+          country: shippingAddress.country,
+          customerType: "guest", // or "corporate" if invoiceType === "corporate"
+          orders: [createdOrder._id],
+          totalOrders: 1,
+          totalSpent: createdOrder.totalAmount,
+          firstOrderDate: new Date(),
+          lastOrderDate: new Date(),
+          user: orderUser?._id,
+        });
+      } else {
+        // Update existing
+        customer.orders.push(createdOrder._id);
+        customer.totalOrders += 1;
+        customer.totalSpent += createdOrder.totalAmount;
+        customer.lastOrderDate = new Date();
+        if (orderUser?._id && !customer.user) {
+          customer.user = orderUser._id;
+        }
+        // Optionally update address/phone if different
+      }
+
+      await customer.save({ session });
+      await session.commitTransaction();
+
+      // Emails (non-blocking)
+      Promise.allSettled([
+        sendOrderReceivedEmail(createdOrder),
+        sendOrderNotificationToAdmin(createdOrder),
+        isNewUser && password
+          ? sendUserCredentialsEmail(
+              shippingAddress.email,
+              shippingAddress.firstName,
+              password,
+            )
+          : Promise.resolve(),
+      ]).catch((err) => console.error("Email sending failed:", err));
+
+      // ──────── RESPONSE ────────
+      const response: any = {
+        success: true,
+        message: "Order placed successfully",
+        order: {
+          _id: createdOrder._id,
+          orderNumber: createdOrder.orderNumber, // if you generate one
+          totalAmount: createdOrder.totalAmount,
+          status: createdOrder.status,
+        },
+      };
+
+      if (isNewUser) {
+        response.newAccount = {
+          created: true,
+          email: orderUser.email,
+          temporaryPassword: password,
+          note: "Check your email for login credentials",
+        };
+      }
+
+      res.status(201).json(response);
+    } catch (err: any) {
+      await session.abortTransaction();
+      throw err;
+    } finally {
+      session.endSession();
+    }
   },
 );

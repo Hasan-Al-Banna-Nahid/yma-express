@@ -1,150 +1,315 @@
+import { v4 as uuid } from "uuid";
 import ApiError from "../../utils/apiError";
-import { cartStore, createCart, MemoryCart } from "./cart.store";
-import Product from "../Product/product.model"; // Import Product model
+import Product from "../Product/product.model"; // still using DB for product validation
 
-/** 🔒 ALWAYS returns a cart */
-const resolveCart = (cartId?: string): MemoryCart => {
-  if (!cartId) return createCart();
+// ──────────────────────────────────────────────
+interface CartItem {
+  product: string; // product _id as string
+  productType: string;
+  quantity: number;
+  price: number;
+  startDate?: Date;
+  endDate?: Date;
+  rentalType?: string;
+}
 
-  const existing = cartStore.get(cartId);
-  if (!existing) return createCart();
+interface MemoryCart {
+  cartId: string;
+  items: CartItem[];
+  totalItems: number;
+  totalPrice: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
-  return existing;
+const cartStore = new Map<string, MemoryCart>();
+
+// ──────────────────────────────────────────────
+const getOrCreateCart = (cartId: string): MemoryCart => {
+  let cart = cartStore.get(cartId);
+
+  if (!cart) {
+    cart = {
+      cartId,
+      items: [],
+      totalItems: 0,
+      totalPrice: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    cartStore.set(cartId, cart);
+  }
+
+  return cart;
 };
 
-const recalc = (cart: MemoryCart) => {
-  cart.totalItems = cart.items.reduce((s, i) => s + i.quantity, 0);
-  cart.totalPrice = cart.items.reduce((s, i) => s + i.quantity * i.price, 0);
+const recalculateTotals = (cart: MemoryCart) => {
+  cart.totalItems = cart.items.reduce((sum, i) => sum + i.quantity, 0);
+  cart.totalPrice = cart.items.reduce(
+    (sum, i) => sum + i.quantity * i.price,
+    0,
+  );
   cart.updatedAt = new Date();
 };
 
-/** GET */
-export const getCartByUserId = async (cartId?: string): Promise<MemoryCart> => {
-  return resolveCart(cartId);
+const toPopulatedCart = async (cart: MemoryCart) => {
+  if (cart.items.length === 0) {
+    return {
+      ...cart,
+      items: [],
+    };
+  }
+
+  const productIds = cart.items.map((i) => i.product);
+  const products = await Product.find({ _id: { $in: productIds } })
+    .select("name imageCover price stock slug categories productType")
+    .lean();
+
+  const productMap = new Map(products.map((p: any) => [p._id.toString(), p]));
+
+  return {
+    ...cart,
+    items: cart.items.map((item) => {
+      const prod = productMap.get(item.product);
+      return {
+        ...item,
+        product: prod || { _id: item.product, name: "Product not found" },
+      };
+    }),
+  };
 };
 
-/** ADD SINGLE */
-export const addItemToCart = async (
-  cartId: string | undefined,
+// ──────────────────────────────────────────────
+export const getCart = async (cartId: string) => {
+  const cart = getOrCreateCart(cartId);
+  return await toPopulatedCart(cart);
+};
+
+export const addItem = async (
+  cartId: string,
   productId: string,
   quantity: number,
   startDate?: Date,
   endDate?: Date,
   rentalType?: string,
-): Promise<MemoryCart> => {
-  const cart = resolveCart(cartId);
+) => {
+  const cart = getOrCreateCart(cartId);
 
   const product = await Product.findById(productId);
-  if (!product) {
-    throw new ApiError(`Product with ID ${productId} not found`, 404);
+  if (!product) throw new ApiError("Product not found", 404);
+  if (product.stock < quantity) {
+    throw new ApiError(`Insufficient stock. Available: ${product.stock}`, 400);
   }
 
-  const item = cart.items.find((i) => i.productId === productId);
-  if (item) {
-    item.quantity += quantity;
+  const existing = cart.items.find((i) => i.product === productId);
+
+  if (existing) {
+    existing.quantity += quantity;
+    if (startDate) existing.startDate = startDate;
+    if (endDate) existing.endDate = endDate;
+    if (rentalType) existing.rentalType = rentalType;
   } else {
     cart.items.push({
-      productId,
+      product: productId,
+      productType: (product as any).productType || "physical",
       quantity,
-      price: product.price, // Use actual product price
+      price: product.price,
       startDate,
       endDate,
       rentalType,
     });
   }
 
-  recalc(cart);
-  return cart;
+  recalculateTotals(cart);
+  return await toPopulatedCart(cart);
 };
 
-/** ADD MULTIPLE */
-export const addMultipleItemsToCart = async (
-  cartId: string | undefined,
-  items: {
+export const addMultipleItems = async (
+  cartId: string,
+  items: Array<{
     productId: string;
     quantity: number;
     startDate?: Date;
     endDate?: Date;
     rentalType?: string;
-  }[],
-): Promise<MemoryCart> => {
-  const cart = resolveCart(cartId);
+  }>,
+) => {
+  const cart = getOrCreateCart(cartId);
 
-  for (const item of items) {
-    const product = await Product.findById(item.productId);
-    if (!product) {
-      throw new ApiError(`Product with ID ${item.productId} not found`, 404);
+  for (const { productId, quantity, startDate, endDate, rentalType } of items) {
+    const product = await Product.findById(productId);
+    if (!product) throw new ApiError(`Product ${productId} not found`, 404);
+    if (product.stock < quantity) {
+      throw new ApiError(`Insufficient stock for ${product.name}`, 400);
     }
 
-    const existing = cart.items.find((i) => i.productId === item.productId);
+    const existing = cart.items.find((i) => i.product === productId);
+
     if (existing) {
-      existing.quantity += item.quantity;
+      existing.quantity += quantity;
+      if (startDate) existing.startDate = startDate;
+      if (endDate) existing.endDate = endDate;
+      if (rentalType) existing.rentalType = rentalType;
     } else {
       cart.items.push({
-        ...item,
-        price: product.price, // Use actual product price
+        product: productId,
+        productType: (product as any).productType || "physical",
+        quantity,
+        price: product.price,
+        startDate,
+        endDate,
+        rentalType,
       });
     }
   }
 
-  recalc(cart);
-  return cart;
+  recalculateTotals(cart);
+  return await toPopulatedCart(cart);
 };
 
-/** UPDATE */
-export const updateCartItems = async (
-  cartId: string | undefined,
-  updateData: any,
-): Promise<MemoryCart> => {
-  const cart = resolveCart(cartId);
+export const updateItem = async (
+  cartId: string,
+  productId: string,
+  quantity: number,
+  startDate?: Date,
+  endDate?: Date,
+  rentalType?: string,
+) => {
+  const cart = getOrCreateCart(cartId);
 
-  if (Array.isArray(updateData.items)) {
-    for (const u of updateData.items) {
-      const item = cart.items.find((i) => i.productId === u.productId);
-      if (!item) continue;
+  const idx = cart.items.findIndex((i) => i.product === productId);
 
-      if (u.quantity === 0) {
-        cart.items = cart.items.filter((i) => i.productId !== u.productId);
-      } else {
-        Object.assign(item, u);
+  if (idx === -1) {
+    // treat as add new if quantity > 0
+    if (quantity > 0) {
+      return addItem(
+        cartId,
+        productId,
+        quantity,
+        startDate,
+        endDate,
+        rentalType,
+      );
+    }
+    throw new ApiError("Item not found in cart", 404);
+  }
+
+  if (quantity === 0) {
+    cart.items.splice(idx, 1);
+  } else {
+    const product = await Product.findById(productId);
+    if (!product) throw new ApiError("Product not found", 404);
+
+    const currentQty = cart.items[idx].quantity;
+    if (quantity > currentQty) {
+      const increase = quantity - currentQty;
+      if (product.stock < increase) {
+        throw new ApiError(`Not enough stock. Need ${increase} more`, 400);
       }
+    }
+
+    cart.items[idx].quantity = quantity;
+    if (startDate) cart.items[idx].startDate = startDate;
+    if (endDate) cart.items[idx].endDate = endDate;
+    if (rentalType) cart.items[idx].rentalType = rentalType;
+  }
+
+  recalculateTotals(cart);
+  return await toPopulatedCart(cart);
+};
+
+export const updateMultipleItems = async (
+  cartId: string,
+  items: Array<{
+    productId: string;
+    quantity: number;
+    startDate?: Date;
+    endDate?: Date;
+    rentalType?: string;
+  }>,
+) => {
+  const cart = getOrCreateCart(cartId);
+
+  for (const { productId, quantity, startDate, endDate, rentalType } of items) {
+    const idx = cart.items.findIndex((i) => i.product === productId);
+
+    if (idx === -1) {
+      if (quantity > 0) {
+        await addItem(
+          cartId,
+          productId,
+          quantity,
+          startDate,
+          endDate,
+          rentalType,
+        );
+      }
+      continue;
+    }
+
+    if (quantity === 0) {
+      cart.items.splice(idx, 1);
+    } else {
+      const product = await Product.findById(productId);
+      if (!product) throw new ApiError(`Product ${productId} not found`, 404);
+
+      const currentQty = cart.items[idx].quantity;
+      if (quantity > currentQty) {
+        const increase = quantity - currentQty;
+        if (product.stock < increase) {
+          throw new ApiError(`Not enough stock for ${product.name}`, 400);
+        }
+      }
+
+      cart.items[idx].quantity = quantity;
+      if (startDate) cart.items[idx].startDate = startDate;
+      if (endDate) cart.items[idx].endDate = endDate;
+      if (rentalType) cart.items[idx].rentalType = rentalType;
     }
   }
 
-  recalc(cart);
-  return cart;
+  recalculateTotals(cart);
+  return await toPopulatedCart(cart);
 };
 
-/** REMOVE */
-export const removeItemFromCart = async (
-  cartId: string | undefined,
-  productId: string,
-): Promise<MemoryCart> => {
-  const cart = resolveCart(cartId);
-  cart.items = cart.items.filter((i) => i.productId !== productId);
-  recalc(cart);
-  return cart;
+export const removeItem = async (cartId: string, productId: string) => {
+  const cart = getOrCreateCart(cartId);
+
+  const initialLength = cart.items.length;
+  cart.items = cart.items.filter((i) => i.product !== productId);
+
+  if (cart.items.length === initialLength) {
+    throw new ApiError("Item not found in cart", 404);
+  }
+
+  recalculateTotals(cart);
+  return await toPopulatedCart(cart);
 };
 
-/** CLEAR */
-export const clearCart = async (
-  cartId: string | undefined,
-): Promise<MemoryCart> => {
-  const cart = resolveCart(cartId);
+export const clear = async (cartId: string) => {
+  const cart = getOrCreateCart(cartId);
   cart.items = [];
-  recalc(cart);
-  return cart;
+  recalculateTotals(cart);
+  return await toPopulatedCart(cart);
 };
 
-/** SUMMARY */
-export const getCartSummary = async (cartId?: string) => {
-  const cart = resolveCart(cartId);
+export const getSummary = async (cartId: string) => {
+  const cart = getOrCreateCart(cartId);
+
+  const itemsSummary = cart.items.map((item) => ({
+    productId: item.product,
+    productType: item.productType,
+    quantity: item.quantity,
+    price: item.price,
+    subtotal: item.quantity * item.price,
+    startDate: item.startDate,
+    endDate: item.endDate,
+    rentalType: item.rentalType,
+  }));
+
   return {
     totalItems: cart.totalItems,
     totalPrice: cart.totalPrice,
-    items: cart.items.map((i) => ({
-      ...i,
-      subtotal: i.quantity * i.price,
-    })),
+    items: itemsSummary,
   };
 };
