@@ -227,7 +227,7 @@ export const getDashboardStatsHandler = asyncHandler(
 
 export const getRevenueOverTimeHandler = asyncHandler(
   async (req: Request, res: Response) => {
-    const { startDate, endDate, interval = "day" } = req.query;
+    const { startDate, endDate, interval = "day", status } = req.query;
 
     if (!startDate || !endDate) {
       throw new ApiError("startDate and endDate are required", 400);
@@ -236,6 +236,7 @@ export const getRevenueOverTimeHandler = asyncHandler(
     const revenueData = await orderService.getRevenueOverTime(
       new Date(startDate as string),
       new Date(endDate as string),
+      status as string,
       interval as "day" | "week" | "month",
     );
 

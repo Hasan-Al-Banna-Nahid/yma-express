@@ -1,6 +1,9 @@
 import mongoose, { Types, Document } from "mongoose";
 
-// User/Customer Interface
+// ───────────────────────────────────────────────
+// USER / CUSTOMER INTERFACES
+// ───────────────────────────────────────────────
+
 export interface IUser extends Document {
   _id: Types.ObjectId;
   name: string;
@@ -10,9 +13,9 @@ export interface IUser extends Document {
   role: "user" | "admin";
   photo?: string;
   active: boolean;
-  promoId?: Types.ObjectId; // Add promoId reference
+  promoId?: Types.ObjectId;
 
-  // Customer fields (will be populated when user places order)
+  // Customer-related fields (populated / updated on orders)
   customerId?: string;
   address?: string;
   city?: string;
@@ -29,16 +32,15 @@ export interface IUser extends Document {
   createdAt: Date;
   updatedAt: Date;
 
-  // Methods
+  // Instance methods
   comparePassword(candidatePassword: string): Promise<boolean>;
   createJWT(): string;
   changedPasswordAfter(JWTTimestamp: number): boolean;
 
-  // Virtual
+  // Virtuals (optional)
   fullAddress?: string;
 }
 
-// Customer Interface (for customer-specific operations)
 export interface ICustomer extends Document {
   _id: Types.ObjectId;
   userId: Types.ObjectId;
@@ -63,12 +65,15 @@ export interface ICustomer extends Document {
   updatedAt: Date;
 }
 
-// Order Item Interface
+// ───────────────────────────────────────────────
+// ORDER ITEM
+// ───────────────────────────────────────────────
+
 export interface IOrderItem {
   product: Types.ObjectId;
   quantity: number;
-  price: number;
-  name: string;
+  price: number; // unit price at time of order
+  name: string; // snapshot of product name
   startDate?: Date;
   endDate?: Date;
   hireOccasion?: string;
@@ -76,7 +81,12 @@ export interface IOrderItem {
   promoId?: Types.ObjectId;
 }
 
-// Shipping Address Interface
+export interface IOrderItemDocument extends IOrderItem, Document {}
+
+// ───────────────────────────────────────────────
+// SHIPPING ADDRESS (detailed)
+// ───────────────────────────────────────────────
+
 export interface IShippingAddress {
   firstName: string;
   lastName: string;
@@ -87,17 +97,19 @@ export interface IShippingAddress {
   street: string;
   zipCode: string;
   apartment?: string;
-  location?: string;
+  location?: string; // e.g. "front gate", "white building"
   companyName?: string;
-  locationAccessibility?: string;
-  deliveryTime?: string;
-  collectionTime?: string;
+  locationAccessibility?: string; // e.g. "lift available", "stairs only"
+  deliveryTime?: string; // now using 30-min slot format "09:30"
+  collectionTime?: string; // "17:00", "20:30" etc.
   floorType?: string;
-  userType?: string;
+  userType?: "residential" | "office" | "shop" | string;
   keepOvernight?: boolean;
   hireOccasion?: string;
   notes?: string;
   differentBillingAddress?: boolean;
+
+  // Billing address if different
   billingFirstName?: string;
   billingLastName?: string;
   billingStreet?: string;
@@ -106,7 +118,10 @@ export interface IShippingAddress {
   billingCompanyName?: string;
 }
 
-// Order Interface
+// ───────────────────────────────────────────────
+// ORDER
+// ───────────────────────────────────────────────
+
 export interface IOrder {
   user: Types.ObjectId;
   items: IOrderItem[];
@@ -123,21 +138,26 @@ export interface IOrder {
   bankDetails?: string;
   promoCode?: string;
   promoDiscount?: number;
+
+  // Timestamps & tracking
   createdAt: Date;
   updatedAt: Date;
   orderNumber?: string;
   estimatedDeliveryDate?: Date;
   deliveryDate?: Date;
   adminNotes?: string;
+
+  // Optional event/hire period (can override item-level if whole order same)
   startDate?: Date;
   endDate?: Date;
 }
 
-// Document Interfaces
-export interface IOrderItemDocument extends IOrderItem, Document {}
 export interface IOrderDocument extends IOrder, Document {}
 
-// Service Interfaces
+// ───────────────────────────────────────────────
+// SERVICE / INPUT DTOs
+// ───────────────────────────────────────────────
+
 export interface CreateOrderInput {
   user: mongoose.Types.ObjectId;
   items: Array<{
@@ -179,7 +199,13 @@ export interface UpdateOrderInput {
   totalAmount?: number;
   paymentMethod?: "cash_on_delivery" | "credit_card" | "online";
   shippingAddress?: Partial<IShippingAddress>;
+  bankDetails?: string;
+  invoiceType?: "regular" | "corporate";
 }
+
+// ───────────────────────────────────────────────
+// STATS & FILTERS
+// ───────────────────────────────────────────────
 
 export interface OrderStats {
   totalOrders: number;
@@ -203,23 +229,6 @@ export interface FilterOptions {
   paymentMethod?: string;
   minAmount?: number;
   maxAmount?: number;
-}
-
-// ==================== CUSTOMER INTERFACES ====================
-export interface CreateUserOrderInput {
-  productId: string;
-  quantity: number;
-  paymentMethod: string;
-  shippingAddress: {
-    firstName: string;
-    lastName: string;
-    phone: string;
-    email: string;
-    street: string;
-    city: string;
-    country?: string;
-    zipCode?: string;
-  };
 }
 
 export interface ICustomerStats {
@@ -253,7 +262,7 @@ export interface CustomerSearchFilters {
 
 export interface CustomerOrderHistory {
   customer: ICustomer;
-  orders: any[];
+  orders: IOrderDocument[];
   stats: {
     totalOrders: number;
     totalSpent: number;
@@ -266,87 +275,162 @@ export interface CustomerOrderHistory {
   };
 }
 
-// ==================== DELIVERY TIME SYSTEM ====================
+// ───────────────────────────────────────────────
+// DELIVERY & COLLECTION TIME SYSTEM (30-minute slots)
+// ───────────────────────────────────────────────
+
 export type DeliveryTimeOption = {
-  value: string;
-  label: string;
+  value: string; // "09:00", "09:30", "10:00", ...
+  label: string; // "9:00 AM", "9:30 AM", ...
   fee: number;
-  isFree?: boolean;
+  isFree: boolean;
 };
 
-// Default delivery time options
-export const DELIVERY_TIME_OPTIONS: DeliveryTimeOption[] = [
-  { value: "8am-12pm", label: "8 AM - 12 PM", fee: 0, isFree: true },
-  { value: "12pm-4pm", label: "12 PM - 4 PM", fee: 10 },
-  { value: "4pm-8pm", label: "4 PM - 8 PM", fee: 10 },
-  { value: "after_8pm", label: "After 8 PM", fee: 10 },
-];
+// Delivery: 9:00 AM – 7:00 PM every 30 min
+export const DELIVERY_TIME_OPTIONS: DeliveryTimeOption[] = (() => {
+  const slots: DeliveryTimeOption[] = [];
+  for (let h = 9; h <= 19; h++) {
+    for (let m = 0; m < 60; m += 30) {
+      if (h === 19 && m === 30) continue; // stop at 19:00
 
-// Get values for Mongoose enum
-export const DELIVERY_TIME_VALUES = DELIVERY_TIME_OPTIONS.map(
-  (opt) => opt.value,
+      const hourStr = h.toString().padStart(2, "0");
+      const minStr = m.toString().padStart(2, "0");
+      const value = `${hourStr}:${minStr}`;
+
+      const displayHour = h > 12 ? h - 12 : h;
+      const ampm = h >= 12 ? "PM" : "AM";
+      const label = `${displayHour}:${minStr} ${ampm}`;
+
+      const fee = h < 12 ? 0 : 10; // 9:00–11:59 free, 12:00+ €10
+      slots.push({ value, label, fee, isFree: fee === 0 });
+    }
+  }
+  return slots;
+})();
+
+export const DELIVERY_TIME_VALUES = DELIVERY_TIME_OPTIONS.map((o) => o.value);
+
+// Collection: 12:00 PM – 8:30 PM every 30 min
+export const COLLECTION_TIME_OPTIONS: DeliveryTimeOption[] = (() => {
+  const slots: DeliveryTimeOption[] = [];
+  for (let h = 12; h <= 20; h++) {
+    for (let m = 0; m < 60; m += 30) {
+      const value = `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`;
+
+      const displayHour = h > 12 ? h - 12 : h;
+      const ampm = h >= 12 ? "PM" : "AM";
+      const labelTime = `${displayHour}:${m.toString().padStart(2, "0")} ${ampm}`;
+
+      let fee = 10;
+      let isFree = false;
+      let labelSuffix = "";
+
+      if (h >= 17) {
+        fee = 0;
+        isFree = true;
+        labelSuffix = " (Free)";
+      }
+
+      // Special rule: exactly 20:30 → €20
+      if (value === "20:30") {
+        fee = 20;
+        isFree = false;
+        labelSuffix = " (+€20)";
+      }
+
+      const label = labelTime + labelSuffix;
+
+      slots.push({ value, label, fee, isFree });
+    }
+  }
+  return slots;
+})();
+
+export const COLLECTION_TIME_VALUES = COLLECTION_TIME_OPTIONS.map(
+  (o) => o.value,
 );
 
-// SIMPLE Delivery Time Manager
+// ───────────────────────────────────────────────
+// TIME MANAGER (normalization, formatting, fee lookup)
+// ───────────────────────────────────────────────
+
 export class DeliveryTimeManager {
-  static normalizeForDatabase(input: string): string {
-    if (!input) return "8am-12pm";
+  static normalize(
+    input: string | undefined | null,
+    type: "delivery" | "collection" = "delivery",
+  ): string {
+    if (!input) {
+      return type === "delivery" ? "09:00" : "17:00";
+    }
 
-    const cleaned = input.toLowerCase().trim();
+    const cleaned = input.trim().replace(/\s+/g, "").toLowerCase();
 
-    const mappings: Record<string, string> = {
-      "8 am - 12 pm (free)": "8am-12pm",
-      "8-12": "8am-12pm",
-      "8am-12pm": "8am-12pm",
-      "8:00-12:00": "8am-12pm",
-      "8-12pm": "8am-12pm",
-      "12-4": "12pm-4pm",
-      "12pm-4pm": "12pm-4pm",
-      "12:00-16:00": "12pm-4pm",
-      "4-8": "4pm-8pm",
-      "4pm-8pm": "4pm-8pm",
-      "16:00-20:00": "4pm-8pm",
-      "after 8pm": "after_8pm",
-      after_8pm: "after_8pm",
-      "20:00+": "after_8pm",
+    const commonMappings: Record<string, string> = {
+      "9": "09:00",
+      "9am": "09:00",
+      "9.00": "09:00",
+      "930": "09:30",
+      "9:30": "09:30",
+      "10": "10:00",
+      "1030": "10:30",
+      "5pm": "17:00",
+      "1700": "17:00",
+      "17": "17:00",
+      "8pm": "20:00",
+      "830pm": "20:30",
     };
 
-    return mappings[cleaned] || "8am-12pm";
+    if (commonMappings[cleaned]) return commonMappings[cleaned];
+
+    // Direct match
+    const allValues = [...DELIVERY_TIME_VALUES, ...COLLECTION_TIME_VALUES];
+    if (allValues.includes(cleaned)) return cleaned;
+
+    return type === "delivery" ? "09:00" : "17:00";
   }
 
-  static getDisplayLabel(value: string): string {
-    const option = DELIVERY_TIME_OPTIONS.find((opt) => opt.value === value);
-    if (!option) return "8 AM - 12 PM (Free)";
-
-    return `${option.label}${option.isFree ? " (Free)" : ` (£${option.fee})`}`;
+  static getDeliveryOption(value: string): DeliveryTimeOption | undefined {
+    return DELIVERY_TIME_OPTIONS.find((o) => o.value === value);
   }
 
-  static getFee(value: string): number {
-    const option = DELIVERY_TIME_OPTIONS.find((opt) => opt.value === value);
-    return option?.fee || 0;
+  static getCollectionOption(value: string): DeliveryTimeOption | undefined {
+    return COLLECTION_TIME_OPTIONS.find((o) => o.value === value);
   }
 
-  static isValid(value: string): boolean {
+  static getDeliveryFee(value: string): number {
+    return this.getDeliveryOption(value)?.fee ?? 10;
+  }
+
+  static getCollectionFee(value: string): number {
+    const option = this.getCollectionOption(value);
+    // fallback 10 if somehow invalid (but shouldn't happen)
+    return option?.fee ?? 10;
+  }
+
+  static formatDelivery(value: string): string {
+    const opt = this.getDeliveryOption(value);
+    if (!opt) return "9:00 AM";
+    return `${opt.label}${opt.isFree ? " (Free)" : ` (€${opt.fee})`}`;
+  }
+
+  static formatCollection(value: string): string {
+    const opt = this.getCollectionOption(value);
+    if (!opt) return "5:00 PM";
+    return `${opt.label}${opt.isFree ? " (Free)" : ` (€${opt.fee})`}`;
+  }
+
+  static isValidDelivery(value: string): boolean {
     return DELIVERY_TIME_VALUES.includes(value);
+  }
+
+  static isValidCollection(value: string): boolean {
+    return COLLECTION_TIME_VALUES.includes(value);
   }
 }
 
-// Other constants
-export const COLLECTION_TIME_OPTIONS = [
-  { value: "before_5pm", label: "Before 5 PM (Free)", fee: 0 },
-  { value: "after_5pm", label: "After 5 PM (£10)", fee: 10 },
-  { value: "next_day", label: "Next Day (£10)", fee: 10 },
-] as const;
-
-export const HIRE_OCCASION_OPTIONS = [
-  "birthday",
-  "wedding",
-  "corporate_event",
-  "school_event",
-  "community_event",
-  "private_party",
-  "other",
-] as const;
+// ───────────────────────────────────────────────
+// ENUM-LIKE CONSTANTS
+// ───────────────────────────────────────────────
 
 export const ORDER_STATUS = {
   PENDING: "pending",
@@ -366,3 +450,15 @@ export const INVOICE_TYPES = {
   REGULAR: "regular",
   CORPORATE: "corporate",
 } as const;
+
+export const HIRE_OCCASION_OPTIONS = [
+  "christmasEvent",
+  "eid",
+  "birthdayPartyKid",
+  "birthdayPartyAdult",
+  "school_event",
+  "community_event",
+  "wedding",
+  "christening",
+  "corporateFunday",
+] as const;

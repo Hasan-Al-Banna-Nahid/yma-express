@@ -5,16 +5,17 @@ import {
   IShippingAddress,
   DeliveryTimeManager,
   DELIVERY_TIME_VALUES,
+  COLLECTION_TIME_VALUES,
   HIRE_OCCASION_OPTIONS,
   ORDER_STATUS,
   PAYMENT_METHODS,
   INVOICE_TYPES,
-} from "./order.interface";
+} from "./order.interface"; // ← make sure this file exports the new DeliveryTimeManager
 
 // Order Item Schema
 const orderItemSchema = new Schema<IOrderItem>(
   {
-    promoId: { type: Schema.Types.ObjectId, ref: "Promo" }, // Add this field
+    promoId: { type: Schema.Types.ObjectId, ref: "Promo" },
 
     product: { type: Schema.Types.ObjectId, ref: "Product", required: true },
     quantity: { type: Number, required: true, min: 1 },
@@ -31,16 +32,6 @@ const orderItemSchema = new Schema<IOrderItem>(
   { _id: false },
 );
 
-// Define collection time options locally
-const COLLECTION_TIME_OPTIONS = [
-  { value: "before_5pm", label: "Before 5 PM (Free)", fee: 0 },
-  { value: "after_5pm", label: "After 5 PM (£10)", fee: 10 },
-  { value: "next_day", label: "Next Day (£10)", fee: 10 },
-] as const;
-
-// Get only the values for enum
-const COLLECTION_TIME_VALUES = COLLECTION_TIME_OPTIONS.map((opt) => opt.value);
-
 // Shipping Address Schema
 const shippingAddressSchema = new Schema<IShippingAddress>(
   {
@@ -56,22 +47,33 @@ const shippingAddressSchema = new Schema<IShippingAddress>(
     location: { type: String, default: "" },
     companyName: { type: String, default: "" },
     locationAccessibility: { type: String, default: "" },
+
     deliveryTime: {
       type: String,
       enum: DELIVERY_TIME_VALUES,
-      default: "8am-12pm",
+      default: "09:00", // ← updated default to match new 30-min system
       set: function (value: string) {
-        return DeliveryTimeManager.normalizeForDatabase(value);
+        return DeliveryTimeManager.normalize(value, "delivery");
       },
       get: function (value: string) {
-        return DeliveryTimeManager.getDisplayLabel(value);
+        return DeliveryTimeManager.formatDelivery(value);
       },
     },
+
     collectionTime: {
       type: String,
-      enum: [...COLLECTION_TIME_VALUES, ""], // Add empty string to valid enum values
+      enum: [...COLLECTION_TIME_VALUES, ""],
       default: "",
+      set: function (value: string) {
+        if (!value?.trim()) return "";
+        return DeliveryTimeManager.normalize(value, "collection");
+      },
+      // Optional: formatted output when converting to JSON/Object
+      // get: function (value: string) {
+      //   return value ? DeliveryTimeManager.formatCollection(value) : "";
+      // },
     },
+
     floorType: { type: String, default: "" },
     userType: { type: String, default: "" },
     keepOvernight: { type: Boolean, default: false },
@@ -89,7 +91,11 @@ const shippingAddressSchema = new Schema<IShippingAddress>(
     billingZipCode: { type: String, default: "" },
     billingCompanyName: { type: String, default: "" },
   },
-  { _id: false, toJSON: { getters: true }, toObject: { getters: true } },
+  {
+    _id: false,
+    toJSON: { getters: true },
+    toObject: { getters: true },
+  },
 );
 
 // Main Order Schema
@@ -163,8 +169,8 @@ const orderSchema = new Schema<IOrderDocument>(
 );
 
 // ==================== PRE-SAVE MIDDLEWARE ====================
-orderSchema.pre("save", async function (next) {
-  // Generate order number
+orderSchema.pre("save", function (next) {
+  // Generate order number if not set
   if (!this.orderNumber) {
     const date = new Date();
     const year = date.getFullYear().toString().slice(-2);
@@ -174,27 +180,28 @@ orderSchema.pre("save", async function (next) {
     this.orderNumber = `ORD${year}${month}${day}${random}`;
   }
 
-  // Calculate delivery fee
+  // ─── Calculate delivery + collection fee ─────────────────────────────
+  let deliveryFee = 0;
+  let collectionFee = 0;
+
   if (this.shippingAddress?.deliveryTime) {
-    this.deliveryFee = DeliveryTimeManager.getFee(
+    deliveryFee = DeliveryTimeManager.getDeliveryFee(
       this.shippingAddress.deliveryTime,
     );
   }
 
-  // Calculate collection fee if collectionTime is provided and not empty
   if (
     this.shippingAddress?.collectionTime &&
     this.shippingAddress.collectionTime.trim() !== ""
   ) {
-    const collectionOption = COLLECTION_TIME_OPTIONS.find(
-      (opt) => opt.value === this.shippingAddress.collectionTime,
+    collectionFee = DeliveryTimeManager.getCollectionFee(
+      this.shippingAddress.collectionTime,
     );
-    if (collectionOption) {
-      this.deliveryFee += collectionOption.fee;
-    }
   }
 
-  // Calculate total with discount
+  this.deliveryFee = deliveryFee + collectionFee;
+
+  // Total calculation (overnightFee should already be set elsewhere or here)
   this.totalAmount =
     this.subtotalAmount +
     this.deliveryFee +
@@ -204,9 +211,8 @@ orderSchema.pre("save", async function (next) {
   next();
 });
 
-// Check if model already exists
+// ==================== MODEL EXPORT ====================
 const Order =
   mongoose.models.Order || mongoose.model<IOrderDocument>("Order", orderSchema);
 
 export default Order;
-export { COLLECTION_TIME_OPTIONS };

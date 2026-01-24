@@ -17,28 +17,45 @@ export interface IShippingAddress {
   lastName: string;
   phone: string;
   email: string;
-  country: string;
+
+  // Main address
+  street: string; // line 1
+  apartment?: string; // line 2 / flat / suite
   city: string;
-  street: string;
+  state?: string; // ← NEW: province / region / state
   zipCode: string;
-  apartment?: string;
-  location?: string;
+  country: string;
+
+  // Extra location info
   companyName?: string;
-  locationAccessibility?: string;
+  location?: string; // e.g. "back garden", "front porch"
+  floorType?: string; // grass / concrete / tiles / wood
+  locationAccessibility?: string; // "easy access", "stairs", "lift required"
+
+  // Delivery & usage preferences
   deliveryTime?: string;
   collectionTime?: string;
-  floorType?: string;
-  userType?: string;
+  userType?: string; // "private" | "business" | "school" | ...
   keepOvernight?: boolean;
   hireOccasion?: string;
+
+  // Notes & billing
   notes?: string;
   differentBillingAddress?: boolean;
+
+  // Billing address (if different)
   billingFirstName?: string;
   billingLastName?: string;
+  billingPhone?: string;
+  billingEmail?: string;
   billingStreet?: string;
+  billingStreet2?: string;
   billingCity?: string;
+  billingState?: string;
   billingZipCode?: string;
+  billingCountry?: string;
   billingCompanyName?: string;
+  billingNotes?: string;
 }
 
 export interface IOrder {
