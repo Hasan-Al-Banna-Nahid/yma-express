@@ -10,6 +10,7 @@ export interface IUser extends Document {
   role: "user" | "admin";
   photo?: string;
   active: boolean;
+  promoId?: Types.ObjectId; // Add promoId reference
 
   // Customer fields (will be populated when user places order)
   customerId?: string;
@@ -72,6 +73,7 @@ export interface IOrderItem {
   endDate?: Date;
   hireOccasion?: string;
   keepOvernight?: boolean;
+  promoId?: Types.ObjectId;
 }
 
 // Shipping Address Interface
@@ -282,7 +284,7 @@ export const DELIVERY_TIME_OPTIONS: DeliveryTimeOption[] = [
 
 // Get values for Mongoose enum
 export const DELIVERY_TIME_VALUES = DELIVERY_TIME_OPTIONS.map(
-  (opt) => opt.value
+  (opt) => opt.value,
 );
 
 // SIMPLE Delivery Time Manager

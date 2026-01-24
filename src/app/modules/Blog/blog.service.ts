@@ -11,50 +11,232 @@ export const createBlog = async (blogData: any): Promise<any> => {
 };
 
 export const getAllBlogs = async (
-  filters: any = {},
+  filters: BlogFilter = {},
   page: number = 1,
-  limit: number = 10
+  limit: number = 10,
 ): Promise<{
   blogs: IBlogModel[];
   total: number;
   pages: number;
 }> => {
   const skip = (page - 1) * limit;
-  const query: any = {};
+  let query: any = {};
 
-  // BLOG NAME FILTER (search by title)
-  if (filters.name) {
-    query.title = { $regex: filters.name, $options: "i" };
+  console.log("=== SERVICE DEBUG START ===");
+  console.log("Received filters:", filters);
+
+  // STATUS FILTER
+  if (filters.status && filters.status !== "all") {
+    query.status = filters.status;
+    console.log(`Applied status filter: ${filters.status}`);
+  }
+
+  // PUBLISHED ONLY FILTER
+  if (filters.publishedOnly) {
+    console.log("Applying publishedOnly filter");
+
+    // Complex query to handle all published cases:
+    // 1. status = 'published'
+    // 2. OR isPublished = true
+    // 3. OR publishedAt exists and is in the past
+    query.$or = [
+      { status: "published" },
+      { isPublished: true },
+      {
+        publishedAt: {
+          $exists: true,
+          $lte: new Date(),
+        },
+      },
+    ];
   }
 
   // CATEGORY FILTER
   if (filters.category) {
     query.category = filters.category;
+    console.log(`Applied category filter: ${filters.category}`);
   }
 
-  // IS PUBLISHED FILTER
-  if (filters.isPublished !== undefined) {
-    if (filters.isPublished === "true" || filters.isPublished === true) {
-      query.status = "published";
-      query.publishedAt = { $lte: new Date() };
-    } else if (
-      filters.isPublished === "false" ||
-      filters.isPublished === false
-    ) {
-      query.status = { $ne: "published" };
+  // AUTHOR FILTER - Handle both author reference and authorName
+  if (filters.author) {
+    console.log(`Applying author filter: ${filters.author}`);
+
+    // Try to parse as ObjectId first
+    if (Types.ObjectId.isValid(filters.author)) {
+      query.$or = [
+        { author: new Types.ObjectId(filters.author) },
+        { authorName: { $regex: filters.author, $options: "i" } },
+      ];
+    } else {
+      // Search in authorName or populated author name
+      const authorRegex = new RegExp(filters.author, "i");
+      query.$or = [
+        { authorName: authorRegex },
+        // Note: To search in populated author, we need aggregation
+      ];
     }
   }
 
-  // Get total count
-  const total = await Blog.countDocuments(query);
+  // TAGS FILTER
+  if (filters.tags && filters.tags.length > 0) {
+    query.tags = { $in: filters.tags };
+    console.log(`Applied tags filter: ${filters.tags.join(", ")}`);
+  }
 
-  // Get blogs with pagination
-  const blogs = await Blog.find(query)
-    .populate("author", "name email avatar")
-    .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(limit)
-    .lean();
+  // FEATURED FILTER
+  if (filters.isFeatured !== undefined) {
+    query.isFeatured = filters.isFeatured;
+    console.log(`Applied featured filter: ${filters.isFeatured}`);
+  }
+
+  // SEARCH FILTER - Most important!
+  if (filters.search) {
+    console.log(`Applying search filter: "${filters.search}"`);
+    const searchRegex = new RegExp(filters.search, "i");
+
+    const searchConditions = {
+      $or: [
+        { title: searchRegex },
+        { subtitle: searchRegex },
+        { description: searchRegex },
+        { authorName: searchRegex },
+        { "author.name": searchRegex }, // For populated authors
+      ],
+    };
+
+    // Combine with existing query if any
+    if (Object.keys(query).length > 0) {
+      // If query already has $or, we need to handle it specially
+      if (query.$or) {
+        query = {
+          $and: [{ $or: query.$or }, searchConditions],
+        };
+      } else {
+        query = {
+          $and: [query, searchConditions],
+        };
+      }
+    } else {
+      query = searchConditions;
+    }
+  }
+
+  // DATE RANGE FILTERS
+  if (filters.startDate || filters.endDate) {
+    query.createdAt = {};
+    if (filters.startDate) {
+      query.createdAt.$gte = filters.startDate;
+    }
+    if (filters.endDate) {
+      query.createdAt.$lte = filters.endDate;
+    }
+    console.log(
+      `Applied date range: ${filters.startDate} to ${filters.endDate}`,
+    );
+  }
+
+  console.log("Final query:", JSON.stringify(query, null, 2));
+
+  // Build the aggregation pipeline for better searching
+  const aggregationPipeline: any[] = [];
+
+  // Match stage
+  aggregationPipeline.push({ $match: query });
+
+  // Lookup author if needed
+  aggregationPipeline.push({
+    $lookup: {
+      from: "users", // Change to your actual user collection name
+      localField: "author",
+      foreignField: "_id",
+      as: "authorDetails",
+    },
+  });
+
+  // Add author name for consistent searching
+  aggregationPipeline.push({
+    $addFields: {
+      effectiveAuthorName: {
+        $cond: {
+          if: {
+            $and: [
+              { $ifNull: ["$authorName", false] },
+              { $ne: ["$authorName", ""] },
+            ],
+          },
+          then: "$authorName",
+          else: { $arrayElemAt: ["$authorDetails.name", 0] },
+        },
+      },
+    },
+  });
+
+  // Apply search on effectiveAuthorName if search filter exists
+  if (filters.search) {
+    const searchRegex = new RegExp(filters.search, "i");
+    aggregationPipeline.push({
+      $match: {
+        $or: [
+          { title: searchRegex },
+          { subtitle: searchRegex },
+          { description: searchRegex },
+          { effectiveAuthorName: searchRegex },
+        ],
+      },
+    });
+  }
+
+  // Get total count
+  const countPipeline = [...aggregationPipeline, { $count: "total" }];
+  const countResult = await Blog.aggregate(countPipeline);
+  const total = countResult[0]?.total || 0;
+
+  // Add pagination and sorting
+  aggregationPipeline.push(
+    { $sort: { createdAt: -1 } },
+    { $skip: skip },
+    { $limit: limit },
+    {
+      $project: {
+        title: 1,
+        subtitle: 1,
+        description: 1,
+        images: 1,
+        category: 1,
+        tags: 1,
+        status: 1,
+        publishedAt: 1,
+        isFeatured: 1,
+        views: 1,
+        slug: 1,
+        readTime: 1,
+        createdAt: 1,
+        updatedAt: 1,
+        authorName: 1,
+        authorImage: 1,
+        author: { $arrayElemAt: ["$authorDetails", 0] },
+        // Include all custom fields
+        customField1: 1,
+        customField2: 1,
+        customField3: 1,
+        customField4: 1,
+        customField5: 1,
+        customField6: 1,
+        customField7: 1,
+        customField8: 1,
+      },
+    },
+  );
+
+  const blogs = await Blog.aggregate(aggregationPipeline);
+
+  console.log(`Found ${blogs.length} blogs out of ${total} total`);
+  blogs.forEach((blog, index) => {
+    console.log(
+      `${index + 1}. "${blog.title}" - Status: ${blog.status}, Author: ${blog.authorName || blog.author?.name}`,
+    );
+  });
+  console.log("=== SERVICE DEBUG END ===\n");
 
   return {
     blogs: blogs as IBlogModel[],
@@ -99,7 +281,7 @@ export const getBlogBySlug = async (slug: string): Promise<IBlogModel> => {
 
 export const updateBlog = async (
   blogId: string,
-  updateData: any
+  updateData: any,
 ): Promise<any> => {
   console.log("Updating blog with:", updateData); // Debug log
 
@@ -140,7 +322,7 @@ export const deleteBlog = async (blogId: string): Promise<void> => {
 export const searchBlogs = async (
   query: string,
   page: number = 1,
-  limit: number = 10
+  limit: number = 10,
 ): Promise<{
   blogs: IBlogModel[];
   total: number;
@@ -178,7 +360,7 @@ export const searchBlogs = async (
 
 export const togglePublishStatus = async (
   blogId: string,
-  status: string
+  status: string,
 ): Promise<IBlogModel> => {
   if (!Types.ObjectId.isValid(blogId)) {
     throw new ApiError("Invalid blog ID", 400);
@@ -225,7 +407,7 @@ export const getBlogStats = async () => {
                 $gte: new Date(
                   new Date().getFullYear(),
                   new Date().getMonth(),
-                  1
+                  1,
                 ),
               },
             },

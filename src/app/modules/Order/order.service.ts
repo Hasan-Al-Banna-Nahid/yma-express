@@ -28,7 +28,7 @@ import {
 
 export const createOrder = async (
   userId: string,
-  orderData: any
+  orderData: any,
 ): Promise<any> => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -58,7 +58,7 @@ export const createOrder = async (
       if (product.stock < item.quantity) {
         throw new ApiError(
           `Insufficient stock for ${product.name}. Available: ${product.stock}`,
-          400
+          400,
         );
       }
 
@@ -102,7 +102,7 @@ export const createOrder = async (
         { value: "next_day", fee: 10 },
       ];
       const collectionOption = collectionOptions.find(
-        (opt) => opt.value === shippingAddress.collectionTime
+        (opt) => opt.value === shippingAddress.collectionTime,
       );
       if (collectionOption) {
         deliveryFee += collectionOption.fee;
@@ -175,7 +175,7 @@ export const createOrder = async (
       user,
       order,
       shippingAddress,
-      session
+      session,
     );
 
     // 7. Commit transaction
@@ -204,7 +204,7 @@ const createOrUpdateCustomerFromOrder = async (
   user: any,
   order: any,
   shippingAddress: any,
-  session: mongoose.ClientSession
+  session: mongoose.ClientSession,
 ): Promise<void> => {
   try {
     // Check if customer exists
@@ -275,7 +275,7 @@ const createOrUpdateCustomerFromOrder = async (
           postcode: shippingAddress.zipCode || user.postcode,
         },
       },
-      { session }
+      { session },
     );
   } catch (error) {
     console.error("Error in customer creation:", error);
@@ -284,7 +284,7 @@ const createOrUpdateCustomerFromOrder = async (
 
 // Get order by ID
 export const getOrderById = async (
-  orderId: string
+  orderId: string,
 ): Promise<IOrderDocument> => {
   if (!orderId || typeof orderId !== "string") {
     throw new ApiError("Order ID is required", 400);
@@ -317,41 +317,67 @@ export const getOrderById = async (
 export const getAllOrders = async (
   page: number = 1,
   limit: number = 20,
-  filters: FilterOptions = {}
-): Promise<{ orders: IOrderDocument[]; total: number; pages: number }> => {
+  filters: FilterOptions = {},
+): Promise<{
+  orders: IOrderDocument[];
+  total: number;
+  pages: number;
+  currentPage: number;
+  limit: number;
+  hasNextPage: boolean;
+  hasPrevPage: boolean;
+}> => {
   try {
     const skip = (page - 1) * limit;
     const query: any = {};
 
+    console.log("=== ORDER FILTER DEBUG ===");
+    console.log("Filters received:", filters);
+    console.log("Page:", page, "Limit:", limit);
+
     // Apply filters
     if (filters.status && filters.status !== "all") {
       query.status = filters.status;
+      console.log("Applied status filter:", filters.status);
     }
 
     if (filters.userId && mongoose.Types.ObjectId.isValid(filters.userId)) {
       query.user = new mongoose.Types.ObjectId(filters.userId);
+      console.log("Applied user filter:", filters.userId);
     }
 
     if (filters.paymentMethod && filters.paymentMethod !== "all") {
       query.paymentMethod = filters.paymentMethod;
+      console.log("Applied payment method filter:", filters.paymentMethod);
     }
 
+    // Date range filters
     if (filters.startDate) {
       query.createdAt = { $gte: new Date(filters.startDate) };
+      console.log("Applied start date filter:", filters.startDate);
     }
 
     if (filters.endDate) {
       query.createdAt = { ...query.createdAt, $lte: new Date(filters.endDate) };
+      console.log("Applied end date filter:", filters.endDate);
     }
 
+    // Amount range filters
     if (filters.minAmount !== undefined) {
       query.totalAmount = { $gte: filters.minAmount };
+      console.log("Applied min amount filter:", filters.minAmount);
     }
 
     if (filters.maxAmount !== undefined) {
-      query.totalAmount = { ...query.totalAmount, $lte: filters.maxAmount };
+      if (query.totalAmount) {
+        query.totalAmount.$lte = filters.maxAmount;
+      } else {
+        query.totalAmount = { $lte: filters.maxAmount };
+      }
+      console.log("Applied max amount filter:", filters.maxAmount);
     }
 
+    // Search filter
     if (filters.search && filters.search.trim()) {
       const searchRegex = new RegExp(filters.search.trim(), "i");
       query.$or = [
@@ -363,30 +389,77 @@ export const getAllOrders = async (
         { "shippingAddress.city": searchRegex },
         { "shippingAddress.zipCode": searchRegex },
         { "shippingAddress.companyName": searchRegex },
+        // Also search in user fields
+        { "user.name": searchRegex },
+        { "user.email": searchRegex },
       ];
+      console.log("Applied search filter:", filters.search);
     }
 
-    const [orders, total] = await Promise.all([
-      Order.find(query)
-        .populate("user", "name email phone")
-        .populate("items.product", "name imageCover price")
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit),
-      Order.countDocuments(query),
-    ]);
+    console.log("Final query:", JSON.stringify(query, null, 2));
+
+    // Get total count with filters
+    const total = await Order.countDocuments(query);
+    console.log("Total documents matching query:", total);
+
+    // Calculate pagination info
+    const pages = Math.ceil(total / limit);
+    const hasNextPage = page < pages;
+    const hasPrevPage = page > 1;
+
+    // If page is beyond total pages, return empty results
+    if (page > pages && total > 0) {
+      return {
+        orders: [],
+        total,
+        pages,
+        currentPage: page,
+        limit,
+        hasNextPage: false,
+        hasPrevPage: hasPrevPage,
+      };
+    }
+
+    // Get orders with pagination and population
+    const orders = await Order.find(query)
+      .populate({
+        path: "user",
+        select: "name email phone avatar",
+        model: User,
+      })
+      .populate({
+        path: "items.product",
+        select: "name imageCover price category sku",
+        model: Product,
+      })
+      .sort({ createdAt: -1, orderNumber: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    console.log(`Retrieved ${orders.length} orders for page ${page}`);
+    console.log("=== END ORDER FILTER DEBUG ===\n");
 
     return {
-      orders,
+      orders: orders as unknown as IOrderDocument[],
       total,
-      pages: Math.ceil(total / limit),
+      pages,
+      currentPage: page,
+      limit,
+      hasNextPage,
+      hasPrevPage,
     };
   } catch (error: any) {
     console.error("Error in getAllOrders:", error.message);
+    console.error("Error stack:", error.stack);
     return {
       orders: [],
       total: 0,
       pages: 0,
+      currentPage: page,
+      limit,
+      hasNextPage: false,
+      hasPrevPage: false,
     };
   }
 };
@@ -396,7 +469,7 @@ export const updateOrder = async (
   orderId: string,
   updateData: UpdateOrderInput,
   userId?: string,
-  isAdmin: boolean = false
+  isAdmin: boolean = false,
 ): Promise<IOrderDocument> => {
   if (!mongoose.Types.ObjectId.isValid(orderId)) {
     throw new ApiError("Invalid order ID", 400);
@@ -436,7 +509,7 @@ export const updateOrder = async (
   if (updateData.shippingAddress?.deliveryTime) {
     updateData.shippingAddress.deliveryTime =
       DeliveryTimeManager.normalizeForDatabase(
-        updateData.shippingAddress.deliveryTime
+        updateData.shippingAddress.deliveryTime,
       );
   }
 
@@ -485,7 +558,7 @@ export const updateOrder = async (
 export const updateOrderStatus = async (
   orderId: string,
   status: "pending" | "confirmed" | "shipped" | "delivered" | "cancelled",
-  adminNotes?: string
+  adminNotes?: string,
 ): Promise<IOrderDocument> => {
   if (!mongoose.Types.ObjectId.isValid(orderId)) {
     throw new ApiError("Invalid order ID", 400);
@@ -544,7 +617,7 @@ export const updateOrderStatus = async (
 export const generateInvoice = async (
   orderId: string,
   userId?: string,
-  isAdmin: boolean = false
+  isAdmin: boolean = false,
 ): Promise<{ message: string; orderId: string }> => {
   if (!mongoose.Types.ObjectId.isValid(orderId)) {
     throw new ApiError("Invalid order ID", 400);
@@ -571,7 +644,7 @@ export const generateInvoice = async (
 // Delete order
 export const deleteOrder = async (
   orderId: string,
-  userId?: string
+  userId?: string,
 ): Promise<void> => {
   if (!mongoose.Types.ObjectId.isValid(orderId)) {
     throw new ApiError("Invalid order ID", 400);
@@ -589,12 +662,12 @@ export const deleteOrder = async (
 
   if (
     ![ORDER_STATUS.PENDING, ORDER_STATUS.CANCELLED].includes(
-      order.status as any
+      order.status as any,
     )
   ) {
     throw new ApiError(
       "Cannot delete confirmed, shipped, or delivered orders",
-      400
+      400,
     );
   }
 
@@ -739,17 +812,13 @@ export const getDashboardStats = async (): Promise<{
   todayBookings: number;
   todayDeliveries: number;
 }> => {
-  const [
-    todayRevenue,
-    pendingConfirmations,
-    todayBookings,
-    todayDeliveries,
-  ] = await Promise.all([
-    getTodayRevenue(),
-    getPendingConfirmationsCount(),
-    (await getTodayBookings()).length,
-    (await getTodayDeliveries()).length,
-  ]);
+  const [todayRevenue, pendingConfirmations, todayBookings, todayDeliveries] =
+    await Promise.all([
+      getTodayRevenue(),
+      getPendingConfirmationsCount(),
+      (await getTodayBookings()).length,
+      (await getTodayDeliveries()).length,
+    ]);
 
   return {
     todayRevenue,
@@ -763,7 +832,7 @@ export const getDashboardStats = async (): Promise<{
 export const getRevenueOverTime = async (
   startDate: Date,
   endDate: Date,
-  interval: "day" | "week" | "month" = "day"
+  interval: "day" | "week" | "month" = "day",
 ): Promise<Array<{ date: string; revenue: number; orders: number }>> => {
   const matchStage = {
     $match: {
@@ -840,7 +909,7 @@ export const getRevenueOverTime = async (
 
 // NEW: Get order summary with user info
 export const getOrderSummary = async (
-  orderId: string
+  orderId: string,
 ): Promise<{
   order: IOrderDocument;
   user: any;
@@ -849,7 +918,7 @@ export const getOrderSummary = async (
   const order = await getOrderById(orderId);
 
   const user = await User.findById(order.user).select(
-    "name email phone address city postcode createdAt"
+    "name email phone address city postcode createdAt",
   );
 
   const customer = await Customer.findOne({ user: order.user });
@@ -865,7 +934,7 @@ export const getOrderSummary = async (
 export const getOrdersByUserId = async (
   userId: string,
   page: number = 1,
-  limit: number = 10
+  limit: number = 10,
 ): Promise<{ orders: IOrderDocument[]; total: number; pages: number }> => {
   if (!mongoose.Types.ObjectId.isValid(userId)) {
     throw new ApiError("Invalid user ID", 400);
@@ -890,7 +959,7 @@ export const getOrdersByUserId = async (
 export const searchOrders = async (
   searchTerm: string,
   page: number = 1,
-  limit: number = 20
+  limit: number = 20,
 ): Promise<{ orders: IOrderDocument[]; total: number; pages: number }> => {
   const skip = (page - 1) * limit;
   const searchRegex = new RegExp(searchTerm, "i");
@@ -949,7 +1018,7 @@ export const getPendingOrders = async (): Promise<IOrderDocument[]> => {
 export const getOrdersByStatus = async (
   status: string,
   page: number = 1,
-  limit: number = 20
+  limit: number = 20,
 ): Promise<{ orders: IOrderDocument[]; total: number; pages: number }> => {
   const skip = (page - 1) * limit;
 
@@ -963,7 +1032,7 @@ export const getOrdersByStatus = async (
   if (!validStatuses.includes(status)) {
     throw new ApiError(
       `Invalid status. Must be one of: ${validStatuses.join(", ")}`,
-      400
+      400,
     );
   }
 
@@ -984,7 +1053,7 @@ export const getOrdersByStatus = async (
 const generateInvoiceHtml = (order: IOrderDocument): string => {
   const invoiceDate = new Date().toLocaleDateString("en-GB");
   const dueDate = new Date(
-    Date.now() + 7 * 24 * 60 * 60 * 1000
+    Date.now() + 7 * 24 * 60 * 60 * 1000,
   ).toLocaleDateString("en-GB");
 
   return `
@@ -1036,13 +1105,13 @@ const generateInvoiceHtml = (order: IOrderDocument): string => {
           <div class="customer-info">
             <h3>Bill To:</h3>
             <p><strong>${order.shippingAddress.firstName} ${
-    order.shippingAddress.lastName
-  }</strong></p>
+              order.shippingAddress.lastName
+            }</strong></p>
             <p>${order.shippingAddress.companyName || ""}</p>
             <p>${order.shippingAddress.street}</p>
             <p>${order.shippingAddress.city}, ${
-    order.shippingAddress.zipCode
-  }</p>
+              order.shippingAddress.zipCode
+            }</p>
             <p>${order.shippingAddress.country}</p>
             <p>Email: ${order.shippingAddress.email}</p>
             <p>Phone: ${order.shippingAddress.phone}</p>
@@ -1082,7 +1151,7 @@ const generateInvoiceHtml = (order: IOrderDocument): string => {
                 <td>£${item.price.toFixed(2)}</td>
                 <td>£${(item.price * item.quantity).toFixed(2)}</td>
               </tr>
-            `
+            `,
               )
               .join("")}
             ${
@@ -1145,8 +1214,8 @@ const generateInvoiceHtml = (order: IOrderDocument): string => {
             order.paymentMethod === "cash_on_delivery"
               ? "Cash on Delivery"
               : order.paymentMethod === "credit_card"
-              ? "Credit Card"
-              : "Online Payment"
+                ? "Credit Card"
+                : "Online Payment"
           }</p>
           <p><strong>Payment Status:</strong> ${
             order.status === "delivered" ? "Paid" : "Pending"
@@ -1172,7 +1241,7 @@ const generateInvoiceHtml = (order: IOrderDocument): string => {
 export const downloadInvoice = async (
   orderId: string,
   userId?: string,
-  isAdmin: boolean = false
+  isAdmin: boolean = false,
 ): Promise<{ html: string; filename: string }> => {
   if (!mongoose.Types.ObjectId.isValid(orderId)) {
     throw new ApiError("Invalid order ID", 400);
@@ -1197,7 +1266,7 @@ export const downloadInvoice = async (
 export const previewInvoice = async (
   orderId: string,
   userId?: string,
-  isAdmin: boolean = false
+  isAdmin: boolean = false,
 ): Promise<string> => {
   if (!mongoose.Types.ObjectId.isValid(orderId)) {
     throw new ApiError("Invalid order ID", 400);

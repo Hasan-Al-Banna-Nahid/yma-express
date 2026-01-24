@@ -1,134 +1,130 @@
 import { Request, Response, NextFunction } from "express";
 import asyncHandler from "../../utils/asyncHandler";
-import * as cartService from "./cart.service";
-import { AuthenticatedRequest } from "../../middlewares/auth.middleware";
+import * as cartService from "./cart.service"; // ← we'll update this too
 import ApiError from "../../utils/apiError";
+import { v4 as uuid } from "uuid";
 
-export const getCart = asyncHandler(
-  async (req: Request, res: Response, next: NextFunction) => {
-    const userId = (req as AuthenticatedRequest).user._id.toString();
+// cart.controller.ts
+const getCartId = (req: Request, res: Response): string => {
+  const headerValue = req.headers["x-cart-id"];
 
-    console.log("📋 [CART CONTROLLER] Getting cart for user:", userId);
+  // Handle different possible types (string | string[] | undefined)
+  let cartId: string | undefined;
 
-    // Get cart with populated products
-    const cart = await cartService.getCartByUserId(userId);
-
-    res.status(200).json({
-      status: "success",
-      data: {
-        cart,
-      },
-    });
+  if (typeof headerValue === "string") {
+    cartId = headerValue.trim();
+  } else if (Array.isArray(headerValue) && headerValue.length > 0) {
+    cartId = headerValue[0].trim(); // rare case - take first
   }
-);
 
-export const addToCart = asyncHandler(
-  async (req: Request, res: Response, next: NextFunction) => {
-    const userId = (req as AuthenticatedRequest).user._id.toString();
-    const { items, productId, quantity, startDate, endDate, rentalType } = req.body;
+  if (cartId && cartId.length > 0) {
+    console.log(`[CART-ID] Using existing from header: ${cartId}`);
+    return cartId;
+  }
 
-    console.log("🛒 [CART CONTROLLER] Add to cart request:", {
-      userId,
-      hasItemsArray: Array.isArray(items),
-      itemsCount: Array.isArray(items) ? items.length : 0,
-      singleItem: productId ? { productId, quantity } : null,
-      startDate,
-      endDate,
+  // No valid cartId → create new
+  const newId = uuid();
+  console.warn(
+    `[CART-ID] No valid x-cart-id header received → creating new: ${newId}\n` +
+      `   Request path: ${req.method} ${req.originalUrl}\n` +
+      `   Body had items array?: ${Array.isArray(req.body?.items)}\n` +
+      `   Body had single productId?: ${!!req.body?.productId}`,
+  );
+
+  res.setHeader("x-cart-id", newId);
+  return newId;
+};
+
+export const getCart = asyncHandler(async (req: Request, res: Response) => {
+  const cartId = getCartId(req, res);
+  console.log("📋 [CART CONTROLLER] Getting cart:", cartId);
+
+  const cart = await cartService.getCart(cartId);
+
+  res.status(200).json({
+    status: "success",
+    data: { cart },
+  });
+});
+
+export const addToCart = asyncHandler(async (req: Request, res: Response) => {
+  const cartId = getCartId(req, res);
+  const { items, productId, quantity, startDate, endDate, rentalType } =
+    req.body;
+
+  console.log("🛒 [CART CONTROLLER] Add to cart:", {
+    cartId,
+    hasItemsArray: Array.isArray(items),
+  });
+
+  let cart;
+
+  if (Array.isArray(items)) {
+    if (items.length === 0)
+      throw new ApiError("Items array cannot be empty", 400);
+
+    const processedItems = items.map((item: any) => {
+      if (!item.productId || !item.quantity) {
+        throw new ApiError("Each item must have productId and quantity", 400);
+      }
+      if (item.quantity <= 0) throw new ApiError("Quantity must be > 0", 400);
+
+      return {
+        ...item,
+        startDate: item.startDate ? new Date(item.startDate) : undefined,
+        endDate: item.endDate ? new Date(item.endDate) : undefined,
+      };
+    });
+
+    cart = await cartService.addMultipleItems(cartId, processedItems);
+  } else if (productId && quantity) {
+    if (quantity <= 0) throw new ApiError("Quantity must be > 0", 400);
+
+    cart = await cartService.addItem(
+      cartId,
+      productId,
+      quantity,
+      startDate ? new Date(startDate) : undefined,
+      endDate ? new Date(endDate) : undefined,
       rentalType,
-    });
-
-    let cart;
-
-    // Validate input
-    if (Array.isArray(items)) {
-      // Validate items array
-      if (items.length === 0) {
-        throw new ApiError("Items array cannot be empty", 400);
-      }
-
-      // Validate each item in the array and convert dates
-      const processedItems = items.map((item: any) => {
-        if (!item.productId || !item.quantity) {
-          throw new ApiError("Each item must have productId and quantity", 400);
-        }
-        if (item.quantity <= 0) {
-          throw new ApiError("Quantity must be greater than 0", 400);
-        }
-        return {
-          ...item,
-          startDate: item.startDate ? new Date(item.startDate) : undefined,
-          endDate: item.endDate ? new Date(item.endDate) : undefined,
-        };
-      });
-
-      // Multiple items
-      cart = await cartService.addMultipleItemsToCart(userId, processedItems);
-    } else if (productId && quantity) {
-      // Single item (backward compatibility)
-      if (quantity <= 0) {
-        throw new ApiError("Quantity must be greater than 0", 400);
-      }
-
-      cart = await cartService.addItemToCart(
-        userId,
-        productId,
-        quantity,
-        startDate ? new Date(startDate) : undefined,
-        endDate ? new Date(endDate) : undefined,
-        rentalType
-      );
-    } else {
-      throw new ApiError(
-        "Either provide 'items' array or 'productId' with 'quantity'",
-        400
-      );
-    }
-
-    res.status(200).json({
-      status: "success",
-      message: Array.isArray(items)
-        ? "Items added to cart successfully"
-        : "Item added to cart successfully",
-      data: {
-        cart,
-      },
-    });
+    );
+  } else {
+    throw new ApiError(
+      "Provide 'items' array OR 'productId' + 'quantity'",
+      400,
+    );
   }
-);
+
+  res.setHeader("x-cart-id", cartId);
+
+  res.status(200).json({
+    status: "success",
+    message: Array.isArray(items) ? "Items added" : "Item added",
+    data: { cart },
+  });
+});
 
 export const updateCartItems = asyncHandler(
-  async (req: Request, res: Response, next: NextFunction) => {
-    const userId = (req as AuthenticatedRequest).user._id.toString();
-    const { items, productId, quantity, startDate, endDate, rentalType } = req.body;
+  async (req: Request, res: Response) => {
+    const cartId = getCartId(req, res);
+    const { items, productId, quantity, startDate, endDate, rentalType } =
+      req.body;
 
-    console.log("🔄 [CART CONTROLLER] Update cart request:", {
-      userId,
-      hasItemsArray: Array.isArray(items),
-      itemsCount: Array.isArray(items) ? items.length : 0,
-      singleItem: productId ? { productId, quantity } : null,
-      startDate,
-      endDate,
-      rentalType,
-    });
+    console.log("🔄 [CART CONTROLLER] Update cart:", { cartId });
 
     let cart;
 
     if (Array.isArray(items)) {
-      // Multiple items update
-      console.log("📦 [CART CONTROLLER] Processing multiple items update");
-
-      // Validate items array and convert dates
-      if (items.length === 0) {
+      if (items.length === 0)
         throw new ApiError("Items array cannot be empty", 400);
-      }
 
       const processedItems = items.map((item: any) => {
         if (!item.productId || item.quantity === undefined) {
           throw new ApiError("Each item must have productId and quantity", 400);
         }
-        if (item.quantity < 0) {
+        if (item.quantity < 0)
           throw new ApiError("Quantity cannot be negative", 400);
-        }
+
         return {
           ...item,
           startDate: item.startDate ? new Date(item.startDate) : undefined,
@@ -136,99 +132,83 @@ export const updateCartItems = asyncHandler(
         };
       });
 
-      cart = await cartService.updateCartItems(userId, { items: processedItems });
+      cart = await cartService.updateMultipleItems(cartId, processedItems);
     } else if (productId && quantity !== undefined) {
-      // Single item update (backward compatibility)
-      console.log(
-        "🛒 [CART CONTROLLER] Processing single item update for product:",
-        productId
-      );
+      if (quantity < 0) throw new ApiError("Quantity cannot be negative", 400);
 
-      if (quantity < 0) {
-        throw new ApiError("Quantity cannot be negative", 400);
-      }
-
-      cart = await cartService.updateCartItems(userId, {
+      cart = await cartService.updateItem(
+        cartId,
         productId,
         quantity,
-        startDate: startDate ? new Date(startDate) : undefined,
-        endDate: endDate ? new Date(endDate) : undefined,
+        startDate ? new Date(startDate) : undefined,
+        endDate ? new Date(endDate) : undefined,
         rentalType,
-      });
+      );
     } else {
-      // Invalid request
       throw new ApiError(
-        "Either provide 'items' array or 'productId' with 'quantity'",
-        400
+        "Provide 'items' array OR 'productId' + 'quantity'",
+        400,
       );
     }
 
-    console.log("✅ [CART CONTROLLER] Cart update completed successfully");
+    res.setHeader("x-cart-id", cartId);
 
     res.status(200).json({
       status: "success",
       message: "Cart updated successfully",
-      data: {
-        cart,
-      },
+      data: { cart },
     });
-  }
+  },
 );
 
 export const removeFromCart = asyncHandler(
-  async (req: Request, res: Response, next: NextFunction) => {
-    const userId = (req as AuthenticatedRequest).user._id.toString();
+  async (req: Request, res: Response) => {
+    const cartId = getCartId(req, res);
     const { productId } = req.params;
 
-    console.log("🗑️ [CART CONTROLLER] Removing item:", { userId, productId });
+    if (!productId?.trim()) throw new ApiError("Product ID is required", 400);
 
-    if (!productId || productId.trim() === "") {
-      throw new ApiError("Product ID is required", 400);
-    }
+    console.log("🗑️ [CART CONTROLLER] Removing item:", { cartId, productId });
 
-    const cart = await cartService.removeItemFromCart(userId, productId);
+    const cart = await cartService.removeItem(cartId, productId);
 
-    res.status(200).json({
-      status: "success",
-      message: "Item removed from cart successfully",
-      data: {
-        cart,
-      },
-    });
-  }
-);
-
-export const clearCart = asyncHandler(
-  async (req: Request, res: Response, next: NextFunction) => {
-    const userId = (req as AuthenticatedRequest).user._id.toString();
-
-    console.log("🧹 [CART CONTROLLER] Clearing cart for user:", userId);
-
-    const cart = await cartService.clearCart(userId);
+    res.setHeader("x-cart-id", cartId);
 
     res.status(200).json({
       status: "success",
-      message: "Cart cleared successfully",
-      data: {
-        cart,
-      },
+      message: "Item removed",
+      data: { cart },
     });
-  }
+  },
 );
+
+export const clearCart = asyncHandler(async (req: Request, res: Response) => {
+  const cartId = getCartId(req, res);
+  console.log("🧹 [CART CONTROLLER] Clearing cart:", cartId);
+
+  const cart = await cartService.clear(cartId);
+
+  res.setHeader("x-cart-id", cartId);
+
+  res.status(200).json({
+    status: "success",
+    message: "Cart cleared",
+    data: { cart },
+  });
+});
 
 export const getCartSummary = asyncHandler(
-  async (req: Request, res: Response, next: NextFunction) => {
-    const userId = (req as AuthenticatedRequest).user._id.toString();
+  async (req: Request, res: Response) => {
+    const cartId = getCartId(req, res);
+    console.log("📊 [CART CONTROLLER] Getting summary:", cartId);
 
-    console.log("📊 [CART CONTROLLER] Getting cart summary for user:", userId);
+    const summary = await cartService.getSummary(cartId);
 
-    const summary = await cartService.getCartSummary(userId);
+    res.setHeader("x-cart-id", cartId);
 
     res.status(200).json({
       status: "success",
-      data: {
-        summary,
-      },
+      data: { summary },
     });
-  }
+  },
 );

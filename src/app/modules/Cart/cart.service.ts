@@ -1,537 +1,315 @@
-// cart.service.ts
-import mongoose, { Types } from "mongoose";
-import Cart from "./cart.model";
-import Product from "../Product/product.model";
+import { v4 as uuid } from "uuid";
 import ApiError from "../../utils/apiError";
+import Product from "../Product/product.model"; // still using DB for product validation
 
-// Get cart by user ID with populated products
-export const getCartByUserId = async (userId: string) => {
-  const cart = await Cart.findOne({ user: new Types.ObjectId(userId) })
-    .populate({
-      path: "items.product",
-      select: "name imageCover price stock slug categories productType", // Added productType
-    })
-    .lean();
+// ──────────────────────────────────────────────
+interface CartItem {
+  product: string; // product _id as string
+  productType: string;
+  quantity: number;
+  price: number;
+  startDate?: Date;
+  endDate?: Date;
+  rentalType?: string;
+}
+
+interface MemoryCart {
+  cartId: string;
+  items: CartItem[];
+  totalItems: number;
+  totalPrice: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const cartStore = new Map<string, MemoryCart>();
+
+// ──────────────────────────────────────────────
+const getOrCreateCart = (cartId: string): MemoryCart => {
+  let cart = cartStore.get(cartId);
 
   if (!cart) {
-    // Return empty cart structure if no cart exists
-    return {
-      _id: null,
-      user: new Types.ObjectId(userId),
+    cart = {
+      cartId,
       items: [],
-      totalPrice: 0,
       totalItems: 0,
+      totalPrice: 0,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
+    cartStore.set(cartId, cart);
   }
 
   return cart;
 };
 
-// Add single item to cart
-export const addItemToCart = async (
-  userId: string,
+const recalculateTotals = (cart: MemoryCart) => {
+  cart.totalItems = cart.items.reduce((sum, i) => sum + i.quantity, 0);
+  cart.totalPrice = cart.items.reduce(
+    (sum, i) => sum + i.quantity * i.price,
+    0,
+  );
+  cart.updatedAt = new Date();
+};
+
+const toPopulatedCart = async (cart: MemoryCart) => {
+  if (cart.items.length === 0) {
+    return {
+      ...cart,
+      items: [],
+    };
+  }
+
+  const productIds = cart.items.map((i) => i.product);
+  const products = await Product.find({ _id: { $in: productIds } })
+    .select("name imageCover price stock slug categories productType")
+    .lean();
+
+  const productMap = new Map(products.map((p: any) => [p._id.toString(), p]));
+
+  return {
+    ...cart,
+    items: cart.items.map((item) => {
+      const prod = productMap.get(item.product);
+      return {
+        ...item,
+        product: prod || { _id: item.product, name: "Product not found" },
+      };
+    }),
+  };
+};
+
+// ──────────────────────────────────────────────
+export const getCart = async (cartId: string) => {
+  const cart = getOrCreateCart(cartId);
+  return await toPopulatedCart(cart);
+};
+
+export const addItem = async (
+  cartId: string,
   productId: string,
   quantity: number,
   startDate?: Date,
   endDate?: Date,
-  rentalType?: string // Added rentalType
+  rentalType?: string,
 ) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
+  const cart = getOrCreateCart(cartId);
 
-  try {
-    console.log("🛒 [CART SERVICE] Adding item to cart:", {
-      userId,
-      productId,
-      quantity,
-    });
-
-    // Validate product exists
-    const product = await Product.findById(productId).session(session);
-    if (!product) {
-      throw new ApiError("Product not found", 404);
-    }
-
-    // Validate stock
-    if (product.stock < quantity) {
-      throw new ApiError(
-        `Insufficient stock. Available: ${product.stock}, Requested: ${quantity}`,
-        400
-      );
-    }
-
-    // Find or create cart for user
-    let cart = await Cart.findOne({ user: new Types.ObjectId(userId) }).session(
-      session
-    );
-
-    if (!cart) {
-      cart = new Cart({
-        user: new Types.ObjectId(userId),
-        items: [],
-        totalPrice: 0,
-        totalItems: 0,
-      });
-    }
-
-    // Check if product already exists in cart
-    const existingItemIndex = cart.items.findIndex(
-      (item) => item.product.toString() === productId
-    );
-
-    if (existingItemIndex > -1) {
-      // Update existing item
-      cart.items[existingItemIndex].quantity += quantity;
-      cart.items[existingItemIndex].price = product.price;
-      if (startDate) cart.items[existingItemIndex].startDate = startDate;
-      if (endDate) cart.items[existingItemIndex].endDate = endDate;
-      if (rentalType) cart.items[existingItemIndex].rentalType = rentalType;
-    } else {
-      // Add new item - Save product as ObjectId
-      cart.items.push({
-        product: new Types.ObjectId(productId),
-        productType: (product as any).productType || "physical", // Added productType
-        quantity,
-        price: product.price,
-        startDate,
-        endDate,
-        rentalType, // Added rentalType
-      });
-    }
-
-    // Recalculate totals
-    cart.totalItems = cart.items.reduce((sum, item) => sum + item.quantity, 0);
-    cart.totalPrice = cart.items.reduce(
-      (sum, item) => sum + item.quantity * item.price,
-      0
-    );
-
-    await cart.save({ session });
-    await session.commitTransaction();
-    session.endSession();
-
-    console.log("✅ [CART SERVICE] Item added to cart successfully");
-
-    // Return populated cart
-    return await getCartByUserId(userId);
-  } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
-    console.error("❌ [CART SERVICE] Failed to add item to cart:", error);
-    throw error;
+  const product = await Product.findById(productId);
+  if (!product) throw new ApiError("Product not found", 404);
+  if (product.stock < quantity) {
+    throw new ApiError(`Insufficient stock. Available: ${product.stock}`, 400);
   }
+
+  const existing = cart.items.find((i) => i.product === productId);
+
+  if (existing) {
+    existing.quantity += quantity;
+    if (startDate) existing.startDate = startDate;
+    if (endDate) existing.endDate = endDate;
+    if (rentalType) existing.rentalType = rentalType;
+  } else {
+    cart.items.push({
+      product: productId,
+      productType: (product as any).productType || "physical",
+      quantity,
+      price: product.price,
+      startDate,
+      endDate,
+      rentalType,
+    });
+  }
+
+  recalculateTotals(cart);
+  return await toPopulatedCart(cart);
 };
 
-// Add multiple items to cart
-export const addMultipleItemsToCart = async (
-  userId: string,
+export const addMultipleItems = async (
+  cartId: string,
   items: Array<{
     productId: string;
     quantity: number;
     startDate?: Date;
     endDate?: Date;
-    rentalType?: string; // Added rentalType
-  }>
+    rentalType?: string;
+  }>,
 ) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
+  const cart = getOrCreateCart(cartId);
 
-  try {
-    console.log("🛒 [CART SERVICE] Adding multiple items to cart:", {
-      userId,
-      itemCount: items.length,
-    });
+  for (const { productId, quantity, startDate, endDate, rentalType } of items) {
+    const product = await Product.findById(productId);
+    if (!product) throw new ApiError(`Product ${productId} not found`, 404);
+    if (product.stock < quantity) {
+      throw new ApiError(`Insufficient stock for ${product.name}`, 400);
+    }
 
-    // Find or create cart for user
-    let cart = await Cart.findOne({ user: new Types.ObjectId(userId) }).session(
-      session
-    );
+    const existing = cart.items.find((i) => i.product === productId);
 
-    if (!cart) {
-      cart = new Cart({
-        user: new Types.ObjectId(userId),
-        items: [],
-        totalPrice: 0,
-        totalItems: 0,
+    if (existing) {
+      existing.quantity += quantity;
+      if (startDate) existing.startDate = startDate;
+      if (endDate) existing.endDate = endDate;
+      if (rentalType) existing.rentalType = rentalType;
+    } else {
+      cart.items.push({
+        product: productId,
+        productType: (product as any).productType || "physical",
+        quantity,
+        price: product.price,
+        startDate,
+        endDate,
+        rentalType,
       });
     }
+  }
 
-    for (const item of items) {
-      const { productId, quantity, startDate, endDate, rentalType } = item; // Added rentalType
+  recalculateTotals(cart);
+  return await toPopulatedCart(cart);
+};
 
-      // Validate product exists
-      const product = await Product.findById(productId).session(session);
-      if (!product) {
-        throw new ApiError(`Product ${productId} not found`, 404);
-      }
+export const updateItem = async (
+  cartId: string,
+  productId: string,
+  quantity: number,
+  startDate?: Date,
+  endDate?: Date,
+  rentalType?: string,
+) => {
+  const cart = getOrCreateCart(cartId);
 
-      // Validate stock
-      if (product.stock < quantity) {
-        throw new ApiError(
-          `Insufficient stock for ${product.name}. Available: ${product.stock}, Requested: ${quantity}`,
-          400
-        );
-      }
+  const idx = cart.items.findIndex((i) => i.product === productId);
 
-      // Check if product already exists in cart
-      const existingItemIndex = cart.items.findIndex(
-        (cartItem) => cartItem.product.toString() === productId
+  if (idx === -1) {
+    // treat as add new if quantity > 0
+    if (quantity > 0) {
+      return addItem(
+        cartId,
+        productId,
+        quantity,
+        startDate,
+        endDate,
+        rentalType,
       );
+    }
+    throw new ApiError("Item not found in cart", 404);
+  }
 
-      if (existingItemIndex > -1) {
-        // Update existing item
-        cart.items[existingItemIndex].quantity += quantity;
-        cart.items[existingItemIndex].price = product.price;
-        if (startDate) cart.items[existingItemIndex].startDate = startDate;
-        if (endDate) cart.items[existingItemIndex].endDate = endDate;
-        if (rentalType) cart.items[existingItemIndex].rentalType = rentalType; // Update rentalType
-      } else {
-        // Add new item - Save product as ObjectId
-        cart.items.push({
-          product: new Types.ObjectId(productId),
-          productType: (product as any).productType || "physical", // Added productType
-          quantity,
-          price: product.price,
-          startDate,
-          endDate,
-          rentalType, // Added rentalType
-        });
+  if (quantity === 0) {
+    cart.items.splice(idx, 1);
+  } else {
+    const product = await Product.findById(productId);
+    if (!product) throw new ApiError("Product not found", 404);
+
+    const currentQty = cart.items[idx].quantity;
+    if (quantity > currentQty) {
+      const increase = quantity - currentQty;
+      if (product.stock < increase) {
+        throw new ApiError(`Not enough stock. Need ${increase} more`, 400);
       }
     }
 
-    // Recalculate totals
-    cart.totalItems = cart.items.reduce((sum, item) => sum + item.quantity, 0);
-    cart.totalPrice = cart.items.reduce(
-      (sum, item) => sum + item.quantity * item.price,
-      0
-    );
-
-    await cart.save({ session });
-    await session.commitTransaction();
-    session.endSession();
-
-    console.log("✅ [CART SERVICE] Multiple items added to cart successfully");
-
-    // Return populated cart
-    return await getCartByUserId(userId);
-  } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
-    console.error("❌ [CART SERVICE] Failed to add items to cart:", error);
-    throw error;
+    cart.items[idx].quantity = quantity;
+    if (startDate) cart.items[idx].startDate = startDate;
+    if (endDate) cart.items[idx].endDate = endDate;
+    if (rentalType) cart.items[idx].rentalType = rentalType;
   }
+
+  recalculateTotals(cart);
+  return await toPopulatedCart(cart);
 };
 
-// Update cart items
-export const updateCartItems = async (
-  userId: string,
-  updateData: {
-    items?: Array<{
-      productId: string;
-      quantity: number;
-      startDate?: Date;
-      endDate?: Date;
-      rentalType?: string; // Added rentalType
-    }>;
-    productId?: string;
-    quantity?: number;
+export const updateMultipleItems = async (
+  cartId: string,
+  items: Array<{
+    productId: string;
+    quantity: number;
     startDate?: Date;
     endDate?: Date;
-    rentalType?: string; // Added rentalType
-  }
+    rentalType?: string;
+  }>,
 ) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
+  const cart = getOrCreateCart(cartId);
 
-  try {
-    console.log("🔄 [CART SERVICE] Updating cart items:", {
-      userId,
-      updateData,
-    });
+  for (const { productId, quantity, startDate, endDate, rentalType } of items) {
+    const idx = cart.items.findIndex((i) => i.product === productId);
 
-    const cart = await Cart.findOne({
-      user: new Types.ObjectId(userId),
-    }).session(session);
-
-    if (!cart) {
-      throw new ApiError("Cart not found", 404);
-    }
-
-    if (Array.isArray(updateData.items)) {
-      // Update multiple items
-      for (const updateItem of updateData.items) {
-        const { productId, quantity, startDate, endDate, rentalType } = updateItem; // Added rentalType
-
-        const existingItemIndex = cart.items.findIndex(
-          (item) => item.product.toString() === productId
-        );
-
-        if (existingItemIndex > -1) {
-          if (quantity === 0) {
-            // Remove item if quantity is 0
-            cart.items.splice(existingItemIndex, 1);
-          } else {
-            // Update existing item
-            // Validate stock if increasing quantity
-            if (quantity > cart.items[existingItemIndex].quantity) {
-              const product = await Product.findById(productId).session(
-                session
-              );
-              if (!product) {
-                throw new ApiError(`Product ${productId} not found`, 404);
-              }
-
-              const quantityIncrease =
-                quantity - cart.items[existingItemIndex].quantity;
-              if (product.stock < quantityIncrease) {
-                throw new ApiError(
-                  `Insufficient stock for ${product.name}. Available: ${product.stock}, Additional requested: ${quantityIncrease}`,
-                  400
-                );
-              }
-            }
-
-            cart.items[existingItemIndex].quantity = quantity;
-            cart.items[existingItemIndex].price =
-              (await Product.findById(productId))?.price ||
-              cart.items[existingItemIndex].price;
-            if (startDate) cart.items[existingItemIndex].startDate = startDate;
-            if (endDate) cart.items[existingItemIndex].endDate = endDate;
-            if (rentalType) cart.items[existingItemIndex].rentalType = rentalType; // Update rentalType
-          }
-        } else if (quantity > 0) {
-          // Add new item if quantity > 0
-          const product = await Product.findById(productId).session(session);
-          if (!product) {
-            throw new ApiError(`Product ${productId} not found`, 404);
-          }
-
-          if (product.stock < quantity) {
-            throw new ApiError(
-              `Insufficient stock for ${product.name}. Available: ${product.stock}, Requested: ${quantity}`,
-              400
-            );
-          }
-
-          cart.items.push({
-            product: new Types.ObjectId(productId),
-            productType: (product as any).productType || "physical", // Added productType
-            quantity,
-            price: product.price,
-            startDate,
-            endDate,
-            rentalType, // Added rentalType
-          });
-        }
-      }
-    } else if (updateData.productId && updateData.quantity !== undefined) {
-      // Update single item (backward compatibility)
-      const { productId, quantity, startDate, endDate, rentalType } = updateData; // Added rentalType
-
-      const existingItemIndex = cart.items.findIndex(
-        (item) => item.product.toString() === productId
-      );
-
-      if (existingItemIndex > -1) {
-        if (quantity === 0) {
-          // Remove item if quantity is 0
-          cart.items.splice(existingItemIndex, 1);
-        } else {
-          // Update existing item
-          // Validate stock if increasing quantity
-          if (quantity > cart.items[existingItemIndex].quantity) {
-            const product = await Product.findById(productId).session(session);
-            if (!product) {
-              throw new ApiError(`Product ${productId} not found`, 404);
-            }
-
-            const quantityIncrease =
-              quantity - cart.items[existingItemIndex].quantity;
-            if (product.stock < quantityIncrease) {
-              throw new ApiError(
-                `Insufficient stock for ${product.name}. Available: ${product.stock}, Additional requested: ${quantityIncrease}`,
-                400
-              );
-            }
-          }
-
-          cart.items[existingItemIndex].quantity = quantity;
-          cart.items[existingItemIndex].price =
-            (await Product.findById(productId))?.price ||
-            cart.items[existingItemIndex].price;
-          if (startDate) cart.items[existingItemIndex].startDate = startDate;
-          if (endDate) cart.items[existingItemIndex].endDate = endDate;
-          if (rentalType) cart.items[existingItemIndex].rentalType = rentalType; // Update rentalType
-        }
-      } else if (quantity > 0) {
-        // Add new item if quantity > 0
-        const product = await Product.findById(productId).session(session);
-        if (!product) {
-          throw new ApiError(`Product ${productId} not found`, 404);
-        }
-
-        if (product.stock < quantity) {
-          throw new ApiError(
-            `Insufficient stock for ${product.name}. Available: ${product.stock}, Requested: ${quantity}`,
-            400
-          );
-        }
-
-        cart.items.push({
-          product: new Types.ObjectId(productId),
-          productType: (product as any).productType || "physical", // Added productType
+    if (idx === -1) {
+      if (quantity > 0) {
+        await addItem(
+          cartId,
+          productId,
           quantity,
-          price: product.price,
           startDate,
           endDate,
-          rentalType, // Added rentalType
-        });
+          rentalType,
+        );
       }
+      continue;
     }
 
-    // Recalculate totals
-    cart.totalItems = cart.items.reduce((sum, item) => sum + item.quantity, 0);
-    cart.totalPrice = cart.items.reduce(
-      (sum, item) => sum + item.quantity * item.price,
-      0
-    );
+    if (quantity === 0) {
+      cart.items.splice(idx, 1);
+    } else {
+      const product = await Product.findById(productId);
+      if (!product) throw new ApiError(`Product ${productId} not found`, 404);
 
-    await cart.save({ session });
-    await session.commitTransaction();
-    session.endSession();
+      const currentQty = cart.items[idx].quantity;
+      if (quantity > currentQty) {
+        const increase = quantity - currentQty;
+        if (product.stock < increase) {
+          throw new ApiError(`Not enough stock for ${product.name}`, 400);
+        }
+      }
 
-    console.log("✅ [CART SERVICE] Cart updated successfully");
-
-    // Return populated cart
-    return await getCartByUserId(userId);
-  } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
-    console.error("❌ [CART SERVICE] Failed to update cart:", error);
-    throw error;
+      cart.items[idx].quantity = quantity;
+      if (startDate) cart.items[idx].startDate = startDate;
+      if (endDate) cart.items[idx].endDate = endDate;
+      if (rentalType) cart.items[idx].rentalType = rentalType;
+    }
   }
+
+  recalculateTotals(cart);
+  return await toPopulatedCart(cart);
 };
 
-// Remove item from cart
-export const removeItemFromCart = async (userId: string, productId: string) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
+export const removeItem = async (cartId: string, productId: string) => {
+  const cart = getOrCreateCart(cartId);
 
-  try {
-    console.log("🗑️ [CART SERVICE] Removing item from cart:", {
-      userId,
-      productId,
-    });
+  const initialLength = cart.items.length;
+  cart.items = cart.items.filter((i) => i.product !== productId);
 
-    const cart = await Cart.findOne({
-      user: new Types.ObjectId(userId),
-    }).session(session);
-
-    if (!cart) {
-      throw new ApiError("Cart not found", 404);
-    }
-
-    // Find and remove the item
-    const initialLength = cart.items.length;
-    cart.items = cart.items.filter(
-      (item) => item.product.toString() !== productId
-    );
-
-    if (cart.items.length === initialLength) {
-      throw new ApiError("Item not found in cart", 404);
-    }
-
-    // Recalculate totals
-    cart.totalItems = cart.items.reduce((sum, item) => sum + item.quantity, 0);
-    cart.totalPrice = cart.items.reduce(
-      (sum, item) => sum + item.quantity * item.price,
-      0
-    );
-
-    await cart.save({ session });
-    await session.commitTransaction();
-    session.endSession();
-
-    console.log("✅ [CART SERVICE] Item removed from cart successfully");
-
-    // Return populated cart
-    return await getCartByUserId(userId);
-  } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
-    console.error("❌ [CART SERVICE] Failed to remove item from cart:", error);
-    throw error;
+  if (cart.items.length === initialLength) {
+    throw new ApiError("Item not found in cart", 404);
   }
+
+  recalculateTotals(cart);
+  return await toPopulatedCart(cart);
 };
 
-// Clear cart
-export const clearCart = async (userId: string) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
-  try {
-    console.log("🧹 [CART SERVICE] Clearing cart for user:", userId);
-
-    const cart = await Cart.findOne({
-      user: new Types.ObjectId(userId),
-    }).session(session);
-
-    if (!cart) {
-      throw new ApiError("Cart not found", 404);
-    }
-
-    // Clear all items
-    cart.items = [];
-    cart.totalPrice = 0;
-    cart.totalItems = 0;
-
-    await cart.save({ session });
-    await session.commitTransaction();
-    session.endSession();
-
-    console.log("✅ [CART SERVICE] Cart cleared successfully");
-
-    // Return empty cart
-    return await getCartByUserId(userId);
-  } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
-    console.error("❌ [CART SERVICE] Failed to clear cart:", error);
-    throw error;
-  }
+export const clear = async (cartId: string) => {
+  const cart = getOrCreateCart(cartId);
+  cart.items = [];
+  recalculateTotals(cart);
+  return await toPopulatedCart(cart);
 };
 
-// Get cart summary (optional)
-export const getCartSummary = async (userId: string) => {
-  const cart = await Cart.findOne({ user: new Types.ObjectId(userId) })
-    .populate({
-      path: "items.product",
-      select: "name imageCover price productType", // Added productType
-    })
-    .lean();
+export const getSummary = async (cartId: string) => {
+  const cart = getOrCreateCart(cartId);
 
-  if (!cart) {
-    return {
-      totalItems: 0,
-      totalPrice: 0,
-      items: [],
-    };
-  }
+  const itemsSummary = cart.items.map((item) => ({
+    productId: item.product,
+    productType: item.productType,
+    quantity: item.quantity,
+    price: item.price,
+    subtotal: item.quantity * item.price,
+    startDate: item.startDate,
+    endDate: item.endDate,
+    rentalType: item.rentalType,
+  }));
 
   return {
     totalItems: cart.totalItems,
     totalPrice: cart.totalPrice,
-    items: cart.items.map((item: any) => ({
-      product: item.product,
-      productType: item.productType, // Added productType
-      quantity: item.quantity,
-      price: item.price,
-      subtotal: item.quantity * item.price,
-      startDate: item.startDate,
-      endDate: item.endDate,
-    })),
+    items: itemsSummary,
   };
 };
-

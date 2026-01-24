@@ -6,9 +6,21 @@ import { IUser, IUserMethods, IUserModel } from "./user.interface";
 
 const userSchema = new Schema<IUser, IUserModel, IUserMethods>(
   {
+    firstName: {
+      type: String,
+      required: [true, "First name is required"],
+      trim: true,
+      maxlength: [50, "First name cannot exceed 50 characters"],
+    },
+    lastName: {
+      type: String,
+      required: [true, "Last name is required"],
+      trim: true,
+      maxlength: [50, "Last name cannot exceed 50 characters"],
+    },
     name: {
       type: String,
-      required: [true, "Please tell us your name"],
+      required: [false, "Please tell us your name"],
       index: true,
     },
     email: {
@@ -25,7 +37,7 @@ const userSchema = new Schema<IUser, IUserModel, IUserMethods>(
     photo: { type: String, default: null },
     role: {
       type: String,
-      enum: ["user", "admin", "superadmin", "editor", "delivery"],
+      enum: ["user", "admin", "superadmin", "editor", "delivery", "customer"],
       default: "user",
       required: true,
       index: true,
@@ -83,7 +95,7 @@ const userSchema = new Schema<IUser, IUserModel, IUserMethods>(
       },
     },
     toObject: { virtuals: true },
-  }
+  },
 );
 
 // Indexes
@@ -111,7 +123,7 @@ userSchema.method(
   "correctPassword",
   async function (candidate: string, hashed: string) {
     return bcrypt.compare(candidate, hashed);
-  }
+  },
 );
 
 // Tolerant comparator (1s skew)

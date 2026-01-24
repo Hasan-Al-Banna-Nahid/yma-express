@@ -1,11 +1,19 @@
 import mongoose from "mongoose";
 
-export type UserRole = "user" | "admin" | "superadmin" | "editor" | "delivery";
+export type UserRole =
+  | "customer"
+  | "user"
+  | "admin"
+  | "superadmin"
+  | "editor"
+  | "delivery";
 
 export interface IUser extends mongoose.Document {
   _id: mongoose.Types.ObjectId;
   id?: string;
   name: string;
+  firstName?: string;
+  lastName?: string;
   email: string;
   photo?: string;
   role: UserRole;

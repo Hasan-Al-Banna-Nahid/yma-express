@@ -1,375 +1,1048 @@
+// src/controllers/checkout.controller.ts
 import { Request, Response } from "express";
 import asyncHandler from "../../utils/asyncHandler";
-import { AuthenticatedRequest } from "../../middlewares/auth.middleware";
+import mongoose, { Types } from "mongoose";
 import ApiError from "../../utils/apiError";
-import {
-  checkCartStock,
-  createOrderFromCart,
-  checkDateAvailability as checkDateAvailabilityService,
-  getAvailableDates as getAvailableDatesService,
-} from "./checkout.service";
-import { PromoService } from "../../modules/promos/promos.service";
-import mongoose from "mongoose";
-import Cart from "../../modules/Cart/cart.model";
+import Order from "../../modules/Order/order.model";
 import Product from "../../modules/Product/product.model";
+import User from "../../modules/Auth/user.model";
+import { PromoService } from "../../modules/promos/promos.service";
+import crypto from "crypto";
+import {
+  sendOrderReceivedEmail,
+  sendOrderNotificationToAdmin,
+  sendUserCredentialsEmail,
+  sendOrderConfirmedEmail,
+  sendOrderCancellationEmail,
+  sendDeliveryReminderEmail,
+} from "./email.service";
 
-// ==================== CREATE ORDER ====================
-export const createOrder = asyncHandler(async (req: Request, res: Response) => {
-  const userId = (req as AuthenticatedRequest).user._id;
+// Import cart store
+import { cartStore } from "../Cart/cart.store";
+import Customer from "../../modules/customer/customer.model";
 
-  const {
-    shippingAddress,
-    paymentMethod = "cash_on_delivery",
-    termsAccepted,
-    invoiceType = "regular",
-    bankDetails,
-    promoCode,
-  } = req.body;
+// ==================== HELPER FUNCTIONS ====================
 
-  // Validate required fields
-  if (!shippingAddress) {
-    throw new ApiError("Shipping address is required", 400);
+const generateRandomPassword = (length = 8) => {
+  const charset =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  let password = "";
+  const randomBytes = crypto.randomBytes(length);
+
+  for (let i = 0; i < length; i++) {
+    password += charset[randomBytes[i] % charset.length];
   }
 
-  // Create order
-  const order = await createOrderFromCart(userId, {
-    shippingAddress,
-    paymentMethod,
-    termsAccepted,
-    invoiceType,
-    bankDetails,
-    promoCode,
+  return password;
+};
+
+const createOrGetUser = async (
+  email: string,
+  phone: string,
+  firstName: string,
+  lastName: string,
+  session: any,
+) => {
+  // Check by email
+  let user = await User.findOne({ email }).session(session);
+  if (user) return { user, isNewUser: false };
+
+  // Check by phone
+  user = await User.findOne({ phone }).session(session);
+  if (user) {
+    if (!user.email || user.email !== email) {
+      user.email = email;
+      await user.save({ session });
+    }
+    return { user, isNewUser: false };
+  }
+
+  // Create new user
+  const password = generateRandomPassword();
+  const newUser = new User({
+    name: `${firstName} ${lastName}`,
+    firstName,
+    lastName,
+    email,
+    phone,
+    password,
+    role: "customer",
+    isEmailVerified: false,
+    createdViaCheckout: true,
   });
 
-  // Return response
-  res.status(201).json({
-    success: true,
-    message: "Order placed successfully",
-    data: {
-      order: {
-        id: order._id,
-        orderNumber: order.orderNumber,
-        subtotalAmount: order.subtotalAmount,
-        deliveryFee: order.deliveryFee,
-        overnightFee: order.overnightFee,
-        discountAmount: order.discountAmount,
-        totalAmount: order.totalAmount,
-        promoCode: order.promoCode,
-        promoDiscount: order.promoDiscount,
-        status: order.status,
-        paymentMethod: order.paymentMethod,
-        invoiceType: order.invoiceType,
-        estimatedDeliveryDate: order.estimatedDeliveryDate,
-        createdAt: order.createdAt,
-        itemsCount: order.items.length,
+  await newUser.save({ session });
+  return { user: newUser, isNewUser: true, password };
+};
+
+// ==================== ENHANCED CALCULATE DELIVERY FEE ====================
+const calculateDeliveryFee = (
+  deliveryTime: string | undefined,
+  collectionTime: string | undefined,
+  keepOvernight: boolean = false,
+) => {
+  let fee = 0;
+
+  // Base delivery fee: 8am-2pm FREE, others €10
+  if (deliveryTime === "8am-12pm" || deliveryTime === "12pm-4pm") {
+    // 8am-2pm (approximated as 8am-12pm and 12pm-4pm) - FREE
+    fee += 0;
+  } else {
+    // Other times - €10
+    fee += 10;
+  }
+
+  // Collection fee: before 5pm FREE, after 5pm €10
+  if (collectionTime === "after_5pm") {
+    fee += 10;
+  }
+  // before_5pm is free, so no charge
+
+  // Overnight keeping: €30 if selected
+  if (keepOvernight) {
+    fee += 30;
+  }
+
+  return fee;
+};
+
+// ==================== APPLY PROMO ====================
+const applyPromo = async (promoCode: string, orderAmount: number) => {
+  if (!promoCode || promoCode.trim() === "") {
+    return { discount: 0, promoName: "", promoCode: "", success: true };
+  }
+
+  const promoService = new PromoService();
+
+  try {
+    const result = await promoService.applyPromo(promoCode, orderAmount);
+
+    if (!result.success) {
+      throw new ApiError(result.message || "Invalid promo code", 400);
+    }
+
+    return {
+      discount: result.discount,
+      promoName: promoCode,
+      promoCode: promoCode,
+      success: true,
+    };
+  } catch (error: any) {
+    throw new ApiError(error.message || "Failed to apply promo code", 400);
+  }
+};
+
+// ==================== GET CART FROM SESSION ====================
+const getCartFromSession = (cartId?: string) => {
+  if (!cartId || !cartStore.has(cartId)) {
+    return null;
+  }
+
+  return cartStore.get(cartId);
+};
+
+// ==================== VALIDATE CART ITEMS ====================
+const validateAndProcessCartItems = async (cartItems: any[], session: any) => {
+  let subtotalAmount = 0;
+  const orderItems = [];
+
+  for (const cartItem of cartItems) {
+    if (!cartItem.productId) {
+      throw new ApiError("Product ID is missing in cart item", 400);
+    }
+
+    const product = await Product.findById(cartItem.productId).session(session);
+
+    if (!product) {
+      throw new ApiError(`Product not found: ${cartItem.productId}`, 404);
+    }
+
+    // Check stock (show actual numbers)
+    if (product.stock < cartItem.quantity) {
+      throw new ApiError(
+        `${product.name}: Available ${product.stock}, Requested ${cartItem.quantity}`,
+        400,
+      );
+    }
+
+    // Update product stock
+    product.stock -= cartItem.quantity;
+    await product.save({ session });
+
+    // Use cart item price or product price
+    const price = cartItem.price || product.price || 0;
+
+    orderItems.push({
+      product: product._id,
+      quantity: cartItem.quantity,
+      price: price,
+      name: product.name || cartItem.name || "Product",
+      startDate: cartItem.startDate,
+      endDate: cartItem.endDate,
+      hireOccasion: cartItem.hireOccasion,
+      keepOvernight: cartItem.keepOvernight,
+      rentalType: cartItem.rentalType,
+    });
+
+    subtotalAmount += price * cartItem.quantity;
+  }
+
+  return { orderItems, subtotalAmount };
+};
+
+// ==================== MAIN CHECKOUT FUNCTION ====================
+// src/app/modules/Checkout/checkout.controller.ts
+// ... keep your existing imports
+
+export const checkoutFromCart = asyncHandler(
+  async (req: Request, res: Response) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+      // ──────────────────────────────────────────────
+      // Robust cartId extraction (handles string/array/undefined)
+      // ──────────────────────────────────────────────
+      let cartIdFromHeader: string | undefined;
+      const rawHeader = req.headers["x-cart-id"];
+      if (typeof rawHeader === "string") {
+        cartIdFromHeader = rawHeader.trim();
+      } else if (Array.isArray(rawHeader) && rawHeader.length > 0) {
+        cartIdFromHeader = rawHeader[0].trim();
+      }
+
+      // Debug logging (keep for production troubleshooting, or remove later)
+      console.log("━━━━━━━━━━━━━━━━ CHECKOUT DEBUG ━━━━━━━━━━━━━━━━");
+      console.log("→ Timestamp             :", new Date().toISOString());
+      console.log("→ Raw x-cart-id header  :", JSON.stringify(rawHeader));
+      console.log(
+        "→ Extracted cartId      :",
+        cartIdFromHeader || "(missing/empty)",
+      );
+      console.log(
+        "→ cartStore has ID?     :",
+        cartIdFromHeader ? cartStore.has(cartIdFromHeader) : false,
+      );
+      console.log("→ All cart keys in store:", [...cartStore.keys()]);
+
+      const cart = getCartFromSession(cartIdFromHeader);
+
+      console.log("→ Cart found?           :", !!cart);
+      console.log("→ Items length          :", cart?.items?.length ?? "N/A");
+      if ((cart?.items?.length || 0) > 0) {
+        console.log(
+          "→ First item sample     :",
+          JSON.stringify(cart?.items[0], null, 2),
+        );
+      }
+      console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+
+      if (!cart || !cart.items || cart.items.length === 0) {
+        throw new ApiError(
+          "Your cart is empty. Please add items to cart before checkout.",
+          400,
+        );
+      }
+
+      // ──────────────────────────────────────────────
+      // Rest of your original logic (unchanged)
+      // ──────────────────────────────────────────────
+      const {
+        shippingAddress,
+        paymentMethod = "cash_on_delivery",
+        termsAccepted = false,
+        invoiceType = "regular",
+        bankDetails,
+        promoCode,
+        deliveryNotes,
+      } = req.body;
+
+      console.log("🛒 Checkout Request:", {
+        shippingAddress,
+        paymentMethod,
+        termsAccepted,
+        promoCode,
+      });
+
+      if (!shippingAddress) {
+        throw new ApiError("Shipping address is required", 400);
+      }
+
+      const requiredFields = [
+        "firstName",
+        "lastName",
+        "phone",
+        "email",
+        "street",
+        "city",
+        "zipCode",
+        "country",
+      ];
+
+      requiredFields.forEach((field) => {
+        if (!shippingAddress[field]) {
+          throw new ApiError(`${field} is required`, 400);
+        }
+      });
+
+      if (!termsAccepted) {
+        throw new ApiError("You must accept terms & conditions", 400);
+      }
+
+      if (!["regular", "corporate"].includes(invoiceType)) {
+        throw new ApiError("Invalid invoice type", 400);
+      }
+
+      if (
+        invoiceType === "corporate" &&
+        (!bankDetails || bankDetails.trim() === "")
+      ) {
+        throw new ApiError(
+          "Bank details are required for corporate invoices",
+          400,
+        );
+      }
+
+      if (!["cash_on_delivery", "online"].includes(paymentMethod)) {
+        throw new ApiError("Invalid payment method", 400);
+      }
+
+      console.log("📦 Cart items:", cart.items.length, "items");
+
+      const {
+        user: orderUser,
+        isNewUser,
+        password,
+      } = await createOrGetUser(
+        shippingAddress.email,
+        shippingAddress.phone,
+        shippingAddress.firstName,
+        shippingAddress.lastName,
+        session,
+      );
+
+      const { orderItems, subtotalAmount } = await validateAndProcessCartItems(
+        cart.items,
+        session,
+      );
+
+      console.log(
+        "💰 Subtotal:",
+        subtotalAmount,
+        "Order items:",
+        orderItems.length,
+      );
+
+      const deliveryFee = calculateDeliveryFee(
+        shippingAddress.deliveryTime,
+        shippingAddress.collectionTime,
+        shippingAddress.keepOvernight,
+      );
+
+      const overnightFee = shippingAddress.keepOvernight ? 30 : 0;
+      const feesTotal = deliveryFee + overnightFee;
+      const amountBeforePromo = subtotalAmount + feesTotal;
+
+      console.log("📊 Fee calculation:", {
+        subtotalAmount,
+        deliveryFee,
+        overnightFee,
+        feesTotal,
+        amountBeforePromo,
+        deliveryTime: shippingAddress.deliveryTime,
+        collectionTime: shippingAddress.collectionTime,
+        keepOvernight: shippingAddress.keepOvernight,
+      });
+
+      let discount = 0;
+      let appliedPromoCode = "";
+
+      if (promoCode && promoCode.trim() !== "") {
+        try {
+          const promoResult = await applyPromo(promoCode, amountBeforePromo);
+          discount = promoResult.discount;
+          appliedPromoCode = promoResult.promoCode;
+          console.log("🎟️ Promo applied:", { promoCode, discount });
+        } catch (promoError: any) {
+          console.log("⚠️ Promo error:", promoError.message);
+          throw new ApiError(`Promo code error: ${promoError.message}`, 400);
+        }
+      }
+
+      const totalAmount = amountBeforePromo - discount;
+
+      console.log("💳 Final amounts:", {
+        subtotalAmount,
+        deliveryFee,
+        overnightFee,
+        discount,
+        totalAmount,
+      });
+
+      const orderData = {
+        user: orderUser._id,
+        items: orderItems,
+        subtotalAmount,
+        deliveryFee,
+        overnightFee,
+        discountAmount: discount,
+        totalAmount,
+        paymentMethod,
+        status: "pending",
         shippingAddress: {
-          firstName: order.shippingAddress.firstName,
-          lastName: order.shippingAddress.lastName,
-          phone: order.shippingAddress.phone,
-          email: order.shippingAddress.email,
-          street: order.shippingAddress.street,
-          apartment: order.shippingAddress.apartment,
-          city: order.shippingAddress.city,
-          zipCode: order.shippingAddress.zipCode,
-          companyName: order.shippingAddress.companyName,
-          deliveryTime: order.shippingAddress.deliveryTime,
-          collectionTime: order.shippingAddress.collectionTime,
-          keepOvernight: order.shippingAddress.keepOvernight,
-          hireOccasion: order.shippingAddress.hireOccasion,
+          ...shippingAddress,
+          deliveryNotes: deliveryNotes || "",
+        },
+        termsAccepted,
+        invoiceType,
+        bankDetails: invoiceType === "corporate" ? bankDetails : undefined,
+        promoCode: appliedPromoCode || undefined,
+        estimatedDeliveryDate:
+          orderItems[0]?.startDate ||
+          new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      };
+
+      const createdOrder = new Order(orderData);
+      await createdOrder.save({ session });
+
+      // Clear the cart from memory (using the extracted cartId)
+      if (cartIdFromHeader && cartStore.has(cartIdFromHeader)) {
+        cartStore.delete(cartIdFromHeader);
+        console.log("🧹 Cart cleared:", cartIdFromHeader);
+      }
+
+      await session.commitTransaction();
+      session.endSession();
+
+      // Send emails (non-critical, won't fail the response)
+      try {
+        await sendOrderReceivedEmail(createdOrder);
+        await sendOrderNotificationToAdmin(createdOrder);
+
+        if (isNewUser && password) {
+          await sendUserCredentialsEmail(
+            shippingAddress.email,
+            shippingAddress.firstName,
+            password,
+          );
+        }
+
+        console.log("📧 All emails sent successfully");
+      } catch (emailError) {
+        console.error("⚠️ Email sending failed (non-critical):", emailError);
+      }
+
+      const responseData: any = {
+        order: createdOrder,
+        cartCleared: true,
+      };
+
+      if (isNewUser) {
+        responseData.newAccount = {
+          created: true,
+          email: orderUser.email,
+          password,
+          message: "Account created. Check your email for login details.",
+        };
+      }
+
+      res.status(201).json({
+        success: true,
+        message: isNewUser
+          ? "Order placed successfully! Account created."
+          : "Order placed successfully!",
+        data: responseData,
+      });
+    } catch (err: any) {
+      await session.abortTransaction();
+      session.endSession();
+      console.error("❌ Checkout error:", err.message, err.stack);
+      throw err;
+    }
+  },
+);
+
+// ==================== GET CART SUMMARY ====================
+export const getCartSummary = asyncHandler(
+  async (req: Request, res: Response) => {
+    const cartId = req.headers["x-cart-id"] as string;
+    const cart = getCartFromSession(cartId);
+
+    if (!cart || !cart.items || cart.items.length === 0) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          items: [],
+          totalItems: 0,
+          subtotal: 0,
+          message: "Cart is empty",
+        },
+      });
+    }
+
+    // Calculate subtotal
+    let subtotal = 0;
+    const itemsWithDetails = [];
+
+    for (const item of cart.items) {
+      const product = await Product.findById(item.productId).select(
+        "name price images category",
+      );
+
+      const itemPrice = item.price || product?.price || 0;
+      const itemSubtotal = itemPrice * item.quantity;
+      subtotal += itemSubtotal;
+
+      itemsWithDetails.push({
+        ...item,
+        productDetails: product,
+        price: itemPrice,
+        subtotal: itemSubtotal,
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        items: itemsWithDetails,
+        totalItems: cart.items.length,
+        subtotal,
+        cartId,
+      },
+    });
+  },
+);
+
+// ==================== OTHER FUNCTIONS ====================
+export const getOrderById = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { orderId } = req.params;
+
+    const order = await Order.findById(orderId)
+      .populate("user", "name email phone")
+      .populate("items.product", "name images price");
+
+    if (!order) {
+      throw new ApiError("Order not found", 404);
+    }
+
+    res.status(200).json({
+      success: true,
+      data: { order },
+    });
+  },
+);
+
+export const getUserOrders = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { userId } = req.params;
+    const { page = 1, limit = 10 } = req.query;
+
+    const skip = (Number(page) - 1) * Number(limit);
+    const [orders, total] = await Promise.all([
+      Order.find({ user: userId })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(Number(limit))
+        .populate("items.product", "name images"),
+      Order.countDocuments({ user: userId }),
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        orders,
+        pagination: {
+          page: Number(page),
+          limit: Number(limit),
+          total,
+          pages: Math.ceil(total / Number(limit)),
         },
       },
-    },
-  });
-});
+    });
+  },
+);
 
-// ==================== CHECK STOCK ====================
-export const checkStock = asyncHandler(async (req: Request, res: Response) => {
-  const userId = (req as AuthenticatedRequest).user._id;
+export const getAllOrders = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { page = 1, limit = 10, status, search } = req.query;
 
-  const stockCheck = await checkCartStock(userId);
+    const query: any = {};
+
+    if (status && status !== "all") {
+      query.status = status;
+    }
+
+    if (search) {
+      const searchRegex = new RegExp(search as string, "i");
+      query.$or = [
+        { orderNumber: searchRegex },
+        { "shippingAddress.firstName": searchRegex },
+        { "shippingAddress.lastName": searchRegex },
+        { "shippingAddress.email": searchRegex },
+      ];
+    }
+
+    const skip = (Number(page) - 1) * Number(limit);
+    const [orders, total] = await Promise.all([
+      Order.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(Number(limit))
+        .populate("user", "name email")
+        .populate("items.product", "name price"),
+      Order.countDocuments(query),
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        orders,
+        pagination: {
+          page: Number(page),
+          limit: Number(limit),
+          total,
+          pages: Math.ceil(total / Number(limit)),
+        },
+      },
+    });
+  },
+);
+
+export const updateOrderStatus = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { orderId } = req.params;
+    const { status, notes } = req.body;
+
+    const validStatuses = [
+      "pending",
+      "confirmed",
+      "processing",
+      "delivered",
+      "cancelled",
+    ];
+
+    if (!validStatuses.includes(status)) {
+      throw new ApiError("Invalid status", 400);
+    }
+
+    const order = await Order.findById(orderId);
+    if (!order) {
+      throw new ApiError("Order not found", 404);
+    }
+
+    const oldStatus = order.status;
+    order.status = status;
+
+    if (notes) {
+      order.adminNotes = notes;
+    }
+
+    await order.save();
+
+    // Send email on status change
+    try {
+      if (status === "confirmed" && oldStatus !== "confirmed") {
+        await sendOrderConfirmedEmail(order);
+      } else if (status === "cancelled" && oldStatus !== "cancelled") {
+        await sendOrderCancellationEmail(order, notes || "Cancelled");
+      }
+    } catch (emailError) {
+      console.error("Status email failed:", emailError);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Order status updated to ${status}`,
+      data: { order },
+    });
+  },
+);
+
+export const cancelOrder = asyncHandler(async (req: Request, res: Response) => {
+  const { orderId } = req.params;
+  const { reason } = req.body;
+
+  const order = await Order.findById(orderId);
+  if (!order) {
+    throw new ApiError("Order not found", 404);
+  }
+
+  if (order.status === "delivered") {
+    throw new ApiError("Cannot cancel delivered order", 400);
+  }
+
+  order.status = "cancelled";
+  order.cancellationReason = reason;
+  await order.save();
+
+  // Return stock
+  for (const item of order.items) {
+    const product = await Product.findById(item.product);
+    if (product) {
+      product.stock += item.quantity;
+      await product.save();
+    }
+  }
+
+  // Send cancellation email
+  try {
+    await sendOrderCancellationEmail(order, reason);
+  } catch (emailError) {
+    console.error("Cancellation email failed:", emailError);
+  }
 
   res.status(200).json({
     success: true,
-    data: stockCheck,
+    message: "Order cancelled successfully",
+    data: { order },
   });
 });
 
-// ==================== CHECK DATE AVAILABILITY ====================
-export const checkDateAvailability = asyncHandler(
+export const checkAvailability = asyncHandler(
   async (req: Request, res: Response) => {
-    const { productId, startDate, endDate, quantity = 1 } = req.body;
+    const { productId, quantity = 1 } = req.body;
 
-    if (!productId || !startDate || !endDate) {
-      throw new ApiError("productId, startDate, and endDate are required", 400);
+    if (!productId) {
+      throw new ApiError("Product ID is required", 400);
     }
 
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-
-    if (start > end) {
-      throw new ApiError("Start date cannot be after end date", 400);
+    const product = await Product.findById(productId);
+    if (!product) {
+      throw new ApiError("Product not found", 404);
     }
 
-    if (start < new Date()) {
-      throw new ApiError("Start date cannot be in the past", 400);
-    }
-
-    const availability = await checkDateAvailabilityService(
-      new mongoose.Types.ObjectId(productId),
-      start,
-      end,
-      quantity
-    );
+    // Just check stock (no unit mention)
+    const available = product.stock >= quantity;
 
     res.status(200).json({
       success: true,
-      data: availability,
+      available,
+      stock: product.stock,
+      requested: quantity,
+      message: available
+        ? `Available: ${product.stock} in stock`
+        : `Only ${product.stock} available in stock`,
+      product: {
+        id: product._id,
+        name: product.name,
+        price: product.price,
+      },
     });
-  }
+  },
 );
 
-// ==================== GET AVAILABLE DATES ====================
-export const getAvailableDates = asyncHandler(
+export const calculateDeliveryFeeAPI = asyncHandler(
   async (req: Request, res: Response) => {
-    const { productId } = req.params;
-    const { startDate, endDate, quantity = 1 } = req.query;
+    const { deliveryTime, collectionTime, keepOvernight = false } = req.body;
 
-    let start: Date | undefined;
-    let end: Date | undefined;
-
-    if (startDate) {
-      start = new Date(startDate as string);
-      if (isNaN(start.getTime())) {
-        throw new ApiError("Invalid start date", 400);
-      }
-    }
-
-    if (endDate) {
-      end = new Date(endDate as string);
-      if (isNaN(end.getTime())) {
-        throw new ApiError("Invalid end date", 400);
-      }
-    }
-
-    // Validate date range
-    if (start && end && start > end) {
-      throw new ApiError("Start date cannot be after end date", 400);
-    }
-
-    const availableDates = await getAvailableDatesService(
-      new mongoose.Types.ObjectId(productId),
-      start,
-      end,
-      Number(quantity)
+    const deliveryFee = calculateDeliveryFee(
+      deliveryTime,
+      collectionTime,
+      keepOvernight,
     );
+    const overnightFee = keepOvernight ? 30 : 0;
+    const totalFee = deliveryFee + overnightFee;
+
+    // Fee breakdown
+    let deliveryBreakdown = 0;
+    let collectionBreakdown = 0;
+
+    // Delivery breakdown
+    if (deliveryTime === "8am-12pm" || deliveryTime === "12pm-4pm") {
+      deliveryBreakdown = 0; // Free
+    } else {
+      deliveryBreakdown = 10; // €10
+    }
+
+    // Collection breakdown
+    if (collectionTime === "after_5pm") {
+      collectionBreakdown = 10; // €10
+    }
+    // before_5pm is free
 
     res.status(200).json({
       success: true,
-      data: availableDates,
+      data: {
+        deliveryFee,
+        overnightFee,
+        totalFee,
+        breakdown: {
+          delivery: deliveryBreakdown,
+          collection: collectionBreakdown,
+          overnight: overnightFee,
+        },
+        details: {
+          deliveryTime: deliveryTime || "Standard (8am-2pm: Free, Others: €10)",
+          collectionTime:
+            collectionTime || "Standard (Before 5pm: Free, After 5pm: €10)",
+          keepOvernight: keepOvernight || false,
+        },
+      },
     });
-  }
+  },
 );
+// src/controllers/checkout.controller.ts
 
-// ==================== PROMO CODE VALIDATION ====================
-export const validatePromoCode = asyncHandler(
+export const quickCheckout = asyncHandler(
   async (req: Request, res: Response) => {
-    const { promoCode, orderAmount } = req.body;
-    const userId = (req as AuthenticatedRequest).user._id;
-
-    if (!promoCode) {
-      throw new ApiError("Promo code is required", 400);
-    }
-
-    if (!orderAmount || orderAmount <= 0) {
-      throw new ApiError("Valid order amount is required", 400);
-    }
-
-    const promoService = new PromoService();
+    const session = await mongoose.startSession();
+    session.startTransaction();
 
     try {
-      // Get promo by name
-      const promo = await promoService.getPromoByName(promoCode);
-
-      if (!promo) {
-        return res.status(200).json({
-          success: false,
-          valid: false,
-          message: "Invalid promo code",
-          discount: 0,
-        });
-      }
-
-      // Validate promo
-      const validation = await promoService.validatePromo(
+      const {
+        products,
+        shippingAddress,
+        paymentMethod = "cash_on_delivery",
+        termsAccepted = false,
+        invoiceType = "regular",
+        bankDetails,
         promoCode,
-        orderAmount
+      } = req.body;
+
+      // ──────── VALIDATION ────────
+      if (!Array.isArray(products) || products.length === 0) {
+        throw new ApiError(
+          "At least one product is required for checkout",
+          400,
+        );
+      }
+
+      if (!shippingAddress) {
+        throw new ApiError("Shipping address is required", 400);
+      }
+
+      const requiredAddressFields = [
+        "firstName",
+        "lastName",
+        "phone",
+        "email",
+        "country",
+        "city",
+        "street",
+        "zipCode",
+      ];
+      for (const field of requiredAddressFields) {
+        if (!shippingAddress[field]?.trim()) {
+          throw new ApiError(`Shipping address ${field} is required`, 400);
+        }
+      }
+
+      if (!termsAccepted) {
+        throw new ApiError("You must accept terms and conditions", 400);
+      }
+
+      if (!["regular", "corporate"].includes(invoiceType)) {
+        throw new ApiError("Invalid invoice type", 400);
+      }
+
+      if (
+        invoiceType === "corporate" &&
+        (!bankDetails || !bankDetails.trim())
+      ) {
+        throw new ApiError("Bank details required for corporate invoice", 400);
+      }
+
+      if (!["cash_on_delivery", "online"].includes(paymentMethod)) {
+        throw new ApiError("Invalid payment method", 400);
+      }
+
+      // ──────── USER CREATION / LOOKUP ────────
+      const {
+        user: orderUser,
+        isNewUser,
+        password,
+      } = await createOrGetUser(
+        shippingAddress.email.trim().toLowerCase(),
+        shippingAddress.phone.trim(),
+        shippingAddress.firstName.trim(),
+        shippingAddress.lastName.trim(),
+        session,
       );
 
-      if (!validation.valid) {
-        return res.status(200).json({
-          success: false,
-          valid: false,
-          message: validation.message,
-          discount: 0,
-        });
-      }
+      // ──────── PROCESS PRODUCTS & STOCK ────────
+      let subtotalAmount = 0;
+      const orderItems: any[] = [];
 
-      // Calculate discount
-      let discount = 0;
-      if (promo.discountType === "percentage") {
-        discount = (orderAmount * promo.discountPercentage) / 100;
-        if (promo.maxDiscountValue && discount > promo.maxDiscountValue) {
-          discount = promo.maxDiscountValue;
+      for (const p of products) {
+        const { productId, quantity, startDate, endDate, rentalType } = p;
+
+        if (!productId || !mongoose.isValidObjectId(productId)) {
+          throw new ApiError(`Invalid product ID: ${productId}`, 400);
         }
-      } else if (promo.discountType === "fixed_amount") {
-        discount = promo.discount;
-      } else if (promo.discountType === "free_shipping") {
-        discount = promo.discount;
+
+        if (!Number.isInteger(quantity) || quantity < 1) {
+          throw new ApiError(
+            `Quantity must be positive integer for product ${productId}`,
+            400,
+          );
+        }
+
+        const product = await Product.findById(productId).session(session);
+        if (!product) {
+          throw new ApiError(`Product not found: ${productId}`, 404);
+        }
+
+        if (product.stock < quantity) {
+          throw new ApiError(
+            `${product.name || "Product"}: Only ${product.stock} available, requested ${quantity}`,
+            400,
+          );
+        }
+
+        // Reserve stock
+        product.stock -= quantity;
+        await product.save({ session });
+
+        const price = product.price; // or p.price if you allow override
+
+        orderItems.push({
+          product: product._id,
+          quantity,
+          price,
+          name: product.name,
+          startDate: startDate ? new Date(startDate) : undefined,
+          endDate: endDate ? new Date(endDate) : undefined,
+          rentalType,
+        });
+
+        subtotalAmount += price * quantity;
       }
 
-      res.status(200).json({
-        success: true,
-        valid: true,
-        message: "Promo code is valid",
-        data: {
-          promoName: promo.promoName,
-          discount,
-          discountType: promo.discountType,
-          discountPercentage: promo.discountPercentage,
-          maxDiscountValue: promo.maxDiscountValue,
-          minimumOrderValue: promo.minimumOrderValue,
-          finalAmount: orderAmount - discount,
-        },
-      });
-    } catch (error: any) {
-      return res.status(200).json({
-        success: false,
-        valid: false,
-        message: error.message || "Invalid promo code",
-        discount: 0,
-      });
-    }
-  }
-);
-
-// ==================== GET ACTIVE PROMOS ====================
-export const getActivePromos = asyncHandler(
-  async (req: Request, res: Response) => {
-    const promoService = new PromoService();
-    const promos = await promoService.getActivePromos();
-
-    const simplifiedPromos = promos.map((promo) => ({
-      promoName: promo.promoName,
-      discountPercentage: promo.discountPercentage,
-      discountType: promo.discountType,
-      discount: promo.discount,
-      maxDiscountValue: promo.maxDiscountValue,
-      minimumOrderValue: promo.minimumOrderValue,
-      validityPeriod: promo.validityPeriod,
-      totalUsageLimit: promo.totalUsageLimit,
-      usage: promo.usage,
-      totalUsage: promo.totalUsage,
-      availability: promo.availability,
-      status: promo.status,
-    }));
-
-    res.status(200).json({
-      success: true,
-      count: promos.length,
-      data: simplifiedPromos,
-    });
-  }
-);
-
-// ==================== APPLY PROMO TO CART ====================
-export const applyPromoToCart = asyncHandler(
-  async (req: Request, res: Response) => {
-    const { promoCode } = req.body;
-    const userId = (req as AuthenticatedRequest).user._id;
-
-    if (!promoCode) {
-      throw new ApiError("Promo code is required", 400);
-    }
-
-    const promoService = new PromoService();
-
-    try {
-      // Get cart to calculate order amount
-      const cart = await Cart.findOne({ user: userId }).populate(
-        "items.product"
+      // ──────── FEES & PROMO ────────
+      const deliveryFee = calculateDeliveryFee(
+        shippingAddress.deliveryTime,
+        shippingAddress.collectionTime,
+        shippingAddress.keepOvernight,
       );
-      if (!cart || cart.items.length === 0) {
-        throw new ApiError("Cart is empty", 400);
-      }
 
-      // Calculate cart total
-      let cartTotal = 0;
-      for (const item of cart.items) {
-        const product = await Product.findById(item.product);
-        if (product) {
-          cartTotal += item.quantity * item.price;
-        }
-      }
+      const overnightFee = shippingAddress.keepOvernight ? 30 : 0;
+      const amountBeforePromo = subtotalAmount + deliveryFee + overnightFee;
 
-      // Find promo by name
-      const promo = await promoService.getPromoByName(promoCode);
-
-      if (!promo) {
-        return res.status(200).json({
-          success: false,
-          valid: false,
-          message: "Invalid promo code",
-          discount: 0,
-        });
-      }
-
-      // Validate promo
-      const validation = await promoService.validatePromo(promoCode, cartTotal);
-
-      if (!validation.valid) {
-        return res.status(200).json({
-          success: false,
-          valid: false,
-          message: validation.message,
-          discount: 0,
-        });
-      }
-
-      // Calculate discount
       let discount = 0;
-      if (promo.discountType === "percentage") {
-        discount = (cartTotal * promo.discountPercentage) / 100;
-        if (promo.maxDiscountValue && discount > promo.maxDiscountValue) {
-          discount = promo.maxDiscountValue;
+      let appliedPromo = "";
+
+      if (promoCode?.trim()) {
+        const promoResult = await applyPromo(
+          promoCode.trim(),
+          amountBeforePromo,
+        );
+        if (promoResult.success) {
+          discount = promoResult.discount;
+          appliedPromo = promoCode.trim();
         }
-      } else if (promo.discountType === "fixed_amount") {
-        discount = promo.discount;
-      } else if (promo.discountType === "free_shipping") {
-        discount = promo.discount;
       }
 
-      res.status(200).json({
-        success: true,
-        valid: true,
-        message: "Promo code applied to cart",
-        data: {
-          promoName: promo.promoName,
-          discount,
-          cartTotal,
-          finalAmount: cartTotal - discount,
-          discountType: promo.discountType,
-          discountPercentage: promo.discountPercentage,
-          maxDiscountValue: promo.maxDiscountValue,
-          minimumOrderValue: promo.minimumOrderValue,
+      const totalAmount = amountBeforePromo - discount;
+
+      // ──────── CREATE ORDER ────────
+      const orderData = {
+        user: orderUser._id,
+        items: orderItems,
+        subtotalAmount,
+        deliveryFee,
+        overnightFee,
+        discountAmount: discount,
+        totalAmount,
+        paymentMethod,
+        status: "pending",
+        shippingAddress: {
+          ...shippingAddress,
+          email: shippingAddress.email.trim().toLowerCase(),
         },
+        termsAccepted: true,
+        invoiceType,
+        bankDetails:
+          invoiceType === "corporate" ? bankDetails?.trim() : undefined,
+        promoCode: appliedPromo || undefined,
+        estimatedDeliveryDate:
+          orderItems[0]?.startDate ||
+          new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        deviceInfo: req.headers["user-agent"] || "unknown",
+      };
+
+      const createdOrder = new Order(orderData);
+      await createdOrder.save({ session });
+
+      // ──────── CUSTOMER RECORD ────────
+      // In quickCheckout or checkoutFromCart controller
+      let customer = await Customer.findOne({
+        email: shippingAddress.email.toLowerCase().trim(),
       });
-    } catch (error: any) {
-      return res.status(200).json({
-        success: false,
-        valid: false,
-        message: error.message || "Invalid promo code",
-        discount: 0,
-      });
+
+      if (!customer) {
+        customer = new Customer({
+          customerId: `CUST-${Date.now().toString(36).toUpperCase()}`,
+          name: `${shippingAddress.firstName} ${shippingAddress.lastName}`.trim(),
+          email: shippingAddress.email.trim().toLowerCase(),
+          phone: shippingAddress.phone?.trim(),
+          address: shippingAddress.street,
+          city: shippingAddress.city,
+          postcode: shippingAddress.zipCode,
+          country: shippingAddress.country,
+          customerType: "guest", // or "corporate" if invoiceType === "corporate"
+          orders: [createdOrder._id],
+          totalOrders: 1,
+          totalSpent: createdOrder.totalAmount,
+          firstOrderDate: new Date(),
+          lastOrderDate: new Date(),
+          user: orderUser?._id,
+        });
+      } else {
+        // Update existing
+        customer.orders.push(createdOrder._id);
+        customer.totalOrders += 1;
+        customer.totalSpent += createdOrder.totalAmount;
+        customer.lastOrderDate = new Date();
+        if (orderUser?._id && !customer.user) {
+          customer.user = orderUser._id;
+        }
+        // Optionally update address/phone if different
+      }
+
+      await customer.save({ session });
+      await session.commitTransaction();
+
+      // Emails (non-blocking)
+      Promise.allSettled([
+        sendOrderReceivedEmail(createdOrder),
+        sendOrderNotificationToAdmin(createdOrder),
+        isNewUser && password
+          ? sendUserCredentialsEmail(
+              shippingAddress.email,
+              shippingAddress.firstName,
+              password,
+            )
+          : Promise.resolve(),
+      ]).catch((err) => console.error("Email sending failed:", err));
+
+      // ──────── RESPONSE ────────
+      const response: any = {
+        success: true,
+        message: "Order placed successfully",
+        order: {
+          _id: createdOrder._id,
+          orderNumber: createdOrder.orderNumber, // if you generate one
+          totalAmount: createdOrder.totalAmount,
+          status: createdOrder.status,
+        },
+      };
+
+      if (isNewUser) {
+        response.newAccount = {
+          created: true,
+          email: orderUser.email,
+          temporaryPassword: password,
+          note: "Check your email for login credentials",
+        };
+      }
+
+      res.status(201).json(response);
+    } catch (err: any) {
+      await session.abortTransaction();
+      throw err;
+    } finally {
+      session.endSession();
     }
-  }
+  },
 );

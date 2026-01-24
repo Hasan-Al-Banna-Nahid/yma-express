@@ -14,6 +14,8 @@ import {
 // Order Item Schema
 const orderItemSchema = new Schema<IOrderItem>(
   {
+    promoId: { type: Schema.Types.ObjectId, ref: "Promo" }, // Add this field
+
     product: { type: Schema.Types.ObjectId, ref: "Product", required: true },
     quantity: { type: Number, required: true, min: 1 },
     price: { type: Number, required: true },
@@ -26,7 +28,7 @@ const orderItemSchema = new Schema<IOrderItem>(
     },
     keepOvernight: { type: Boolean, default: false },
   },
-  { _id: false }
+  { _id: false },
 );
 
 // Define collection time options locally
@@ -87,7 +89,7 @@ const shippingAddressSchema = new Schema<IShippingAddress>(
     billingZipCode: { type: String, default: "" },
     billingCompanyName: { type: String, default: "" },
   },
-  { _id: false, toJSON: { getters: true }, toObject: { getters: true } }
+  { _id: false, toJSON: { getters: true }, toObject: { getters: true } },
 );
 
 // Main Order Schema
@@ -157,7 +159,7 @@ const orderSchema = new Schema<IOrderDocument>(
         return ret;
       },
     },
-  }
+  },
 );
 
 // ==================== PRE-SAVE MIDDLEWARE ====================
@@ -175,7 +177,7 @@ orderSchema.pre("save", async function (next) {
   // Calculate delivery fee
   if (this.shippingAddress?.deliveryTime) {
     this.deliveryFee = DeliveryTimeManager.getFee(
-      this.shippingAddress.deliveryTime
+      this.shippingAddress.deliveryTime,
     );
   }
 
@@ -185,7 +187,7 @@ orderSchema.pre("save", async function (next) {
     this.shippingAddress.collectionTime.trim() !== ""
   ) {
     const collectionOption = COLLECTION_TIME_OPTIONS.find(
-      (opt) => opt.value === this.shippingAddress.collectionTime
+      (opt) => opt.value === this.shippingAddress.collectionTime,
     );
     if (collectionOption) {
       this.deliveryFee += collectionOption.fee;

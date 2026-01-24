@@ -4,7 +4,9 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import path from "path";
 import dotenv from "dotenv";
-
+// import compression from "compression";
+import cluster from "cluster";
+import os from "os";
 dotenv.config();
 // Import routes
 import authRouter from "./app/modules/Auth/auth.route";
@@ -23,7 +25,10 @@ import contactRoutes from "./app/modules/contact/contact.routes";
 import newsletterRoutes from "./app/modules/newsletter/newsletter.routes"; // Add this line
 import blogRoutes from "./app/modules/Blog/blog.routes"; // Add this line
 import promoRoutes from "./app/modules/promos/promos.routes";
-import customerRoutes from "./app/modules/customer/customer.routes";
+// import customerRoutes from "./app/modules/customer/customer.routes";
+import { requestPerformance } from "./app/middlewares/performance.middleware";
+import { globalCache } from "./app/middlewares/globalCache";
+import mongoose from "mongoose";
 
 const app = express();
 
@@ -54,7 +59,7 @@ app.use(
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
-  })
+  }),
 );
 
 app.use(express.json({ limit: "10mb" }));
@@ -64,8 +69,12 @@ app.use(cookieParser());
 
 app.set("view engine", "ejs");
 app.set("views", path.join(process.cwd(), "src", "app", "views"));
+app.use(requestPerformance);
+app.use(globalCache);
+if (cluster.isPrimary) {
+  os.cpus().forEach(() => cluster.fork());
+}
 
-// Auth routes
 app.use("/api/v1/auth", authRouter);
 
 // API routes
@@ -83,7 +92,9 @@ app.use("/api/v1", contactRoutes);
 app.use("/api/v1", newsletterRoutes);
 app.use("/api/v1/blogs", blogRoutes);
 app.use("/api/v1", promoRoutes);
-app.use("/api/v1/customers", customerRoutes);
+// app.use("/api/v1/customers", customerRoutes);
+
+// app.use(compression());
 
 // Health check
 app.get("/healthz", (_req, res) => res.json({ ok: true }));
@@ -92,7 +103,7 @@ app.get("/healthz", (_req, res) => res.json({ ok: true }));
 app.use((req, res) =>
   res
     .status(404)
-    .json({ status: "fail", message: "Not Found", path: req.originalUrl })
+    .json({ status: "fail", message: "Not Found", path: req.originalUrl }),
 );
 app.use(globalErrorHandler);
 

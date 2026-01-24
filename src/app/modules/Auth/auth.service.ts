@@ -93,9 +93,6 @@ export const login = async (email: string, password: string) => {
 };
 
 // --- FORGOT PASSWORD ---
-// In auth.service.ts - forgotPassword function
-// In auth.service.ts - forgotPassword function
-// In auth.service.ts - forgotPassword function
 export const forgotPassword = async (email: string) => {
   const user = await User.findOne({ email });
   if (!user) {

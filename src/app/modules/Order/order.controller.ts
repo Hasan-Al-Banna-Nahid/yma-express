@@ -24,7 +24,7 @@ export const createOrderHandler = asyncHandler(
       if (!item.quantity || item.quantity < 1) {
         throw new ApiError(
           `Item ${index + 1}: Valid quantity is required`,
-          400
+          400,
         );
       }
     }
@@ -64,7 +64,7 @@ export const createOrderHandler = asyncHandler(
     if (!validPaymentMethods.includes(orderData.paymentMethod)) {
       throw new ApiError(
         `Payment method must be one of: ${validPaymentMethods.join(", ")}`,
-        400
+        400,
       );
     }
 
@@ -120,7 +120,7 @@ export const createOrderHandler = asyncHandler(
       },
       message: "Order placed successfully and customer profile created/updated",
     });
-  }
+  },
 );
 
 export const getMyOrders = asyncHandler(async (req: Request, res: Response) => {
@@ -162,11 +162,11 @@ export const updateOrderHandler = asyncHandler(
       id,
       updateData,
       userId,
-      isAdmin
+      isAdmin,
     );
 
     ApiResponse(res, 200, "Order updated successfully", { order });
-  }
+  },
 );
 
 export const deleteOrderHandler = asyncHandler(
@@ -178,7 +178,7 @@ export const deleteOrderHandler = asyncHandler(
     await orderService.deleteOrder(id, userId);
 
     ApiResponse(res, 200, "Order deleted successfully");
-  }
+  },
 );
 
 // Admin controllers
@@ -208,21 +208,21 @@ export const getAllOrdersHandler = asyncHandler(
     const result = await orderService.getAllOrders(page, limit, filters);
 
     ApiResponse(res, 200, "Orders retrieved successfully", result);
-  }
+  },
 );
 
 export const getOrderStatsHandler = asyncHandler(
   async (req: Request, res: Response) => {
     const stats = await orderService.getOrderStatistics();
     ApiResponse(res, 200, "Order statistics retrieved", stats);
-  }
+  },
 );
 
 export const getDashboardStatsHandler = asyncHandler(
   async (req: Request, res: Response) => {
     const stats = await orderService.getDashboardStats();
     ApiResponse(res, 200, "Dashboard stats retrieved successfully", stats);
-  }
+  },
 );
 
 export const getRevenueOverTimeHandler = asyncHandler(
@@ -236,11 +236,11 @@ export const getRevenueOverTimeHandler = asyncHandler(
     const revenueData = await orderService.getRevenueOverTime(
       new Date(startDate as string),
       new Date(endDate as string),
-      interval as "day" | "week" | "month"
+      interval as "day" | "week" | "month",
     );
 
     ApiResponse(res, 200, "Revenue over time", revenueData);
-  }
+  },
 );
 
 export const getOrderSummaryHandler = asyncHandler(
@@ -248,7 +248,7 @@ export const getOrderSummaryHandler = asyncHandler(
     const { orderId } = req.params;
     const summary = await orderService.getOrderSummary(orderId);
     ApiResponse(res, 200, "Order summary", summary);
-  }
+  },
 );
 
 export const updateOrderStatusHandler = asyncHandler(
@@ -262,7 +262,7 @@ export const updateOrderStatusHandler = asyncHandler(
 
     const order = await orderService.updateOrderStatus(id, status, adminNotes);
     ApiResponse(res, 200, "Order status updated", { order });
-  }
+  },
 );
 
 export const getUserOrdersHandler = asyncHandler(
@@ -273,7 +273,7 @@ export const getUserOrdersHandler = asyncHandler(
 
     const result = await orderService.getOrdersByUserId(userId, page, limit);
     ApiResponse(res, 200, "User orders retrieved", result);
-  }
+  },
 );
 
 export const searchOrdersHandler = asyncHandler(
@@ -288,7 +288,7 @@ export const searchOrdersHandler = asyncHandler(
 
     const result = await orderService.searchOrders(searchTerm, page, limit);
     ApiResponse(res, 200, "Search results", result);
-  }
+  },
 );
 
 export const generateInvoiceHandler = asyncHandler(
@@ -300,7 +300,7 @@ export const generateInvoiceHandler = asyncHandler(
 
     const result = await orderService.generateInvoice(orderId, userId, isAdmin);
     ApiResponse(res, 200, result.message, result);
-  }
+  },
 );
 
 export const downloadInvoiceHandler = asyncHandler(
@@ -313,13 +313,13 @@ export const downloadInvoiceHandler = asyncHandler(
     const { html, filename } = await orderService.downloadInvoice(
       orderId,
       userId,
-      isAdmin
+      isAdmin,
     );
 
     res.setHeader("Content-Type", "text/html");
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     res.send(html);
-  }
+  },
 );
 
 export const previewInvoiceHandler = asyncHandler(
@@ -333,5 +333,5 @@ export const previewInvoiceHandler = asyncHandler(
 
     res.setHeader("Content-Type", "text/html");
     res.send(html);
-  }
+  },
 );
