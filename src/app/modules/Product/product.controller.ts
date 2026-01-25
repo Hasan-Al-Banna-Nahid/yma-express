@@ -66,7 +66,7 @@ export const clientSearchProducts = asyncHandler(
       if (params.minPrice > params.maxPrice) {
         throw new ApiError(
           "Minimum price cannot be greater than maximum price",
-          400
+          400,
         );
       }
     }
@@ -76,7 +76,7 @@ export const clientSearchProducts = asyncHandler(
       if (params.ageMin > params.ageMax) {
         throw new ApiError(
           "Minimum age cannot be greater than maximum age",
-          400
+          400,
         );
       }
     }
@@ -99,7 +99,7 @@ export const clientSearchProducts = asyncHandler(
         },
       },
     });
-  }
+  },
 );
 // Get top selling products based on booking frequency
 export const getTopSellingProducts = asyncHandler(
@@ -123,7 +123,7 @@ export const getTopSellingProducts = asyncHandler(
       message: "Top selling products fetched successfully",
       data: result,
     });
-  }
+  },
 );
 
 // Admin endpoint to manually mark products as top selling (featured)
@@ -136,7 +136,7 @@ export const markAsTopSelling = asyncHandler(
       productId,
       isTopSelling,
       rank,
-      notes
+      notes,
     );
 
     res.status(200).json({
@@ -144,7 +144,7 @@ export const markAsTopSelling = asyncHandler(
       message: `Product ${isTopSelling ? "marked" : "unmarked"} as top selling`,
       data: { product },
     });
-  }
+  },
 );
 /* =========================
    ADMIN SEARCH PRODUCTS
@@ -208,7 +208,7 @@ export const adminSearchProducts = asyncHandler(
         },
       },
     });
-  }
+  },
 );
 
 /* =========================
@@ -225,11 +225,11 @@ export const getAvailableFilters = asyncHandler(
         filters,
       },
     });
-  }
+  },
 );
 const validateRequiredFields = (
   body: any,
-  requiredFields: string[]
+  requiredFields: string[],
 ): string[] => {
   const missing: string[] = [];
 
@@ -286,7 +286,7 @@ export const createProduct = asyncHandler(
       imageCoverFile = fileArray[0];
       console.log(
         "Found imageCover in files array:",
-        imageCoverFile.originalname
+        imageCoverFile.originalname,
       );
     }
 
@@ -325,7 +325,7 @@ export const createProduct = asyncHandler(
           if (Array.isArray(fieldFiles) && fieldFiles.length > 0) {
             imageFiles = fieldFiles;
             console.log(
-              `Found ${imageFiles.length} images in '${fieldName}' field`
+              `Found ${imageFiles.length} images in '${fieldName}' field`,
             );
             break;
           }
@@ -343,7 +343,7 @@ export const createProduct = asyncHandler(
     }
 
     console.log(
-      `Processing: 1 cover image and ${imageFiles.length} product images`
+      `Processing: 1 cover image and ${imageFiles.length} product images`,
     );
 
     // Upload files to Cloudinary
@@ -361,7 +361,7 @@ export const createProduct = asyncHandler(
         console.log(
           `Uploading product image ${i + 1}/${imageFiles.length}: ${
             file.originalname
-          }`
+          }`,
         );
         const url = await uploadToCloudinary(file);
         imageUrls.push(url);
@@ -432,7 +432,7 @@ export const createProduct = asyncHandler(
       console.log("ERROR: Missing required fields:", missingFields);
       throw new ApiError(
         `Missing required fields: ${missingFields.join(", ")}`,
-        400
+        400,
       );
     }
 
@@ -616,7 +616,7 @@ export const createProduct = asyncHandler(
     try {
       const parsedSafetyFeatures = parseJsonField(
         safetyFeatures,
-        "safetyFeatures"
+        "safetyFeatures",
       );
       if (parsedSafetyFeatures) {
         if (Array.isArray(parsedSafetyFeatures)) {
@@ -654,7 +654,7 @@ export const createProduct = asyncHandler(
     try {
       const parsedDeliveryOptions = parseJsonField(
         deliveryTimeOptions,
-        "deliveryTimeOptions"
+        "deliveryTimeOptions",
       );
       if (parsedDeliveryOptions && Array.isArray(parsedDeliveryOptions)) {
         productData.deliveryTimeOptions = parsedDeliveryOptions.map(String);
@@ -666,7 +666,7 @@ export const createProduct = asyncHandler(
     try {
       const parsedCollectionOptions = parseJsonField(
         collectionTimeOptions,
-        "collectionTimeOptions"
+        "collectionTimeOptions",
       );
       if (parsedCollectionOptions && Array.isArray(parsedCollectionOptions)) {
         productData.collectionTimeOptions = parsedCollectionOptions.map(String);
@@ -709,7 +709,7 @@ export const createProduct = asyncHandler(
       console.error("Error creating product in service:", error);
       throw new ApiError(`Failed to create product: ${error.message}`, 500);
     }
-  }
+  },
 );
 
 /* =========================
@@ -740,7 +740,7 @@ export const updateProduct = asyncHandler(
         } catch (error: any) {
           throw new ApiError(
             `Failed to upload cover image: ${error.message}`,
-            500
+            500,
           );
         }
       } else if (
@@ -750,7 +750,7 @@ export const updateProduct = asyncHandler(
         const newImageCover = files["newImageCover[]"][0];
         console.log(
           "Uploading new cover image from array:",
-          newImageCover.originalname
+          newImageCover.originalname,
         );
         try {
           const newCoverUrl = await uploadToCloudinary(newImageCover);
@@ -759,7 +759,7 @@ export const updateProduct = asyncHandler(
         } catch (error: any) {
           throw new ApiError(
             `Failed to upload cover image: ${error.message}`,
-            500
+            500,
           );
         }
       }
@@ -773,7 +773,7 @@ export const updateProduct = asyncHandler(
       ) {
         newImages = files.newImages;
         console.log(
-          `Found ${newImages.length} new images in 'newImages' field`
+          `Found ${newImages.length} new images in 'newImages' field`,
         );
       } else if (
         files["newImages[]"] &&
@@ -782,7 +782,7 @@ export const updateProduct = asyncHandler(
       ) {
         newImages = files["newImages[]"];
         console.log(
-          `Found ${newImages.length} new images in 'newImages[]' field`
+          `Found ${newImages.length} new images in 'newImages[]' field`,
         );
       }
 
@@ -797,12 +797,12 @@ export const updateProduct = asyncHandler(
             newImages.map(async (file: Express.Multer.File, index: number) => {
               console.log(
                 `Uploading new image ${index + 1}:`,
-                file.originalname
+                file.originalname,
               );
               const url = await uploadToCloudinary(file);
               console.log(`New image ${index + 1} uploaded:`, url);
               return url;
-            })
+            }),
           );
           updateData.newImages = newImageUrls;
           console.log("All new images uploaded successfully");
@@ -881,7 +881,7 @@ export const updateProduct = asyncHandler(
     // Helper function to convert value
     const convertValue = (
       value: any,
-      type: "number" | "int" | "bool" | "date"
+      type: "number" | "int" | "bool" | "date",
     ): any => {
       if (value === undefined || value === null) return undefined;
 
@@ -948,7 +948,7 @@ export const updateProduct = asyncHandler(
     if (updateData.availableUntil !== undefined) {
       updateData.availableUntil = convertValue(
         updateData.availableUntil,
-        "date"
+        "date",
       );
     }
 
@@ -1004,7 +1004,7 @@ export const updateProduct = asyncHandler(
       console.error("Error updating product:", error);
       throw new ApiError(`Failed to update product: ${error.message}`, 500);
     }
-  }
+  },
 );
 
 export const getAllProducts = asyncHandler(
@@ -1013,12 +1013,16 @@ export const getAllProducts = asyncHandler(
     const limit = parseInt(req.query.limit as string) || 10;
     const state = req.query.state as string;
     const category = req.query.category as string;
+
     const minPrice = req.query.minPrice
       ? parseFloat(req.query.minPrice as string)
       : undefined;
+
     const maxPrice = req.query.maxPrice
       ? parseFloat(req.query.maxPrice as string)
       : undefined;
+
+    const search = req.query.search as string; // 🔍 product name
 
     const result = await productService.getAllProducts(
       page,
@@ -1026,7 +1030,8 @@ export const getAllProducts = asyncHandler(
       state,
       category,
       minPrice,
-      maxPrice
+      maxPrice,
+      search,
     );
 
     res.status(200).json({
@@ -1042,7 +1047,7 @@ export const getAllProducts = asyncHandler(
         },
       },
     });
-  }
+  },
 );
 
 export const getProduct = asyncHandler(
@@ -1056,7 +1061,7 @@ export const getProduct = asyncHandler(
         product,
       },
     });
-  }
+  },
 );
 
 export const deleteProduct = asyncHandler(
@@ -1068,7 +1073,7 @@ export const deleteProduct = asyncHandler(
       status: "success",
       message: "Product deleted successfully",
     });
-  }
+  },
 );
 
 export const getProductsByState = asyncHandler(
@@ -1083,7 +1088,7 @@ export const getProductsByState = asyncHandler(
         products,
       },
     });
-  }
+  },
 );
 
 export const getAvailableStates = asyncHandler(
@@ -1097,7 +1102,7 @@ export const getAvailableStates = asyncHandler(
         states,
       },
     });
-  }
+  },
 );
 
 export const updateProductStock = asyncHandler(
@@ -1118,7 +1123,7 @@ export const updateProductStock = asyncHandler(
         product,
       },
     });
-  }
+  },
 );
 
 export const getFeaturedProducts = asyncHandler(
@@ -1133,7 +1138,7 @@ export const getFeaturedProducts = asyncHandler(
         products,
       },
     });
-  }
+  },
 );
 
 export const searchProducts = asyncHandler(
@@ -1145,14 +1150,14 @@ export const searchProducts = asyncHandler(
     if (!query || query.trim().length < 2) {
       throw new ApiError(
         "Search query must be at least 2 characters long",
-        400
+        400,
       );
     }
 
     const result = await productService.searchProducts(
       query.trim(),
       page,
-      limit
+      limit,
     );
 
     res.status(200).json({
@@ -1168,7 +1173,7 @@ export const searchProducts = asyncHandler(
         },
       },
     });
-  }
+  },
 );
 
 export const getProductsByCategory = asyncHandler(
@@ -1180,7 +1185,7 @@ export const getProductsByCategory = asyncHandler(
     const result = await productService.getProductsByCategory(
       categoryId,
       page,
-      limit
+      limit,
     );
 
     res.status(200).json({
@@ -1196,7 +1201,7 @@ export const getProductsByCategory = asyncHandler(
         },
       },
     });
-  }
+  },
 );
 // Add these to your existing product.controller.ts
 
@@ -1227,7 +1232,7 @@ export const markAsTopPick = asyncHandler(
       message: `Product ${isTopPick ? "marked" : "unmarked"} as top pick`,
       data: { product },
     });
-  }
+  },
 );
 
 // ... all your existing controller functions remain
@@ -1269,7 +1274,7 @@ export const getFrequentlyBoughtTogether = asyncHandler(
 
     const recommendations = await productService.getFrequentlyBoughtTogether(
       productIds,
-      limit
+      limit,
     );
 
     // Get booked dates for all recommended products
@@ -1278,7 +1283,7 @@ export const getFrequentlyBoughtTogether = asyncHandler(
       .map((p) => (p._id as unknown as string).toString());
 
     const bookedDatesMap = await productService.getBookedDatesForProducts(
-      recommendedProductIds
+      recommendedProductIds,
     );
 
     // Enhance recommendations with additional fields
@@ -1315,7 +1320,7 @@ export const getFrequentlyBoughtTogether = asyncHandler(
               const itemId =
                 item.productId?._id?.toString() || item.productId?.toString();
               return productIds.includes(itemId);
-            }
+            },
           ),
           metadata: {
             isAvailable: product.stock > 0,
@@ -1325,7 +1330,7 @@ export const getFrequentlyBoughtTogether = asyncHandler(
             totalImages: (product.images || []).length,
           },
         };
-      })
+      }),
     ).then((results) => results.filter((r) => r !== null));
 
     res.status(200).json({
@@ -1351,7 +1356,7 @@ export const getFrequentlyBoughtTogether = asyncHandler(
         },
       },
     });
-  }
+  },
 );
 
 /* =========================
@@ -1378,7 +1383,7 @@ export const getCartRecommendations = asyncHandler(
 
     const recommendations = await productService.getCartRecommendations(
       validCartItems,
-      limit
+      limit,
     );
 
     res.status(200).json({
@@ -1389,7 +1394,7 @@ export const getCartRecommendations = asyncHandler(
         count: recommendations.length,
       },
     });
-  }
+  },
 );
 
 /* =========================
@@ -1434,7 +1439,7 @@ export const recordPurchase = asyncHandler(
       status: "success",
       message: "Purchase recorded for recommendation analytics",
     });
-  }
+  },
 );
 /* =========================
    ADD FREQUENTLY BOUGHT TOGETHER PRODUCTS (Admin Only)
@@ -1493,7 +1498,7 @@ export const createFrequentlyBoughtRelationships = asyncHandler(
           productUpdates[firstProductId].imageCover = coverUrl;
 
           console.log(
-            `Updated cover image for product ${firstProductId}: ${coverUrl}`
+            `Updated cover image for product ${firstProductId}: ${coverUrl}`,
           );
         } catch (error: any) {
           console.error("Failed to upload cover image:", error);
@@ -1507,7 +1512,7 @@ export const createFrequentlyBoughtRelationships = asyncHandler(
           const imageUrls = await Promise.all(
             newImages.map(async (file: Express.Multer.File) => {
               return await uploadToCloudinary(file);
-            })
+            }),
           );
 
           // Apply images to products - you can decide logic here
@@ -1566,7 +1571,7 @@ export const createFrequentlyBoughtRelationships = asyncHandler(
     const updatedProducts =
       await productService.createFrequentlyBoughtRelationships(
         productIds,
-        productUpdates
+        productUpdates,
       );
 
     res.status(200).json({
@@ -1589,7 +1594,7 @@ export const createFrequentlyBoughtRelationships = asyncHandler(
               productName: item.productId?.name || "Unknown",
               frequency: item.frequency,
               confidence: item.confidence,
-            })
+            }),
           ),
         })),
         count: updatedProducts.length,
@@ -1600,7 +1605,7 @@ export const createFrequentlyBoughtRelationships = asyncHandler(
         },
       },
     });
-  }
+  },
 );
 
 export const getAllFrequentRelationships = asyncHandler(
@@ -1615,9 +1620,9 @@ export const getAllFrequentRelationships = asyncHandler(
         count: relationships.length,
         totalConnections: relationships.reduce(
           (sum, product) => sum + product.frequentlyBought.length,
-          0
+          0,
         ),
       },
     });
-  }
+  },
 );

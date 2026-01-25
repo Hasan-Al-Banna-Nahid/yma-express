@@ -18,7 +18,7 @@ export const createProduct = async (
   productData: CreateProductData & {
     imageCover?: Express.Multer.File;
     images?: Express.Multer.File[];
-  }
+  },
 ): Promise<IProductModel> => {
   if (!productData.categories || productData.categories.length === 0) {
     throw new ApiError("At least one category is required", 400);
@@ -37,7 +37,7 @@ export const createProduct = async (
   }
 
   const categoryIds = productData.categories.map(
-    (id) => new Types.ObjectId(id)
+    (id) => new Types.ObjectId(id),
   );
 
   const categories = await Category.find({
@@ -129,7 +129,7 @@ export const updateProduct = async (
   updateData: any & {
     newImageCover?: Express.Multer.File;
     newImages?: Express.Multer.File[];
-  }
+  },
 ): Promise<IProductModel> => {
   if (!Types.ObjectId.isValid(productId)) {
     throw new ApiError("Invalid product ID", 400);
@@ -177,7 +177,7 @@ export const updateProduct = async (
 
   if (updateData.categories?.length) {
     const categoryIds = updateData.categories.map(
-      (id: string) => new Types.ObjectId(id)
+      (id: string) => new Types.ObjectId(id),
     );
 
     const categories = await Category.find({
@@ -301,7 +301,7 @@ const getBookedDatesForProduct = async (productId: string): Promise<any[]> => {
       if (booking.bookedDates && Array.isArray(booking.bookedDates)) {
         for (const bd of booking.bookedDates) {
           const item = booking.items?.find(
-            (item, index) => index === bd.itemIndex
+            (item, index) => index === bd.itemIndex,
           );
 
           if (item && item.product.toString() === productId) {
@@ -321,7 +321,7 @@ const getBookedDatesForProduct = async (productId: string): Promise<any[]> => {
             const start = new Date(item.startDate);
             const end = new Date(item.endDate);
             const duration = Math.ceil(
-              (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)
+              (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24),
             );
 
             for (let i = 0; i < duration; i++) {
@@ -355,7 +355,7 @@ const getBookedDatesForProduct = async (productId: string): Promise<any[]> => {
     }
 
     return uniqueDates.sort(
-      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
     );
   } catch (error) {
     console.error(`Error in getBookedDatesForProduct for ${productId}:`, error);
@@ -367,7 +367,7 @@ const getBookedDatesForProduct = async (productId: string): Promise<any[]> => {
    GET BOOKED DATES FOR MULTIPLE PRODUCTS
 ========================= */
 export const getBookedDatesForProducts = async (
-  productIds: string[]
+  productIds: string[],
 ): Promise<{ [productId: string]: any[] }> => {
   try {
     if (!productIds || productIds.length === 0) {
@@ -476,7 +476,7 @@ export const getBookedDatesForProducts = async (
       });
 
       result[productId] = Array.from(datesMap.values()).sort(
-        (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+        (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
       );
     });
 
@@ -510,7 +510,7 @@ export const getBookedDatesForProducts = async (
 ========================= */
 const getProductAvailability = async (
   productId: string,
-  daysAhead: number = 30
+  daysAhead: number = 30,
 ): Promise<
   Array<{
     date: string;
@@ -597,25 +597,36 @@ export const getAllProducts = async (
   state?: string,
   category?: string,
   minPrice?: number,
-  maxPrice?: number
+  maxPrice?: number,
+  search?: string,
 ): Promise<{ products: IProductModel[]; total: number; pages: number }> => {
   const skip = (page - 1) * limit;
+
   const filter: any = { ...AVAILABLE_PRODUCT_FILTER };
 
+  // 🔍 Product name search
+  if (search) {
+    filter.name = { $regex: search, $options: "i" };
+  }
+
+  // 📍 State filter
   if (state) {
     filter["location.state"] = { $regex: state, $options: "i" };
   }
 
+  // 🗂 Category filter
   if (category && Types.ObjectId.isValid(category)) {
     filter.categories = new Types.ObjectId(category);
   }
 
+  // 💰 Price range filter
   if (minPrice !== undefined || maxPrice !== undefined) {
     filter.price = {};
     if (minPrice !== undefined) filter.price.$gte = minPrice;
     if (maxPrice !== undefined) filter.price.$lte = maxPrice;
   }
 
+  // 📦 Fetch products
   const products = await Product.find(filter)
     .populate("categories", "name description")
     .select("-__v")
@@ -626,15 +637,16 @@ export const getAllProducts = async (
 
   const total = await Product.countDocuments(filter);
 
+  // 📅 Booking + availability enrichment
   const productsWithBookedDates = await Promise.all(
     products.map(async (product: any) => {
       const bookedDates = await getBookedDatesForProduct(
-        product._id.toString()
+        product._id.toString(),
       );
 
       const availability = await getProductAvailability(
         product._id.toString(),
-        30
+        30,
       );
 
       return {
@@ -663,7 +675,7 @@ export const getAllProducts = async (
         _id: product._id,
         id: product._id.toString(),
       };
-    })
+    }),
   );
 
   return {
@@ -713,7 +725,7 @@ export const getProductById = async (productId: string): Promise<any> => {
   // Calculate total booked quantity
   const totalBookedQuantity = bookedDates.reduce(
     (sum, bd) => sum + bd.quantity,
-    0
+    0,
   );
   const totalStock = product.stock || 0;
   const availableStock = Math.max(0, totalStock - totalBookedQuantity);
@@ -768,7 +780,7 @@ export const deleteProduct = async (productId: string): Promise<void> => {
   const product = await Product.findByIdAndUpdate(
     productId,
     { active: false },
-    { new: true }
+    { new: true },
   );
 
   if (!product) {
@@ -780,7 +792,7 @@ export const deleteProduct = async (productId: string): Promise<void> => {
    PRODUCTS BY STATE
 ========================= */
 export const getProductsByState = async (
-  state: string
+  state: string,
 ): Promise<IProductModel[]> => {
   return Product.find({
     ...AVAILABLE_PRODUCT_FILTER,
@@ -804,7 +816,7 @@ export const getAvailableStates = async (): Promise<string[]> => {
 ========================= */
 export const updateProductStock = async (
   productId: string,
-  newStock: number
+  newStock: number,
 ): Promise<IProductModel> => {
   if (!Types.ObjectId.isValid(productId)) {
     throw new ApiError("Invalid product ID", 400);
@@ -817,7 +829,7 @@ export const updateProductStock = async (
   const product = await Product.findByIdAndUpdate(
     productId,
     { stock: newStock },
-    { new: true, runValidators: true }
+    { new: true, runValidators: true },
   ).populate("categories", "name description");
 
   if (!product) {
@@ -831,7 +843,7 @@ export const updateProductStock = async (
    FEATURED PRODUCTS
 ========================= */
 export const getFeaturedProducts = async (
-  limit = 8
+  limit = 8,
 ): Promise<IProductModel[]> => {
   return Product.find({ ...AVAILABLE_PRODUCT_FILTER })
     .populate("categories", "name description")
@@ -845,7 +857,7 @@ export const getFeaturedProducts = async (
 export const searchProducts = async (
   query: string,
   page = 1,
-  limit = 10
+  limit = 10,
 ): Promise<{ products: IProductModel[]; total: number; pages: number }> => {
   const skip = (page - 1) * limit;
 
@@ -881,7 +893,7 @@ export const searchProducts = async (
 export const getProductsByCategory = async (
   categoryId: string,
   page = 1,
-  limit = 10
+  limit = 10,
 ): Promise<{ products: IProductModel[]; total: number; pages: number }> => {
   if (!Types.ObjectId.isValid(categoryId)) {
     throw new ApiError("Invalid category ID", 400);
@@ -931,7 +943,7 @@ export interface ClientSearchParams {
 }
 
 export const clientSearchProducts = async (
-  params: ClientSearchParams
+  params: ClientSearchParams,
 ): Promise<{
   products: IProductModel[];
   total: number;
@@ -1078,7 +1090,7 @@ export interface AdminSearchParams {
 }
 
 export const adminSearchProducts = async (
-  params: AdminSearchParams
+  params: AdminSearchParams,
 ): Promise<{
   products: IProductModel[];
   total: number;
@@ -1249,7 +1261,7 @@ export interface TopSellingParams {
 }
 
 export const getTopSellingProducts = async (
-  params: TopSellingParams
+  params: TopSellingParams,
 ): Promise<{
   products: IProductModel[];
   timeRange: string;
@@ -1303,7 +1315,7 @@ export const getTopSellingProducts = async (
 
   const totalRevenue = products.reduce(
     (sum, product) => sum + product.price,
-    0
+    0,
   );
   const totalBookings = Math.floor(products.length * 0.7);
 
@@ -1322,7 +1334,7 @@ export const markAsTopSelling = async (
   productId: string,
   isTopSelling: boolean = true,
   rank?: number,
-  notes?: string
+  notes?: string,
 ): Promise<IProductModel> => {
   if (!Types.ObjectId.isValid(productId)) {
     throw new ApiError("Invalid product ID", 400);
@@ -1356,7 +1368,7 @@ export interface TopPicksParams {
 }
 
 export const getTopPicks = async (
-  limit: number = 8
+  limit: number = 8,
 ): Promise<IProductModel[]> => {
   const topPicks = await Product.find({
     active: true,
@@ -1387,7 +1399,7 @@ export const getTopPicks = async (
 export const markAsTopPick = async (
   productId: string,
   isTopPick: boolean = true,
-  rank?: number
+  rank?: number,
 ): Promise<IProductModel> => {
   if (!Types.ObjectId.isValid(productId)) {
     throw new ApiError("Invalid product ID", 400);
@@ -1421,7 +1433,7 @@ interface CartItem {
 
 export const getFrequentlyBoughtTogether = async (
   productIds: string[],
-  limit: number = 5
+  limit: number = 5,
 ): Promise<IProductModel[]> => {
   if (!productIds || productIds.length === 0) {
     return getPopularProducts(limit);
@@ -1510,7 +1522,7 @@ export const getFrequentlyBoughtTogether = async (
 ========================= */
 export const getCartRecommendations = async (
   cartItems: CartItem[],
-  limit: number = 8
+  limit: number = 8,
 ): Promise<IProductModel[]> => {
   if (!cartItems || cartItems.length === 0) {
     return getPopularProducts(limit);
@@ -1532,7 +1544,7 @@ export const getCartRecommendations = async (
 
   const recommendations = await getFrequentlyBoughtTogether(
     productIds.map((id) => id.toString()),
-    limit * 2
+    limit * 2,
   );
 
   const cartIdSet = new Set(productIds.map((id) => id.toString()));
@@ -1540,25 +1552,25 @@ export const getCartRecommendations = async (
     (product) =>
       product._id &&
       typeof product._id !== "string" &&
-      !cartIdSet.has(product._id.toString())
+      !cartIdSet.has(product._id.toString()),
   );
 
   if (filtered.length < limit) {
     const similar = await getSimilarProducts(
       productIds,
-      limit - filtered.length
+      limit - filtered.length,
     );
 
     const filteredIds = new Set(
       filtered
         .map((p) => p._id?.toString())
-        .filter((id): id is string => id !== undefined)
+        .filter((id): id is string => id !== undefined),
     );
     const uniqueSimilar = similar.filter(
       (product) =>
         product._id &&
         !cartIdSet.has(product._id.toString()) &&
-        !filteredIds.has(product._id.toString())
+        !filteredIds.has(product._id.toString()),
     );
 
     filtered.push(...uniqueSimilar);
@@ -1592,7 +1604,7 @@ export const recordPurchase = async (productIds: string[]): Promise<void> => {
 
   setTimeout(() => {
     objectIds.forEach((id) =>
-      recalculateFrequentlyBought(id).catch(console.error)
+      recalculateFrequentlyBought(id).catch(console.error),
     );
   }, 0);
 };
@@ -1602,7 +1614,7 @@ export const recordPurchase = async (productIds: string[]): Promise<void> => {
 ========================= */
 export const createFrequentlyBoughtRelationships = async (
   productIds: string[],
-  productUpdates?: { [productId: string]: any }
+  productUpdates?: { [productId: string]: any },
 ): Promise<IProductModel[]> => {
   const validProductIds = productIds
     .filter((id) => Types.ObjectId.isValid(id))
@@ -1628,7 +1640,7 @@ export const createFrequentlyBoughtRelationships = async (
 
   const updatePromises = validProductIds.map(async (currentProductId) => {
     const otherProductIds = validProductIds.filter(
-      (id) => !id.equals(currentProductId)
+      (id) => !id.equals(currentProductId),
     );
 
     const frequentlyBoughtTogether = otherProductIds.map((id) => ({
@@ -1650,7 +1662,7 @@ export const createFrequentlyBoughtRelationships = async (
     const updatedProduct = await Product.findByIdAndUpdate(
       currentProductId,
       updateData,
-      { new: true, runValidators: true }
+      { new: true, runValidators: true },
     ).populate({
       path: "frequentlyBoughtTogether.productId",
       select: "name price imageCover stock active discount dimensions images",
@@ -1660,7 +1672,7 @@ export const createFrequentlyBoughtRelationships = async (
     if (!updatedProduct) {
       throw new ApiError(
         `Product ${currentProductId} not found after update`,
-        404
+        404,
       );
     }
 
@@ -1673,9 +1685,9 @@ export const createFrequentlyBoughtRelationships = async (
     validProductIds.map(async (productId) => {
       await updatePurchaseHistoryForFrequentlyBought(
         productId,
-        validProductIds
+        validProductIds,
       );
-    })
+    }),
   );
 
   return updatedProducts;
@@ -1749,7 +1761,7 @@ const getPopularProducts = async (limit: number): Promise<IProductModel[]> => {
 
 const getSimilarProducts = async (
   productIds: Types.ObjectId[],
-  limit: number
+  limit: number,
 ): Promise<IProductModel[]> => {
   const products = await Product.find({
     _id: { $in: productIds },
@@ -1780,7 +1792,7 @@ const getSimilarProducts = async (
 
 const updatePurchasePair = async (
   productId: Types.ObjectId,
-  relatedId: Types.ObjectId
+  relatedId: Types.ObjectId,
 ): Promise<void> => {
   await Product.updateOne(
     { _id: productId },
@@ -1798,12 +1810,12 @@ const updatePurchasePair = async (
           $slice: 100,
         },
       },
-    }
+    },
   ).exec();
 };
 
 const recalculateFrequentlyBought = async (
-  productId: Types.ObjectId
+  productId: Types.ObjectId,
 ): Promise<void> => {
   const product = await Product.findById(productId)
     .select("purchaseHistory")
@@ -1839,7 +1851,7 @@ const recalculateFrequentlyBought = async (
 
   await Product.updateOne(
     { _id: productId },
-    { frequentlyBoughtTogether: frequentlyBought }
+    { frequentlyBoughtTogether: frequentlyBought },
   ).exec();
 };
 
@@ -1851,10 +1863,10 @@ const calculateConfidence = (count: number, total: number): number => {
 
 const updatePurchaseHistoryForFrequentlyBought = async (
   productId: Types.ObjectId,
-  relatedProductIds: Types.ObjectId[]
+  relatedProductIds: Types.ObjectId[],
 ): Promise<void> => {
   const otherProductIds = relatedProductIds.filter(
-    (id) => !id.equals(productId)
+    (id) => !id.equals(productId),
   );
 
   for (const relatedId of otherProductIds) {

@@ -523,35 +523,35 @@ export const updateOrder = async (
     );
   }
 
-  // ─── Merge shipping address ─────────────────────────────────────────────
-  if (updateData.shippingAddress && order.shippingAddress) {
-    updateData.shippingAddress = {
-      ...order.shippingAddress.toObject(),
+  // ─── Merge shipping address safely ──────────────────────────────────────
+  if (updateData.shippingAddress) {
+    order.shippingAddress = {
+      ...order.shippingAddress?.toObject(),
       ...updateData.shippingAddress,
     };
   }
 
-  // ─── Update top-level fields ────────────────────────────────────────────
-  Object.keys(updateData).forEach((key) => {
-    if (updateData[key as keyof UpdateOrderInput] !== undefined) {
-      (order as any)[key] = updateData[key as keyof UpdateOrderInput];
+  // ─── Update top-level fields (PATCH behavior) ───────────────────────────
+  Object.entries(updateData).forEach(([key, value]) => {
+    if (value !== undefined && key !== "shippingAddress") {
+      (order as any)[key] = value;
     }
   });
 
-  // If status changed to delivered → set deliveryDate automatically
+  // ─── Auto set deliveryDate when delivered ──────────────────────────────
   if (
     updateData.status === ORDER_STATUS.DELIVERED &&
     updateData.status !== previousStatus
   ) {
     if (!order.deliveryDate) {
       order.deliveryDate = new Date();
-      console.log(`[AUTO-updateOrder] Set deliveryDate for ${orderId}`);
+      console.log(`[AUTO-updateOrder] deliveryDate set for ${orderId}`);
     }
   }
 
   await order.save();
 
-  // ─── Send status change emails (admin only) ─────────────────────────────
+  // ─── Send status change emails (admin-only logic) ───────────────────────
   if (updateData.status && updateData.status !== previousStatus) {
     const populatedOrder = await Order.findById(order._id)
       .populate("user", "name email phone")
@@ -562,13 +562,14 @@ export const updateOrder = async (
         case ORDER_STATUS.CONFIRMED:
           await sendOrderConfirmedEmail(populatedOrder);
           break;
+
         case ORDER_STATUS.SHIPPED:
           await sendDeliveryReminderEmail(populatedOrder);
           break;
+
         case ORDER_STATUS.CANCELLED:
           await sendOrderCancelledEmail(populatedOrder);
           break;
-        // DELIVERED email is handled in updateOrderStatus if you use that endpoint
       }
     }
   }
