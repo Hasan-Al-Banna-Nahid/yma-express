@@ -20,6 +20,7 @@ import {
 } from "./order.controller";
 import { protectRoute } from "../../middlewares/auth.middleware";
 import { isAdmin } from "../../middlewares/role.middleware";
+import { restrictTo } from "../../middlewares/authorization.middleware";
 
 const router = express.Router();
 

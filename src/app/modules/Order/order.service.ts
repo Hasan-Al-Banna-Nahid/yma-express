@@ -496,8 +496,6 @@ export const getAllOrders = async (
 export const updateOrder = async (
   orderId: string,
   updateData: UpdateOrderInput,
-  userId?: string,
-  isAdmin: boolean = false,
 ): Promise<IOrderDocument> => {
   if (!mongoose.Types.ObjectId.isValid(orderId)) {
     throw new ApiError("Invalid order ID", 400);
@@ -508,30 +506,7 @@ export const updateOrder = async (
     throw new ApiError("Order not found", 404);
   }
 
-  // Check authorization
-  if (!isAdmin && userId && order.user.toString() !== userId.toString()) {
-    throw new ApiError("You are not authorized to update this order", 403);
-  }
-
   const previousStatus = order.status;
-
-  // Users can only update shipping address fields
-  if (!isAdmin) {
-    const allowedFields = ["shippingAddress", "bankDetails", "invoiceType"];
-    const filteredData: any = {};
-
-    Object.keys(updateData).forEach((key) => {
-      if (allowedFields.includes(key)) {
-        filteredData[key] = (updateData as any)[key];
-      }
-    });
-
-    if (updateData.status && updateData.status !== order.status) {
-      throw new ApiError("Only admins can update order status", 403);
-    }
-
-    updateData = filteredData as UpdateOrderInput;
-  }
 
   // ─── Normalize delivery/collection time if provided ─────────────────────
   if (updateData.shippingAddress?.deliveryTime) {
@@ -577,7 +552,7 @@ export const updateOrder = async (
   await order.save();
 
   // ─── Send status change emails (admin only) ─────────────────────────────
-  if (isAdmin && updateData.status && updateData.status !== previousStatus) {
+  if (updateData.status && updateData.status !== previousStatus) {
     const populatedOrder = await Order.findById(order._id)
       .populate("user", "name email phone")
       .populate("items.product", "name imageCover price");
@@ -842,15 +817,6 @@ export const getRevenueOverTime = async (
     },
     { $sort: { _id: 1 } },
   ]);
-
-  // Debug logging
-  console.log("DEBUG getRevenueOverTime:", {
-    resultCount: result.length,
-    matchConditions,
-    startDate,
-    endDate,
-    status,
-  });
 
   return result.map((item) => ({
     date: item._id,
