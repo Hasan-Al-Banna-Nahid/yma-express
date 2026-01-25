@@ -137,15 +137,15 @@ export const getMyOrders = asyncHandler(async (req: Request, res: Response) => {
 export const getOrder = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
   const aReq = req as any;
-  const userId = aReq.user.id;
-  const isAdmin = aReq.user.role === "admin";
+  // const userId = aReq.user.id;
+  // const isAdmin = aReq.user.role === "admin";
 
   const order = await orderService.getOrderById(id);
 
   // Check authorization
-  if (!isAdmin && order.user.toString() !== userId.toString()) {
-    throw new ApiError("Not authorized to view this order", 403);
-  }
+  // if (!isAdmin && order.user.toString() !== userId.toString()) {
+  //   throw new ApiError("Not authorized to view this order", 403);
+  // }
 
   ApiResponse(res, 200, "Order retrieved successfully", { order });
 });
@@ -154,15 +154,15 @@ export const updateOrderHandler = asyncHandler(
   async (req: Request, res: Response) => {
     const { id } = req.params;
     const aReq = req as any;
-    const userId = aReq.user.id;
-    const isAdmin = aReq.user.role === "admin";
+    // const userId = aReq.user.id;
+    // const isAdmin = aReq.user.role === "admin";
     const updateData = req.body;
 
     const order = await orderService.updateOrder(
       id,
       updateData,
-      userId,
-      isAdmin,
+      // userId,
+      // isAdmin,
     );
 
     ApiResponse(res, 200, "Order updated successfully", { order });
@@ -227,7 +227,7 @@ export const getDashboardStatsHandler = asyncHandler(
 
 export const getRevenueOverTimeHandler = asyncHandler(
   async (req: Request, res: Response) => {
-    const { startDate, endDate, interval = "day" } = req.query;
+    const { startDate, endDate, interval = "day", status } = req.query;
 
     if (!startDate || !endDate) {
       throw new ApiError("startDate and endDate are required", 400);
@@ -236,6 +236,7 @@ export const getRevenueOverTimeHandler = asyncHandler(
     const revenueData = await orderService.getRevenueOverTime(
       new Date(startDate as string),
       new Date(endDate as string),
+      status as string,
       interval as "day" | "week" | "month",
     );
 

@@ -6,8 +6,8 @@ import { restrictTo } from "../../middlewares/authorization.middleware";
 const router = Router();
 const promoController = new PromoController();
 
-router.use(protectRoute);
-router.use(restrictTo("admin", "superadmin"));
+// router.use(protectRoute);
+// router.use(restrictTo("admin", "superadmin"));
 
 router.post("/promos", promoController.createPromo);
 router.get("/promos", promoController.getAllPromos);

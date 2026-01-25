@@ -15,12 +15,17 @@ const orderItemSchema = new Schema<IOrderItem>(
     startDate: { type: Date },
     endDate: { type: Date },
   },
-  { _id: false }
+  { _id: false },
 );
 
 const orderSchema = new Schema<IOrder>(
   {
-    user: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    user: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      unique: true,
+      sparse: true, // 🔥 IMPORTANT
+    },
     items: { type: [orderItemSchema], required: true },
     totalAmount: { type: Number, required: true },
     paymentMethod: {
@@ -79,7 +84,7 @@ const orderSchema = new Schema<IOrder>(
     },
     bankDetails: { type: String },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 // Export the model

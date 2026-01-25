@@ -12,9 +12,8 @@ import {
   OrderStats,
   FilterOptions,
   ORDER_STATUS,
-  PAYMENT_METHODS,
-  INVOICE_TYPES,
   DeliveryTimeManager,
+  IShippingAddress,
 } from "./order.interface";
 import {
   sendOrderReceivedEmail,
@@ -26,10 +25,33 @@ import {
   sendDeliveryCompleteEmail,
 } from "./email.service";
 
+// ───────────────────────────────────────────────
+// REVENUE HELPER – only delivered orders + deliveryDate
+// ───────────────────────────────────────────────
+export const getRevenueInPeriod = async (
+  start: Date,
+  end: Date,
+): Promise<number> => {
+  const result = await Order.aggregate([
+    {
+      $match: {
+        status: ORDER_STATUS.DELIVERED,
+        deliveryDate: { $gte: start, $lt: end },
+      },
+    },
+    { $group: { _id: null, total: { $sum: "$totalAmount" } } },
+  ]);
+
+  return result[0]?.total ?? 0;
+};
+
+// ───────────────────────────────────────────────
+// ORDER CREATION
+// ───────────────────────────────────────────────
 export const createOrder = async (
   userId: string,
-  orderData: any,
-): Promise<any> => {
+  orderData: Partial<CreateOrderInput> & { items: any[] },
+): Promise<IOrderDocument> => {
   const session = await mongoose.startSession();
   session.startTransaction();
 
@@ -46,15 +68,22 @@ export const createOrder = async (
       estimatedDeliveryDate,
     } = orderData;
 
-    // 1. Validate and process order items
+    if (!items?.length)
+      throw new ApiError("Order must contain at least one item", 400);
+    if (!termsAccepted)
+      throw new ApiError("You must accept the terms and conditions", 400);
+
     let subtotalAmount = 0;
     const processedItems = [];
 
     for (const item of items) {
-      const product = await Product.findById(item.productId).session(session);
-      if (!product) {
-        throw new ApiError(`Product ${item.productId} not found`, 404);
-      }
+      if (!item.product)
+        throw new ApiError("Product ID is required for each item", 400);
+
+      const product = await Product.findById(item.product).session(session);
+      if (!product)
+        throw new ApiError(`Product ${item.product} not found`, 404);
+
       if (product.stock < item.quantity) {
         throw new ApiError(
           `Insufficient stock for ${product.name}. Available: ${product.stock}`,
@@ -62,7 +91,6 @@ export const createOrder = async (
         );
       }
 
-      // Update product stock
       product.stock -= item.quantity;
       await product.save({ session });
 
@@ -74,131 +102,127 @@ export const createOrder = async (
         name: product.name,
         quantity: item.quantity,
         price: product.price,
-        startDate: item.startDate,
-        endDate: item.endDate,
+        startDate: item.startDate ? new Date(item.startDate) : undefined,
+        endDate: item.endDate ? new Date(item.endDate) : undefined,
         hireOccasion: item.hireOccasion,
-        keepOvernight: item.keepOvernight || false,
+        keepOvernight: !!item.keepOvernight,
       });
     }
 
-    // 2. Get user info
     const user = await User.findById(userId).session(session);
-    if (!user) {
-      throw new ApiError("User not found", 404);
-    }
+    if (!user) throw new ApiError("User not found", 404);
 
-    // 3. Calculate delivery fee
-    const deliveryTime = shippingAddress?.deliveryTime || "8am-12pm";
-    let deliveryFee = DeliveryTimeManager.getFee(deliveryTime);
+    // Delivery & Collection Fees
+    const deliveryTimeRaw = shippingAddress?.deliveryTime;
+    const normalizedDeliveryTime = deliveryTimeRaw
+      ? DeliveryTimeManager.normalize(deliveryTimeRaw, "delivery")
+      : "09:00";
 
-    // Add collection fee if specified
-    if (
-      shippingAddress?.collectionTime &&
-      shippingAddress.collectionTime.trim() !== ""
-    ) {
-      const collectionOptions = [
-        { value: "before_5pm", fee: 0 },
-        { value: "after_5pm", fee: 10 },
-        { value: "next_day", fee: 10 },
-      ];
-      const collectionOption = collectionOptions.find(
-        (opt) => opt.value === shippingAddress.collectionTime,
+    const deliveryFee = DeliveryTimeManager.getDeliveryFee(
+      normalizedDeliveryTime,
+    );
+
+    let collectionFee = 0;
+    const collectionTimeRaw = shippingAddress?.collectionTime;
+    if (collectionTimeRaw?.trim()) {
+      const normalizedCollectionTime = DeliveryTimeManager.normalize(
+        collectionTimeRaw,
+        "collection",
       );
-      if (collectionOption) {
-        deliveryFee += collectionOption.fee;
-      }
+      collectionFee = DeliveryTimeManager.getCollectionFee(
+        normalizedCollectionTime,
+      );
     }
 
-    // 4. Calculate overnight fee
-    const overnightFee = processedItems.reduce((total, item) => {
-      return total + (item.keepOvernight ? 50 : 0);
-    }, 0);
+    const totalDeliveryFee = deliveryFee + collectionFee;
+
+    const overnightFee = processedItems.reduce(
+      (sum, item) => sum + (item.keepOvernight ? 50 : 0),
+      0,
+    );
 
     const discountAmount = promoDiscount || 0;
     const totalAmount =
-      subtotalAmount + deliveryFee + overnightFee - discountAmount;
+      subtotalAmount + totalDeliveryFee + overnightFee - discountAmount;
 
-    // 5. Create order
+    const finalShippingAddress: IShippingAddress = {
+      firstName: shippingAddress?.firstName || "",
+      lastName: shippingAddress?.lastName || "",
+      phone: shippingAddress?.phone || user.phone || "",
+      email: shippingAddress?.email || user.email || "",
+      country: shippingAddress?.country || "UK",
+      city: shippingAddress?.city || "",
+      street: shippingAddress?.street || "",
+      zipCode: shippingAddress?.zipCode || "",
+      apartment: shippingAddress?.apartment || "",
+      location: shippingAddress?.location || "",
+      companyName: shippingAddress?.companyName || "",
+      locationAccessibility: shippingAddress?.locationAccessibility || "",
+      deliveryTime: normalizedDeliveryTime,
+      collectionTime: collectionTimeRaw
+        ? DeliveryTimeManager.normalize(collectionTimeRaw, "collection")
+        : undefined,
+      floorType: shippingAddress?.floorType || "",
+      userType: shippingAddress?.userType || "residential",
+      keepOvernight: overnightFee > 0,
+      hireOccasion: shippingAddress?.hireOccasion || "birthday",
+      notes: shippingAddress?.notes || "",
+      differentBillingAddress: !!shippingAddress?.differentBillingAddress,
+      billingFirstName: shippingAddress?.billingFirstName || "",
+      billingLastName: shippingAddress?.billingLastName || "",
+      billingStreet: shippingAddress?.billingStreet || "",
+      billingCity: shippingAddress?.billingCity || "",
+      billingZipCode: shippingAddress?.billingZipCode || "",
+      billingCompanyName: shippingAddress?.billingCompanyName || "",
+    };
+
     const order = new Order({
       user: userId,
       items: processedItems,
       subtotalAmount,
-      deliveryFee,
+      deliveryFee: totalDeliveryFee,
       overnightFee,
       discountAmount,
       totalAmount,
       paymentMethod,
       status: "pending",
-      shippingAddress: {
-        firstName: shippingAddress.firstName,
-        lastName: shippingAddress.lastName,
-        phone: shippingAddress.phone,
-        email: shippingAddress.email,
-        country: shippingAddress.country || "UK",
-        city: shippingAddress.city,
-        street: shippingAddress.street,
-        zipCode: shippingAddress.zipCode,
-        apartment: shippingAddress.apartment || "",
-        location: shippingAddress.location || "",
-        companyName: shippingAddress.companyName || "",
-        locationAccessibility: shippingAddress.locationAccessibility || "",
-        deliveryTime: deliveryTime,
-        collectionTime: shippingAddress.collectionTime || "",
-        floorType: shippingAddress.floorType || "",
-        userType: shippingAddress.userType || "",
-        keepOvernight: overnightFee > 0,
-        hireOccasion: shippingAddress.hireOccasion || "birthday",
-        notes: shippingAddress.notes || "",
-        differentBillingAddress:
-          shippingAddress.differentBillingAddress || false,
-        billingFirstName: shippingAddress.billingFirstName || "",
-        billingLastName: shippingAddress.billingLastName || "",
-        billingStreet: shippingAddress.billingStreet || "",
-        billingCity: shippingAddress.billingCity || "",
-        billingZipCode: shippingAddress.billingZipCode || "",
-        billingCompanyName: shippingAddress.billingCompanyName || "",
-      },
-      termsAccepted: termsAccepted,
-      invoiceType: invoiceType,
-      bankDetails: bankDetails,
-      promoCode: promoCode,
-      promoDiscount: promoDiscount,
-      estimatedDeliveryDate:
-        estimatedDeliveryDate || new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
+      shippingAddress: finalShippingAddress,
+      termsAccepted: !!termsAccepted,
+      invoiceType,
+      bankDetails,
+      promoCode,
+      promoDiscount: discountAmount,
+      estimatedDeliveryDate: estimatedDeliveryDate
+        ? new Date(estimatedDeliveryDate)
+        : new Date(Date.now() + 2 * 86400000),
     });
 
     await order.save({ session });
 
-    // 6. Create or update customer (treat user as customer)
     await createOrUpdateCustomerFromOrder(
       userId,
       user,
       order,
-      shippingAddress,
+      finalShippingAddress,
       session,
     );
 
-    // 7. Commit transaction
     await session.commitTransaction();
-    session.endSession();
 
-    // 8. Send emails
-    try {
-      await sendOrderReceivedEmail(order);
-      await notifyAdminNewOrder(order);
-    } catch (emailError) {
-      console.error("Email sending failed:", emailError);
-    }
+    Promise.allSettled([
+      sendOrderReceivedEmail(order),
+      notifyAdminNewOrder(order),
+    ]).catch((err) => console.error("Email notification failed:", err));
 
     return order;
   } catch (error) {
     await session.abortTransaction();
-    session.endSession();
     throw error;
+  } finally {
+    session.endSession();
   }
 };
 
-// Helper function to create/update customer
 const createOrUpdateCustomerFromOrder = async (
   userId: string,
   user: any,
@@ -206,114 +230,125 @@ const createOrUpdateCustomerFromOrder = async (
   shippingAddress: any,
   session: mongoose.ClientSession,
 ): Promise<void> => {
-  try {
-    // Check if customer exists
-    let customer = await Customer.findOne({ user: userId }).session(session);
+  let customer = await Customer.findOne({ user: userId }).session(session);
 
-    const customerData = {
-      user: userId,
-      name: `${shippingAddress.firstName} ${shippingAddress.lastName}`,
-      email: shippingAddress.email,
-      phone: shippingAddress.phone || user.phone || "",
-      address: shippingAddress.street || "",
-      city: shippingAddress.city || "",
-      postcode: shippingAddress.zipCode || "",
-      country: shippingAddress.country || "UK",
-      notes: shippingAddress.notes || "",
-      customerType: "retail",
-    };
+  const customerData = {
+    user: userId,
+    name: `${shippingAddress.firstName} ${shippingAddress.lastName}`,
+    email: shippingAddress.email,
+    phone: shippingAddress.phone || user.phone || "",
+    address: shippingAddress.street || "",
+    city: shippingAddress.city || "",
+    postcode: shippingAddress.zipCode || "",
+    country: shippingAddress.country || "UK",
+    notes: shippingAddress.notes || "",
+    customerType: "retail",
+  };
 
-    if (customer) {
-      // Update existing customer
-      customer.totalOrders += 1;
-      customer.totalSpent += order.totalAmount || 0;
-      customer.lastOrderDate = new Date();
+  if (customer) {
+    customer.totalOrders += 1;
+    customer.totalSpent += order.totalAmount || 0;
+    customer.lastOrderDate = new Date();
+    if (!customer.firstOrderDate) customer.firstOrderDate = new Date();
 
-      if (!customer.firstOrderDate) {
-        customer.firstOrderDate = new Date();
-      }
+    if (!customer.phone && customerData.phone)
+      customer.phone = customerData.phone;
+    if (!customer.address && customerData.address)
+      customer.address = customerData.address;
+    if (!customer.city && customerData.city) customer.city = customerData.city;
+    if (!customer.postcode && customerData.postcode)
+      customer.postcode = customerData.postcode;
 
-      // Update contact info if not present
-      if (!customer.phone && customerData.phone) {
-        customer.phone = customerData.phone;
-      }
-      if (!customer.address && customerData.address) {
-        customer.address = customerData.address;
-      }
-      if (!customer.city && customerData.city) {
-        customer.city = customerData.city;
-      }
-      if (!customer.postcode && customerData.postcode) {
-        customer.postcode = customerData.postcode;
-      }
-
-      await customer.save({ session });
-    } else {
-      // Create new customer
-      customer = new Customer({
-        ...customerData,
-        totalOrders: 1,
-        totalSpent: order.totalAmount || 0,
-        firstOrderDate: new Date(),
-        lastOrderDate: new Date(),
-        isFavorite: false,
-        tags: ["new-customer"],
-        customerId: `CUST${Date.now().toString().slice(-6)}`,
-      });
-
-      await customer.save({ session });
-    }
-
-    // Also update user with customer info
-    await User.findByIdAndUpdate(
-      userId,
-      {
-        $set: {
-          phone: shippingAddress.phone || user.phone,
-          address: shippingAddress.street || user.address,
-          city: shippingAddress.city || user.city,
-          postcode: shippingAddress.zipCode || user.postcode,
-        },
-      },
-      { session },
-    );
-  } catch (error) {
-    console.error("Error in customer creation:", error);
+    await customer.save({ session });
+  } else {
+    customer = new Customer({
+      ...customerData,
+      totalOrders: 1,
+      totalSpent: order.totalAmount || 0,
+      firstOrderDate: new Date(),
+      lastOrderDate: new Date(),
+      isFavorite: false,
+      tags: ["new-customer"],
+      customerId: `CUST${Date.now().toString().slice(-6)}`,
+    });
+    await customer.save({ session });
   }
+
+  await User.findByIdAndUpdate(
+    userId,
+    {
+      $set: {
+        phone: shippingAddress.phone || user.phone,
+        address: shippingAddress.street || user.address,
+        city: shippingAddress.city || user.city,
+        postcode: shippingAddress.zipCode || user.postcode,
+      },
+    },
+    { session },
+  );
 };
 
-// Get order by ID
+// ───────────────────────────────────────────────
+// GET ORDER BY ID
+// ───────────────────────────────────────────────
 export const getOrderById = async (
   orderId: string,
 ): Promise<IOrderDocument> => {
-  if (!orderId || typeof orderId !== "string") {
+  if (!orderId || typeof orderId !== "string")
     throw new ApiError("Order ID is required", 400);
-  }
 
   let order: IOrderDocument | null = null;
 
-  // Try by MongoDB ObjectId
   if (mongoose.Types.ObjectId.isValid(orderId) && orderId.length === 24) {
     order = await Order.findById(orderId)
       .populate("user", "name email phone address city postcode")
       .populate("items.product", "name imageCover price category description");
   }
 
-  // Try by orderNumber
   if (!order) {
     order = await Order.findOne({ orderNumber: orderId })
       .populate("user", "name email phone address city postcode")
       .populate("items.product", "name imageCover price category description");
   }
 
+  if (!order) throw new ApiError("Order not found", 404);
+  return order;
+};
+
+export const deleteOrder = async (
+  orderId: string,
+  userId?: string,
+): Promise<void> => {
+  if (!mongoose.Types.ObjectId.isValid(orderId)) {
+    throw new ApiError("Invalid order ID", 400);
+  }
+
+  const order = await Order.findById(orderId);
   if (!order) {
     throw new ApiError("Order not found", 404);
   }
 
-  return order;
+  if (userId && order.user.toString() !== userId.toString()) {
+    throw new ApiError("You are not authorized to delete this order", 403);
+  }
+
+  if (
+    ![ORDER_STATUS.PENDING, ORDER_STATUS.CANCELLED].includes(
+      order.status as any,
+    )
+  ) {
+    throw new ApiError(
+      "Cannot delete confirmed, shipped, or delivered orders",
+      400,
+    );
+  }
+
+  await order.deleteOne();
 };
 
-// Get all orders
+// ───────────────────────────────────────────────
+// GET ALL ORDERS (ADMIN) - with filters & pagination
+// ───────────────────────────────────────────────
 export const getAllOrders = async (
   page: number = 1,
   limit: number = 20,
@@ -335,7 +370,6 @@ export const getAllOrders = async (
     console.log("Filters received:", filters);
     console.log("Page:", page, "Limit:", limit);
 
-    // Apply filters
     if (filters.status && filters.status !== "all") {
       query.status = filters.status;
       console.log("Applied status filter:", filters.status);
@@ -351,7 +385,6 @@ export const getAllOrders = async (
       console.log("Applied payment method filter:", filters.paymentMethod);
     }
 
-    // Date range filters
     if (filters.startDate) {
       query.createdAt = { $gte: new Date(filters.startDate) };
       console.log("Applied start date filter:", filters.startDate);
@@ -362,7 +395,6 @@ export const getAllOrders = async (
       console.log("Applied end date filter:", filters.endDate);
     }
 
-    // Amount range filters
     if (filters.minAmount !== undefined) {
       query.totalAmount = { $gte: filters.minAmount };
       console.log("Applied min amount filter:", filters.minAmount);
@@ -377,7 +409,6 @@ export const getAllOrders = async (
       console.log("Applied max amount filter:", filters.maxAmount);
     }
 
-    // Search filter
     if (filters.search && filters.search.trim()) {
       const searchRegex = new RegExp(filters.search.trim(), "i");
       query.$or = [
@@ -389,7 +420,6 @@ export const getAllOrders = async (
         { "shippingAddress.city": searchRegex },
         { "shippingAddress.zipCode": searchRegex },
         { "shippingAddress.companyName": searchRegex },
-        // Also search in user fields
         { "user.name": searchRegex },
         { "user.email": searchRegex },
       ];
@@ -398,16 +428,13 @@ export const getAllOrders = async (
 
     console.log("Final query:", JSON.stringify(query, null, 2));
 
-    // Get total count with filters
     const total = await Order.countDocuments(query);
     console.log("Total documents matching query:", total);
 
-    // Calculate pagination info
     const pages = Math.ceil(total / limit);
     const hasNextPage = page < pages;
     const hasPrevPage = page > 1;
 
-    // If page is beyond total pages, return empty results
     if (page > pages && total > 0) {
       return {
         orders: [],
@@ -416,11 +443,10 @@ export const getAllOrders = async (
         currentPage: page,
         limit,
         hasNextPage: false,
-        hasPrevPage: hasPrevPage,
+        hasPrevPage,
       };
     }
 
-    // Get orders with pagination and population
     const orders = await Order.find(query)
       .populate({
         path: "user",
@@ -464,12 +490,12 @@ export const getAllOrders = async (
   }
 };
 
-// Update order
+// ───────────────────────────────────────────────
+// UPDATE ORDER (USER & ADMIN)
+// ───────────────────────────────────────────────
 export const updateOrder = async (
   orderId: string,
   updateData: UpdateOrderInput,
-  userId?: string,
-  isAdmin: boolean = false,
 ): Promise<IOrderDocument> => {
   if (!mongoose.Types.ObjectId.isValid(orderId)) {
     throw new ApiError("Invalid order ID", 400);
@@ -480,58 +506,53 @@ export const updateOrder = async (
     throw new ApiError("Order not found", 404);
   }
 
-  // Check authorization
-  if (!isAdmin && userId && order.user.toString() !== userId.toString()) {
-    throw new ApiError("You are not authorized to update this order", 403);
-  }
-
   const previousStatus = order.status;
 
-  // Users can only update shipping address fields
-  if (!isAdmin) {
-    const allowedFields = ["shippingAddress", "bankDetails", "invoiceType"];
-    const filteredData: any = {};
-
-    Object.keys(updateData).forEach((key) => {
-      if (allowedFields.includes(key)) {
-        filteredData[key] = (updateData as any)[key];
-      }
-    });
-
-    if (updateData.status && updateData.status !== order.status) {
-      throw new ApiError("Only admins can update order status", 403);
-    }
-
-    updateData = filteredData as UpdateOrderInput;
-  }
-
-  // Handle delivery time
+  // ─── Normalize delivery/collection time if provided ─────────────────────
   if (updateData.shippingAddress?.deliveryTime) {
-    updateData.shippingAddress.deliveryTime =
-      DeliveryTimeManager.normalizeForDatabase(
-        updateData.shippingAddress.deliveryTime,
-      );
+    updateData.shippingAddress.deliveryTime = DeliveryTimeManager.normalize(
+      updateData.shippingAddress.deliveryTime,
+      "delivery",
+    );
   }
 
-  // Merge shipping address
-  if (updateData.shippingAddress && order.shippingAddress) {
-    updateData.shippingAddress = {
-      ...order.shippingAddress.toObject(),
+  if (updateData.shippingAddress?.collectionTime) {
+    updateData.shippingAddress.collectionTime = DeliveryTimeManager.normalize(
+      updateData.shippingAddress.collectionTime,
+      "collection",
+    );
+  }
+
+  // ─── Merge shipping address safely ──────────────────────────────────────
+  if (updateData.shippingAddress) {
+    order.shippingAddress = {
+      ...order.shippingAddress?.toObject(),
       ...updateData.shippingAddress,
     };
   }
 
-  // Update fields
-  Object.keys(updateData).forEach((key) => {
-    if (updateData[key as keyof UpdateOrderInput] !== undefined) {
-      (order as any)[key] = updateData[key as keyof UpdateOrderInput];
+  // ─── Update top-level fields (PATCH behavior) ───────────────────────────
+  Object.entries(updateData).forEach(([key, value]) => {
+    if (value !== undefined && key !== "shippingAddress") {
+      (order as any)[key] = value;
     }
   });
 
+  // ─── Auto set deliveryDate when delivered ──────────────────────────────
+  if (
+    updateData.status === ORDER_STATUS.DELIVERED &&
+    updateData.status !== previousStatus
+  ) {
+    if (!order.deliveryDate) {
+      order.deliveryDate = new Date();
+      console.log(`[AUTO-updateOrder] deliveryDate set for ${orderId}`);
+    }
+  }
+
   await order.save();
 
-  // Send email notifications for status changes
-  if (isAdmin && updateData.status && updateData.status !== previousStatus) {
+  // ─── Send status change emails (admin-only logic) ───────────────────────
+  if (updateData.status && updateData.status !== previousStatus) {
     const populatedOrder = await Order.findById(order._id)
       .populate("user", "name email phone")
       .populate("items.product", "name imageCover price");
@@ -541,9 +562,11 @@ export const updateOrder = async (
         case ORDER_STATUS.CONFIRMED:
           await sendOrderConfirmedEmail(populatedOrder);
           break;
+
         case ORDER_STATUS.SHIPPED:
           await sendDeliveryReminderEmail(populatedOrder);
           break;
+
         case ORDER_STATUS.CANCELLED:
           await sendOrderCancelledEmail(populatedOrder);
           break;
@@ -554,66 +577,258 @@ export const updateOrder = async (
   return order;
 };
 
-// Add this function to your order.service.ts (replace the existing updateOrderStatus)
+// ───────────────────────────────────────────────
+// UPDATE ORDER STATUS (ADMIN - with deliveryDate auto-set)
+// ───────────────────────────────────────────────
 export const updateOrderStatus = async (
   orderId: string,
-  status: "pending" | "confirmed" | "shipped" | "delivered" | "cancelled",
+  status: string,
   adminNotes?: string,
 ): Promise<IOrderDocument> => {
   if (!mongoose.Types.ObjectId.isValid(orderId)) {
     throw new ApiError("Invalid order ID", 400);
   }
 
-  const order = await Order.findById(orderId)
-    .populate("user", "name email phone")
-    .populate("items.product", "name imageCover price");
-
-  if (!order) {
-    throw new ApiError("Order not found", 404);
-  }
+  const order = await Order.findById(orderId);
+  if (!order) throw new ApiError("Order not found", 404);
 
   const previousStatus = order.status;
 
-  // Update order status
   order.status = status;
-  if (adminNotes) {
-    order.adminNotes = adminNotes;
-  }
+  if (adminNotes) order.adminNotes = adminNotes;
 
-  // Update delivery date if status is delivered
+  // ───────────────────────────────────────────────
+  // Automatically set real delivery date when marked "delivered"
+  // ───────────────────────────────────────────────
   if (status === ORDER_STATUS.DELIVERED) {
-    order.deliveryDate = new Date();
+    // Only set if not already set (prevents overwriting real date)
+    if (!order.deliveryDate) {
+      order.deliveryDate = new Date(); // ← current real date & time
+      console.log(
+        `[AUTO] Set deliveryDate for order ${orderId} to ${order.deliveryDate.toISOString()}`,
+      );
+    }
   }
 
   await order.save();
 
-  // Send email notifications for status changes
+  // Email notifications...
   if (status !== previousStatus) {
-    try {
-      switch (status) {
-        case ORDER_STATUS.CONFIRMED:
-          await sendOrderConfirmedEmail(order);
-          break;
-        case ORDER_STATUS.SHIPPED:
-          await sendDeliveryReminderEmail(order);
-          break;
-        case ORDER_STATUS.DELIVERED:
-          await sendDeliveryCompleteEmail(order);
-          break;
-        case ORDER_STATUS.CANCELLED:
-          await sendOrderCancelledEmail(order);
-          break;
+    const populated = await Order.findById(orderId)
+      .populate("user", "name email phone")
+      .populate("items.product", "name price");
+
+    if (populated) {
+      try {
+        switch (status) {
+          case ORDER_STATUS.CONFIRMED:
+            await sendOrderConfirmedEmail(populated);
+            break;
+          case ORDER_STATUS.SHIPPED:
+            await sendDeliveryReminderEmail(populated);
+            break;
+          case ORDER_STATUS.DELIVERED:
+            await sendDeliveryCompleteEmail(populated);
+            break;
+          case ORDER_STATUS.CANCELLED:
+            await sendOrderCancelledEmail(populated);
+            break;
+        }
+      } catch (err) {
+        console.error("Status change email failed:", err);
       }
-    } catch (emailError) {
-      console.error("Failed to send status change email:", emailError);
-      // Don't throw error, just log it
     }
   }
 
   return order;
 };
 
-// Update the generateInvoice function
+// ───────────────────────────────────────────────
+// DASHBOARD & STATISTICS
+// ───────────────────────────────────────────────
+export const getDashboardStats = async () => {
+  const now = new Date();
+
+  const startToday = new Date(now);
+  startToday.setHours(0, 0, 0, 0);
+  const endToday = new Date(startToday);
+  endToday.setDate(startToday.getDate() + 1);
+
+  const startWeek = new Date(startToday);
+  const dayOfWeek = startToday.getDay();
+  const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  startWeek.setDate(startToday.getDate() + diff);
+
+  const startMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  const [
+    todayRevenue,
+    thisWeekRevenue,
+    thisMonthRevenue,
+    pendingConfirmations,
+    todayBookingsCount,
+    todayDeliveriesCount,
+  ] = await Promise.all([
+    getRevenueInPeriod(startToday, endToday),
+    getRevenueInPeriod(startWeek, endToday),
+    getRevenueInPeriod(startMonth, endToday),
+    Order.countDocuments({ status: ORDER_STATUS.PENDING }),
+    Order.countDocuments({ createdAt: { $gte: startToday, $lt: endToday } }),
+    Order.countDocuments({
+      status: ORDER_STATUS.DELIVERED,
+      deliveryDate: { $gte: startToday, $lt: endToday },
+    }),
+  ]);
+
+  return {
+    todayRevenue: todayRevenue ?? 0,
+    thisWeekRevenue: thisWeekRevenue ?? 0,
+    thisMonthRevenue: thisMonthRevenue ?? 0,
+    pendingConfirmations: pendingConfirmations ?? 0,
+    todayBookings: todayBookingsCount ?? 0,
+    todayDeliveries: todayDeliveriesCount ?? 0,
+  };
+};
+
+export const getOrderStatistics = async (): Promise<OrderStats> => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  const lastOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+  lastOfMonth.setHours(23, 59, 59, 999);
+
+  const [
+    totalOrders,
+    pendingOrders,
+    confirmedOrders,
+    shippedOrders,
+    deliveredOrders,
+    cancelledOrders,
+    lifetimeRev,
+    todayRev,
+    monthRev,
+  ] = await Promise.all([
+    Order.countDocuments(),
+    Order.countDocuments({ status: ORDER_STATUS.PENDING }),
+    Order.countDocuments({ status: ORDER_STATUS.CONFIRMED }),
+    Order.countDocuments({ status: ORDER_STATUS.SHIPPED }),
+    Order.countDocuments({ status: ORDER_STATUS.DELIVERED }),
+    Order.countDocuments({ status: ORDER_STATUS.CANCELLED }),
+
+    Order.aggregate([
+      { $match: { status: ORDER_STATUS.DELIVERED } },
+      { $group: { _id: null, total: { $sum: "$totalAmount" } } },
+    ]),
+    Order.aggregate([
+      {
+        $match: {
+          status: ORDER_STATUS.DELIVERED,
+          deliveryDate: { $gte: today, $lt: tomorrow },
+        },
+      },
+      { $group: { _id: null, total: { $sum: "$totalAmount" } } },
+    ]),
+    Order.aggregate([
+      {
+        $match: {
+          status: ORDER_STATUS.DELIVERED,
+          deliveryDate: { $gte: firstOfMonth, $lte: lastOfMonth },
+        },
+      },
+      { $group: { _id: null, total: { $sum: "$totalAmount" } } },
+    ]),
+  ]);
+
+  const totalRevenue = lifetimeRev[0]?.total ?? 0;
+  const todayRevenue = todayRev[0]?.total ?? 0;
+  const monthlyRevenue = monthRev[0]?.total ?? 0;
+  const averageOrderValue =
+    deliveredOrders > 0 ? totalRevenue / deliveredOrders : 0;
+
+  return {
+    totalOrders: totalOrders ?? 0,
+    pendingOrders: pendingOrders ?? 0,
+    confirmedOrders: confirmedOrders ?? 0,
+    shippedOrders: shippedOrders ?? 0,
+    deliveredOrders: deliveredOrders ?? 0,
+    cancelledOrders: cancelledOrders ?? 0,
+    totalRevenue,
+    todayRevenue,
+    monthlyRevenue,
+    averageOrderValue: parseFloat(averageOrderValue.toFixed(2)),
+  };
+};
+
+export const getRevenueOverTime = async (
+  startDate: Date,
+  endDate: Date,
+  status: string,
+  interval: "day" | "week" | "month" = "day",
+): Promise<Array<{ date: string; revenue: number; orders: number }>> => {
+  const formats = {
+    day: "%Y-%m-%d",
+    week: "%Y-%W",
+    month: "%Y-%m",
+  };
+
+  const dateFormat = formats[interval];
+
+  // Build match conditions dynamically
+  const matchConditions: any = {
+    createdAt: {
+      $gte: startDate,
+      $lte: endDate,
+    },
+  };
+
+  // Handle status filtering
+  if (status) {
+    if (status === "all") {
+      // Include all statuses except maybe cancelled if you want
+      // matchConditions.status = { $ne: "cancelled" }; // Optional: exclude cancelled
+    } else if (status === "completed") {
+      // Include delivered and confirmed orders
+      matchConditions.status = { $in: ["delivered", "confirmed"] };
+    } else {
+      // Specific status
+      matchConditions.status = status;
+    }
+  }
+
+  const result = await Order.aggregate([
+    {
+      $match: matchConditions,
+    },
+    {
+      $group: {
+        _id: {
+          $dateToString: {
+            format: dateFormat,
+            date: "$createdAt",
+            timezone: "UTC",
+          },
+        },
+        revenue: { $sum: "$totalAmount" },
+        orders: { $sum: 1 },
+      },
+    },
+    { $sort: { _id: 1 } },
+  ]);
+
+  return result.map((item) => ({
+    date: item._id,
+    revenue: item.revenue ?? 0,
+    orders: item.orders ?? 0,
+  }));
+};
+
+// ───────────────────────────────────────────────
+// INVOICE FUNCTIONS
+// ───────────────────────────────────────────────
 export const generateInvoice = async (
   orderId: string,
   userId?: string,
@@ -624,15 +839,12 @@ export const generateInvoice = async (
   }
 
   const order = await Order.findById(orderId);
-  if (!order) {
-    throw new ApiError("Order not found", 404);
-  }
+  if (!order) throw new ApiError("Order not found", 404);
 
   if (!isAdmin && userId && order.user.toString() !== userId.toString()) {
     throw new ApiError("You are not authorized to access this invoice", 403);
   }
 
-  // Send email WITHOUT attachments - invoice is included in email body
   await sendInvoiceEmail(order);
 
   return {
@@ -641,415 +853,50 @@ export const generateInvoice = async (
   };
 };
 
-// Delete order
-export const deleteOrder = async (
+export const downloadInvoice = async (
   orderId: string,
   userId?: string,
-): Promise<void> => {
+  isAdmin: boolean = false,
+): Promise<{ html: string; filename: string }> => {
   if (!mongoose.Types.ObjectId.isValid(orderId)) {
     throw new ApiError("Invalid order ID", 400);
   }
 
   const order = await Order.findById(orderId);
-  if (!order) {
-    throw new ApiError("Order not found", 404);
+  if (!order) throw new ApiError("Order not found", 404);
+
+  if (!isAdmin && userId && order.user.toString() !== userId.toString()) {
+    throw new ApiError("You are not authorized to download this invoice", 403);
   }
 
-  // Check authorization
-  if (userId && order.user.toString() !== userId.toString()) {
-    throw new ApiError("You are not authorized to delete this order", 403);
-  }
+  const html = generateInvoiceHtml(order);
+  const filename = `invoice-${order.orderNumber}.html`;
 
-  if (
-    ![ORDER_STATUS.PENDING, ORDER_STATUS.CANCELLED].includes(
-      order.status as any,
-    )
-  ) {
-    throw new ApiError(
-      "Cannot delete confirmed, shipped, or delivered orders",
-      400,
-    );
-  }
-
-  await order.deleteOne();
+  return { html, filename };
 };
 
-// Get order statistics
-export const getOrderStatistics = async (): Promise<OrderStats> => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-
-  const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-  const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-
-  const [
-    totalOrders,
-    pendingOrders,
-    confirmedOrders,
-    shippedOrders,
-    deliveredOrders,
-    cancelledOrders,
-    revenueResult,
-    todayRevenueResult,
-    monthlyRevenueResult,
-  ] = await Promise.all([
-    Order.countDocuments(),
-    Order.countDocuments({ status: ORDER_STATUS.PENDING }),
-    Order.countDocuments({ status: ORDER_STATUS.CONFIRMED }),
-    Order.countDocuments({ status: ORDER_STATUS.SHIPPED }),
-    Order.countDocuments({ status: ORDER_STATUS.DELIVERED }),
-    Order.countDocuments({ status: ORDER_STATUS.CANCELLED }),
-    Order.aggregate([
-      { $match: { status: ORDER_STATUS.DELIVERED } },
-      { $group: { _id: null, total: { $sum: "$totalAmount" } } },
-    ]),
-    Order.aggregate([
-      {
-        $match: {
-          status: ORDER_STATUS.DELIVERED,
-          createdAt: { $gte: today, $lt: tomorrow },
-        },
-      },
-      { $group: { _id: null, total: { $sum: "$totalAmount" } } },
-    ]),
-    Order.aggregate([
-      {
-        $match: {
-          status: ORDER_STATUS.DELIVERED,
-          createdAt: { $gte: firstDayOfMonth, $lte: lastDayOfMonth },
-        },
-      },
-      { $group: { _id: null, total: { $sum: "$totalAmount" } } },
-    ]),
-  ]);
-
-  const totalRevenue = revenueResult[0]?.total || 0;
-  const todayRevenue = todayRevenueResult[0]?.total || 0;
-  const monthlyRevenue = monthlyRevenueResult[0]?.total || 0;
-  const averageOrderValue =
-    deliveredOrders > 0 ? totalRevenue / deliveredOrders : 0;
-
-  return {
-    totalOrders,
-    pendingOrders,
-    confirmedOrders,
-    shippedOrders,
-    deliveredOrders,
-    cancelledOrders,
-    totalRevenue,
-    todayRevenue,
-    monthlyRevenue,
-    averageOrderValue: parseFloat(averageOrderValue.toFixed(2)),
-  };
-};
-
-// NEW: Get today's revenue
-export const getTodayRevenue = async (): Promise<number> => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-
-  const result = await Order.aggregate([
-    {
-      $match: {
-        status: ORDER_STATUS.DELIVERED,
-        createdAt: { $gte: today, $lt: tomorrow },
-      },
-    },
-    { $group: { _id: null, total: { $sum: "$totalAmount" } } },
-  ]);
-
-  return result[0]?.total || 0;
-};
-
-// NEW: Get pending confirmations count
-export const getPendingConfirmationsCount = async (): Promise<number> => {
-  return await Order.countDocuments({ status: ORDER_STATUS.PENDING });
-};
-
-// NEW: Get today's bookings
-export const getTodayBookings = async (): Promise<IOrderDocument[]> => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-
-  return await Order.find({
-    createdAt: { $gte: today, $lt: tomorrow },
-  })
-    .populate("user", "name email phone")
-    .populate("items.product", "name imageCover price")
-    .sort({ createdAt: -1 });
-};
-
-// NEW: Get today's deliveries
-export const getTodayDeliveries = async (): Promise<IOrderDocument[]> => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-
-  return await Order.find({
-    status: ORDER_STATUS.DELIVERED,
-    deliveryDate: { $gte: today, $lt: tomorrow },
-  })
-    .populate("user", "name email phone")
-    .populate("items.product", "name imageCover price")
-    .sort({ deliveryDate: -1 });
-};
-
-// NEW: Get dashboard stats
-export const getDashboardStats = async (): Promise<{
-  todayRevenue: number;
-  pendingConfirmations: number;
-  todayBookings: number;
-  todayDeliveries: number;
-}> => {
-  const [todayRevenue, pendingConfirmations, todayBookings, todayDeliveries] =
-    await Promise.all([
-      getTodayRevenue(),
-      getPendingConfirmationsCount(),
-      (await getTodayBookings()).length,
-      (await getTodayDeliveries()).length,
-    ]);
-
-  return {
-    todayRevenue,
-    pendingConfirmations,
-    todayBookings,
-    todayDeliveries,
-  };
-};
-
-// NEW: Get revenue over time for charts
-export const getRevenueOverTime = async (
-  startDate: Date,
-  endDate: Date,
-  interval: "day" | "week" | "month" = "day",
-): Promise<Array<{ date: string; revenue: number; orders: number }>> => {
-  const matchStage = {
-    $match: {
-      status: ORDER_STATUS.DELIVERED,
-      createdAt: { $gte: startDate, $lte: endDate },
-    },
-  };
-
-  let groupStage: any;
-  let dateFormat: string;
-
-  switch (interval) {
-    case "day":
-      dateFormat = "%Y-%m-%d";
-      groupStage = {
-        $group: {
-          _id: {
-            $dateToString: { format: dateFormat, date: "$createdAt" },
-          },
-          revenue: { $sum: "$totalAmount" },
-          orders: { $sum: 1 },
-        },
-      };
-      break;
-    case "week":
-      dateFormat = "%Y-%W";
-      groupStage = {
-        $group: {
-          _id: {
-            $dateToString: { format: dateFormat, date: "$createdAt" },
-          },
-          revenue: { $sum: "$totalAmount" },
-          orders: { $sum: 1 },
-        },
-      };
-      break;
-    case "month":
-      dateFormat = "%Y-%m";
-      groupStage = {
-        $group: {
-          _id: {
-            $dateToString: { format: dateFormat, date: "$createdAt" },
-          },
-          revenue: { $sum: "$totalAmount" },
-          orders: { $sum: 1 },
-        },
-      };
-      break;
-    default:
-      dateFormat = "%Y-%m-%d";
-      groupStage = {
-        $group: {
-          _id: {
-            $dateToString: { format: dateFormat, date: "$createdAt" },
-          },
-          revenue: { $sum: "$totalAmount" },
-          orders: { $sum: 1 },
-        },
-      };
-  }
-
-  const result = await Order.aggregate([
-    matchStage,
-    groupStage,
-    { $sort: { _id: 1 } },
-  ]);
-
-  return result.map((item) => ({
-    date: item._id,
-    revenue: item.revenue,
-    orders: item.orders,
-  }));
-};
-
-// NEW: Get order summary with user info
-export const getOrderSummary = async (
+export const previewInvoice = async (
   orderId: string,
-): Promise<{
-  order: IOrderDocument;
-  user: any;
-  customer: any;
-}> => {
-  const order = await getOrderById(orderId);
-
-  const user = await User.findById(order.user).select(
-    "name email phone address city postcode createdAt",
-  );
-
-  const customer = await Customer.findOne({ user: order.user });
-
-  return {
-    order,
-    user,
-    customer,
-  };
-};
-
-// Get orders by user ID
-export const getOrdersByUserId = async (
-  userId: string,
-  page: number = 1,
-  limit: number = 10,
-): Promise<{ orders: IOrderDocument[]; total: number; pages: number }> => {
-  if (!mongoose.Types.ObjectId.isValid(userId)) {
-    throw new ApiError("Invalid user ID", 400);
+  userId?: string,
+  isAdmin: boolean = false,
+): Promise<string> => {
+  if (!mongoose.Types.ObjectId.isValid(orderId)) {
+    throw new ApiError("Invalid order ID", 400);
   }
 
-  const skip = (page - 1) * limit;
-  const query = { user: new mongoose.Types.ObjectId(userId) };
-
-  const [orders, total] = await Promise.all([
-    Order.find(query)
-      .populate("items.product", "name imageCover price")
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit),
-    Order.countDocuments(query),
-  ]);
-
-  return { orders, total, pages: Math.ceil(total / limit) };
-};
-
-// Search orders
-export const searchOrders = async (
-  searchTerm: string,
-  page: number = 1,
-  limit: number = 20,
-): Promise<{ orders: IOrderDocument[]; total: number; pages: number }> => {
-  const skip = (page - 1) * limit;
-  const searchRegex = new RegExp(searchTerm, "i");
-
-  const query = {
-    $or: [
-      { orderNumber: searchRegex },
-      { "shippingAddress.firstName": searchRegex },
-      { "shippingAddress.lastName": searchRegex },
-      { "shippingAddress.email": searchRegex },
-      { "shippingAddress.phone": searchRegex },
-      { "shippingAddress.city": searchRegex },
-      { "shippingAddress.zipCode": searchRegex },
-      { "shippingAddress.companyName": searchRegex },
-    ],
-  };
-
-  const [orders, total] = await Promise.all([
-    Order.find(query)
-      .populate("user", "name email phone")
-      .populate("items.product", "name imageCover price")
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit),
-    Order.countDocuments(query),
-  ]);
-
-  return { orders, total, pages: Math.ceil(total / limit) };
-};
-
-// Get today's orders
-export const getTodayOrders = async (): Promise<IOrderDocument[]> => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-
-  return await Order.find({
-    createdAt: { $gte: today, $lt: tomorrow },
-  })
+  const order = await Order.findById(orderId)
     .populate("user", "name email phone")
-    .populate("items.product", "name imageCover price")
-    .sort({ createdAt: -1 });
-};
+    .populate("items.product", "name price");
 
-// Get pending orders
-export const getPendingOrders = async (): Promise<IOrderDocument[]> => {
-  return await Order.find({ status: ORDER_STATUS.PENDING })
-    .populate("user", "name email phone")
-    .populate("items.product", "name imageCover price")
-    .sort({ createdAt: -1 });
-};
+  if (!order) throw new ApiError("Order not found", 404);
 
-// Get orders by status
-export const getOrdersByStatus = async (
-  status: string,
-  page: number = 1,
-  limit: number = 20,
-): Promise<{ orders: IOrderDocument[]; total: number; pages: number }> => {
-  const skip = (page - 1) * limit;
-
-  const validStatuses = [
-    "pending",
-    "confirmed",
-    "shipped",
-    "delivered",
-    "cancelled",
-  ];
-  if (!validStatuses.includes(status)) {
-    throw new ApiError(
-      `Invalid status. Must be one of: ${validStatuses.join(", ")}`,
-      400,
-    );
+  if (!isAdmin && userId && order.user.toString() !== userId.toString()) {
+    throw new ApiError("You are not authorized to view this invoice", 403);
   }
 
-  const [orders, total] = await Promise.all([
-    Order.find({ status })
-      .populate("user", "name email phone")
-      .populate("items.product", "name imageCover price")
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit),
-    Order.countDocuments({ status }),
-  ]);
-
-  return { orders, total, pages: Math.ceil(total / limit) };
+  return generateInvoiceHtml(order);
 };
 
-// Generate invoice HTML
 const generateInvoiceHtml = (order: IOrderDocument): string => {
   const invoiceDate = new Date().toLocaleDateString("en-GB");
   const dueDate = new Date(
@@ -1104,14 +951,10 @@ const generateInvoiceHtml = (order: IOrderDocument): string => {
           </div>
           <div class="customer-info">
             <h3>Bill To:</h3>
-            <p><strong>${order.shippingAddress.firstName} ${
-              order.shippingAddress.lastName
-            }</strong></p>
+            <p><strong>${order.shippingAddress.firstName} ${order.shippingAddress.lastName}</strong></p>
             <p>${order.shippingAddress.companyName || ""}</p>
             <p>${order.shippingAddress.street}</p>
-            <p>${order.shippingAddress.city}, ${
-              order.shippingAddress.zipCode
-            }</p>
+            <p>${order.shippingAddress.city}, ${order.shippingAddress.zipCode}</p>
             <p>${order.shippingAddress.country}</p>
             <p>Email: ${order.shippingAddress.email}</p>
             <p>Phone: ${order.shippingAddress.phone}</p>
@@ -1126,9 +969,7 @@ const generateInvoiceHtml = (order: IOrderDocument): string => {
           <div>
             <p><strong>Order Number:</strong> ${order.orderNumber}</p>
             <p><strong>Due Date:</strong> ${dueDate}</p>
-            <p><strong>Invoice Type:</strong> ${
-              order.invoiceType === "corporate" ? "Corporate" : "Regular"
-            }</p>
+            <p><strong>Invoice Type:</strong> ${order.invoiceType === "corporate" ? "Corporate" : "Regular"}</p>
           </div>
         </div>
 
@@ -1154,54 +995,15 @@ const generateInvoiceHtml = (order: IOrderDocument): string => {
             `,
               )
               .join("")}
-            ${
-              order.deliveryFee > 0
-                ? `
-              <tr>
-                <td colspan="3">Delivery Fee</td>
-                <td>£${order.deliveryFee.toFixed(2)}</td>
-              </tr>
-            `
-                : ""
-            }
-            ${
-              order.overnightFee > 0
-                ? `
-              <tr>
-                <td colspan="3">Overnight Keeping Fee</td>
-                <td>£${order.overnightFee.toFixed(2)}</td>
-              </tr>
-            `
-                : ""
-            }
+            ${order.deliveryFee > 0 ? `<tr><td colspan="3">Delivery Fee</td><td>£${order.deliveryFee.toFixed(2)}</td></tr>` : ""}
+            ${order.overnightFee > 0 ? `<tr><td colspan="3">Overnight Keeping Fee</td><td>£${order.overnightFee.toFixed(2)}</td></tr>` : ""}
           </tbody>
         </table>
 
         <div class="total-section">
-          <div class="total-row">
-            <div class="total-label">Subtotal:</div>
-            <div class="total-value">£${order.subtotalAmount.toFixed(2)}</div>
-          </div>
-          ${
-            order.deliveryFee > 0
-              ? `
-            <div class="total-row">
-              <div class="total-label">Delivery Fee:</div>
-              <div class="total-value">£${order.deliveryFee.toFixed(2)}</div>
-            </div>
-          `
-              : ""
-          }
-          ${
-            order.overnightFee > 0
-              ? `
-            <div class="total-row">
-              <div class="total-label">Overnight Fee:</div>
-              <div class="total-value">£${order.overnightFee.toFixed(2)}</div>
-            </div>
-          `
-              : ""
-          }
+          <div class="total-row"><div class="total-label">Subtotal:</div><div class="total-value">£${order.subtotalAmount.toFixed(2)}</div></div>
+          ${order.deliveryFee > 0 ? `<div class="total-row"><div class="total-label">Delivery Fee:</div><div class="total-value">£${order.deliveryFee.toFixed(2)}</div></div>` : ""}
+          ${order.overnightFee > 0 ? `<div class="total-row"><div class="total-label">Overnight Fee:</div><div class="total-value">£${order.overnightFee.toFixed(2)}</div></div>` : ""}
           <div class="total-row grand-total">
             <div class="total-label">TOTAL:</div>
             <div class="total-value">£${order.totalAmount.toFixed(2)}</div>
@@ -1217,12 +1019,8 @@ const generateInvoiceHtml = (order: IOrderDocument): string => {
                 ? "Credit Card"
                 : "Online Payment"
           }</p>
-          <p><strong>Payment Status:</strong> ${
-            order.status === "delivered" ? "Paid" : "Pending"
-          }</p>
-          <p><strong>Bank Details:</strong> ${
-            order.bankDetails || "Account details will be provided separately"
-          }</p>
+          <p><strong>Payment Status:</strong> ${order.status === "delivered" ? "Paid" : "Pending"}</p>
+          <p><strong>Bank Details:</strong> ${order.bankDetails || "Account details will be provided separately"}</p>
         </div>
 
         <div class="footer">
@@ -1235,54 +1033,171 @@ const generateInvoiceHtml = (order: IOrderDocument): string => {
   `;
 };
 
-// Generate and send invoice
+// ───────────────────────────────────────────────
+// ADDITIONAL UTILITY FUNCTIONS
+// ───────────────────────────────────────────────
 
-// Download invoice
-export const downloadInvoice = async (
-  orderId: string,
-  userId?: string,
-  isAdmin: boolean = false,
-): Promise<{ html: string; filename: string }> => {
-  if (!mongoose.Types.ObjectId.isValid(orderId)) {
-    throw new ApiError("Invalid order ID", 400);
-  }
-
-  const order = await Order.findById(orderId);
-  if (!order) {
-    throw new ApiError("Order not found", 404);
-  }
-
-  if (!isAdmin && userId && order.user.toString() !== userId.toString()) {
-    throw new ApiError("You are not authorized to download this invoice", 403);
-  }
-
-  const html = generateInvoiceHtml(order);
-  const filename = `invoice-${order.orderNumber}.html`;
-
-  return { html, filename };
+export const getPendingConfirmationsCount = async (): Promise<number> => {
+  return await Order.countDocuments({ status: ORDER_STATUS.PENDING });
 };
 
-// Preview invoice
-export const previewInvoice = async (
-  orderId: string,
-  userId?: string,
-  isAdmin: boolean = false,
-): Promise<string> => {
-  if (!mongoose.Types.ObjectId.isValid(orderId)) {
-    throw new ApiError("Invalid order ID", 400);
-  }
+export const getTodayBookings = async (): Promise<IOrderDocument[]> => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
 
-  const order = await Order.findById(orderId)
+  return await Order.find({
+    createdAt: { $gte: today, $lt: tomorrow },
+  })
     .populate("user", "name email phone")
-    .populate("items.product", "name price");
+    .populate("items.product", "name imageCover price")
+    .sort({ createdAt: -1 });
+};
 
-  if (!order) {
-    throw new ApiError("Order not found", 404);
+export const getTodayDeliveries = async (): Promise<IOrderDocument[]> => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  return await Order.find({
+    status: ORDER_STATUS.DELIVERED,
+    deliveryDate: { $gte: today, $lt: tomorrow },
+  })
+    .populate("user", "name email phone")
+    .populate("items.product", "name imageCover price")
+    .sort({ deliveryDate: -1 });
+};
+
+export const getOrderSummary = async (
+  orderId: string,
+): Promise<{
+  order: IOrderDocument;
+  user: any;
+  customer: any;
+}> => {
+  const order = await getOrderById(orderId);
+
+  const user = await User.findById(order.user).select(
+    "name email phone address city postcode createdAt",
+  );
+
+  const customer = await Customer.findOne({ user: order.user });
+
+  return { order, user, customer };
+};
+
+export const getOrdersByUserId = async (
+  userId: string,
+  page: number = 1,
+  limit: number = 10,
+): Promise<{ orders: IOrderDocument[]; total: number; pages: number }> => {
+  if (!mongoose.Types.ObjectId.isValid(userId)) {
+    throw new ApiError("Invalid user ID", 400);
   }
 
-  if (!isAdmin && userId && order.user.toString() !== userId.toString()) {
-    throw new ApiError("You are not authorized to view this invoice", 403);
+  const skip = (page - 1) * limit;
+  const query = { user: new mongoose.Types.ObjectId(userId) };
+
+  const [orders, total] = await Promise.all([
+    Order.find(query)
+      .populate("items.product", "name imageCover price")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit),
+    Order.countDocuments(query),
+  ]);
+
+  return { orders, total, pages: Math.ceil(total / limit) };
+};
+
+export const searchOrders = async (
+  searchTerm: string,
+  page: number = 1,
+  limit: number = 20,
+): Promise<{ orders: IOrderDocument[]; total: number; pages: number }> => {
+  const skip = (page - 1) * limit;
+  const searchRegex = new RegExp(searchTerm, "i");
+
+  const query = {
+    $or: [
+      { orderNumber: searchRegex },
+      { "shippingAddress.firstName": searchRegex },
+      { "shippingAddress.lastName": searchRegex },
+      { "shippingAddress.email": searchRegex },
+      { "shippingAddress.phone": searchRegex },
+      { "shippingAddress.city": searchRegex },
+      { "shippingAddress.zipCode": searchRegex },
+      { "shippingAddress.companyName": searchRegex },
+    ],
+  };
+
+  const [orders, total] = await Promise.all([
+    Order.find(query)
+      .populate("user", "name email phone")
+      .populate("items.product", "name imageCover price")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit),
+    Order.countDocuments(query),
+  ]);
+
+  return { orders, total, pages: Math.ceil(total / limit) };
+};
+
+export const getTodayOrders = async (): Promise<IOrderDocument[]> => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  return await Order.find({
+    createdAt: { $gte: today, $lt: tomorrow },
+  })
+    .populate("user", "name email phone")
+    .populate("items.product", "name imageCover price")
+    .sort({ createdAt: -1 });
+};
+
+export const getPendingOrders = async (): Promise<IOrderDocument[]> => {
+  return await Order.find({ status: ORDER_STATUS.PENDING })
+    .populate("user", "name email phone")
+    .populate("items.product", "name imageCover price")
+    .sort({ createdAt: -1 });
+};
+
+export const getOrdersByStatus = async (
+  status: string,
+  page: number = 1,
+  limit: number = 20,
+): Promise<{ orders: IOrderDocument[]; total: number; pages: number }> => {
+  const skip = (page - 1) * limit;
+
+  const validStatuses = [
+    "pending",
+    "confirmed",
+    "shipped",
+    "delivered",
+    "cancelled",
+  ];
+  if (!validStatuses.includes(status)) {
+    throw new ApiError(
+      `Invalid status. Must be one of: ${validStatuses.join(", ")}`,
+      400,
+    );
   }
 
-  return generateInvoiceHtml(order);
+  const [orders, total] = await Promise.all([
+    Order.find({ status })
+      .populate("user", "name email phone")
+      .populate("items.product", "name imageCover price")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit),
+    Order.countDocuments({ status }),
+  ]);
+
+  return { orders, total, pages: Math.ceil(total / limit) };
 };
