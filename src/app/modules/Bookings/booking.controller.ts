@@ -21,7 +21,7 @@ export const createBooking = asyncHandler(
     if (!shippingAddress || !paymentMethod) {
       throw new ApiError(
         "Shipping address and payment method are required",
-        400
+        400,
       );
     }
 
@@ -39,7 +39,7 @@ export const createBooking = asyncHandler(
     });
 
     ApiResponse(res, 201, "Booking created successfully", { booking });
-  }
+  },
 );
 
 export const getMyBookings = asyncHandler(
@@ -53,7 +53,7 @@ export const getMyBookings = asyncHandler(
     const result = await BookingService.getAllBookings(
       filters,
       Number(page),
-      Number(limit)
+      Number(limit),
     );
 
     ApiResponse(res, 200, "Bookings retrieved successfully", {
@@ -65,14 +65,14 @@ export const getMyBookings = asyncHandler(
         pages: result.pages,
       },
     });
-  }
+  },
 );
 
 export const getBookingById = asyncHandler(
   async (req: Request, res: Response) => {
     const booking = await BookingService.getBookingById(req.params.id);
     ApiResponse(res, 200, "Booking retrieved successfully", { booking });
-  }
+  },
 );
 
 export const cancelBooking = asyncHandler(
@@ -88,10 +88,10 @@ export const cancelBooking = asyncHandler(
     const booking = await BookingService.cancelBooking(
       bookingId,
       userId,
-      reason
+      reason,
     );
     ApiResponse(res, 200, "Booking cancelled successfully", { booking });
-  }
+  },
 );
 
 // Admin controllers
@@ -125,7 +125,7 @@ export const getAllBookings = asyncHandler(
     const result = await BookingService.getAllBookings(
       filters,
       Number(page),
-      Number(limit)
+      Number(limit),
     );
 
     ApiResponse(res, 200, "Bookings retrieved successfully", {
@@ -137,7 +137,7 @@ export const getAllBookings = asyncHandler(
         pages: result.pages,
       },
     });
-  }
+  },
 );
 
 export const updateBookingStatus = asyncHandler(
@@ -149,18 +149,18 @@ export const updateBookingStatus = asyncHandler(
     const booking = await BookingService.updateBooking(
       bookingId,
       updateData,
-      adminId
+      adminId,
     );
 
     ApiResponse(res, 200, "Booking updated successfully", { booking });
-  }
+  },
 );
 
 export const getBookingStats = asyncHandler(
   async (req: Request, res: Response) => {
     const stats = await BookingService.getBookingStats();
     ApiResponse(res, 200, "Booking statistics retrieved", { stats });
-  }
+  },
 );
 // booking.controller.ts - Add this endpoint
 export const syncOrderToBooking = asyncHandler(
@@ -174,7 +174,7 @@ export const syncOrderToBooking = asyncHandler(
     const booking = await BookingService.syncWithOrder(orderId);
 
     ApiResponse(res, 201, "Order synced to booking successfully", { booking });
-  }
+  },
 );
 
 // In your booking routes:

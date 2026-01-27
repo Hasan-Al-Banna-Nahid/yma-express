@@ -715,295 +715,106 @@ export const createProduct = asyncHandler(
 /* =========================
    UPDATE PRODUCT WITH FILE UPLOAD
 ========================= */
+
 export const updateProduct = asyncHandler(
-  async (req: Request, res: Response, next: NextFunction) => {
+  async (req: Request, res: Response) => {
     const productId = req.params.id;
-    console.log("=== UPDATE PRODUCT CONTROLLER START ===");
-    console.log("Updating product ID:", productId);
-
+    const updateData: any = { ...req.body };
     const files = req.files as any;
-    const updateData: any = {};
 
-    console.log("Update files received:", files ? Object.keys(files) : "none");
-    console.log("Update body received:", req.body);
-
-    // Handle file uploads
-    if (files) {
-      // Handle new cover image
-      if (files.newImageCover && files.newImageCover.length > 0) {
-        const newImageCover = files.newImageCover[0];
-        console.log("Uploading new cover image:", newImageCover.originalname);
-        try {
-          const newCoverUrl = await uploadToCloudinary(newImageCover);
-          updateData.newImageCover = newCoverUrl;
-          console.log("New cover image uploaded:", newCoverUrl);
-        } catch (error: any) {
-          throw new ApiError(
-            `Failed to upload cover image: ${error.message}`,
-            500,
-          );
-        }
-      } else if (
-        files["newImageCover[]"] &&
-        files["newImageCover[]"].length > 0
-      ) {
-        const newImageCover = files["newImageCover[]"][0];
-        console.log(
-          "Uploading new cover image from array:",
-          newImageCover.originalname,
-        );
-        try {
-          const newCoverUrl = await uploadToCloudinary(newImageCover);
-          updateData.newImageCover = newCoverUrl;
-          console.log("New cover image uploaded:", newCoverUrl);
-        } catch (error: any) {
-          throw new ApiError(
-            `Failed to upload cover image: ${error.message}`,
-            500,
-          );
-        }
-      }
-
-      // Handle new product images
-      let newImages: Express.Multer.File[] = [];
-      if (
-        files.newImages &&
-        Array.isArray(files.newImages) &&
-        files.newImages.length > 0
-      ) {
-        newImages = files.newImages;
-        console.log(
-          `Found ${newImages.length} new images in 'newImages' field`,
-        );
-      } else if (
-        files["newImages[]"] &&
-        Array.isArray(files["newImages[]"]) &&
-        files["newImages[]"].length > 0
-      ) {
-        newImages = files["newImages[]"];
-        console.log(
-          `Found ${newImages.length} new images in 'newImages[]' field`,
-        );
-      }
-
-      if (newImages.length > 0) {
-        if (newImages.length > 5) {
-          throw new ApiError("Maximum 5 images allowed", 400);
-        }
-
-        console.log("Uploading new product images to Cloudinary...");
-        try {
-          const newImageUrls = await Promise.all(
-            newImages.map(async (file: Express.Multer.File, index: number) => {
-              console.log(
-                `Uploading new image ${index + 1}:`,
-                file.originalname,
-              );
-              const url = await uploadToCloudinary(file);
-              console.log(`New image ${index + 1} uploaded:`, url);
-              return url;
-            }),
-          );
-          updateData.newImages = newImageUrls;
-          console.log("All new images uploaded successfully");
-        } catch (error: any) {
-          throw new ApiError(`Failed to upload images: ${error.message}`, 500);
-        }
-      }
+    // ===== Handle Cover Image =====
+    if (files?.imageCover?.[0]) {
+      updateData.imageCover = await uploadToCloudinary(files.imageCover[0]);
     }
 
-    // Process text fields from body
-    const textFields = [
-      "name",
-      "description",
-      "summary",
-      "price",
-      "perDayPrice",
-      "perWeekPrice",
-      "deliveryAndCollection",
-      "priceDiscount",
-      "duration",
-      "maxGroupSize",
-      "difficulty",
-      "categories",
-      "size",
-      "active",
-      "stock",
-      "isSensitive",
-      "material",
-      "design",
-      "location",
-      "dimensions",
-      "availableFrom",
-      "availableUntil",
-      "ageRange",
-      "safetyFeatures",
-      "qualityAssurance",
-      "deliveryTimeOptions",
-      "collectionTimeOptions",
-      "defaultDeliveryTime",
-      "defaultCollectionTime",
-      "deliveryTimeFee",
-      "collectionTimeFee",
-    ];
-
-    // Helper function to parse field value
-    const parseFieldValue = (value: any, fieldName: string): any => {
-      if (value === undefined || value === null || value === "") {
-        return undefined;
-      }
-
-      // Handle JSON strings
-      if (typeof value === "string") {
-        if (
-          (value.startsWith("{") && value.endsWith("}")) ||
-          (value.startsWith("[") && value.endsWith("]"))
-        ) {
-          try {
-            return JSON.parse(value);
-          } catch {
-            // If JSON parsing fails, return as string
-            return value;
-          }
-        }
-      }
-
-      return value;
-    };
-
-    // Add fields from request body
-    textFields.forEach((field) => {
-      if (req.body[field] !== undefined && req.body[field] !== "") {
-        updateData[field] = parseFieldValue(req.body[field], field);
-      }
-    });
-
-    // Helper function to convert value
-    const convertValue = (
-      value: any,
-      type: "number" | "int" | "bool" | "date",
-    ): any => {
-      if (value === undefined || value === null) return undefined;
-
-      switch (type) {
-        case "number":
-          const num = parseFloat(String(value));
-          return isNaN(num) ? undefined : num;
-        case "int":
-          const int = parseInt(String(value), 10);
-          return isNaN(int) ? undefined : int;
-        case "bool":
-          if (typeof value === "boolean") return value;
-          if (typeof value === "string") {
-            return value.toLowerCase() === "true" || value === "1";
-          }
-          if (typeof value === "number") return value !== 0;
-          return Boolean(value);
-        case "date":
-          try {
-            return new Date(value);
-          } catch {
-            return undefined;
-          }
-        default:
-          return value;
-      }
-    };
-
-    // Convert numeric fields
-    const numericFields = [
-      "price",
-      "perDayPrice",
-      "perWeekPrice",
-      "priceDiscount",
-      "deliveryTimeFee",
-      "collectionTimeFee",
-    ];
-    numericFields.forEach((field) => {
-      if (updateData[field] !== undefined) {
-        updateData[field] = convertValue(updateData[field], "number");
-      }
-    });
-
-    // Convert integer fields
-    const intFields = ["maxGroupSize", "stock"];
-    intFields.forEach((field) => {
-      if (updateData[field] !== undefined) {
-        updateData[field] = convertValue(updateData[field], "int");
-      }
-    });
-
-    // Convert boolean fields
-    if (updateData.active !== undefined) {
-      updateData.active = convertValue(updateData.active, "bool");
-    }
-    if (updateData.isSensitive !== undefined) {
-      updateData.isSensitive = convertValue(updateData.isSensitive, "bool");
-    }
-
-    // Convert date fields
-    if (updateData.availableFrom !== undefined) {
-      updateData.availableFrom = convertValue(updateData.availableFrom, "date");
-    }
-    if (updateData.availableUntil !== undefined) {
-      updateData.availableUntil = convertValue(
-        updateData.availableUntil,
-        "date",
+    // ===== Handle Product Images =====
+    if (files?.images?.length) {
+      if (files.images.length > 5)
+        throw new ApiError("Maximum 5 images allowed", 400);
+      updateData.images = await Promise.all(
+        files.images.map((file: any) => uploadToCloudinary(file)),
       );
     }
 
-    // Handle categories if provided
-    if (updateData.categories !== undefined) {
-      let categoriesArray: string[] = [];
-
-      if (Array.isArray(updateData.categories)) {
-        categoriesArray = updateData.categories;
-      } else if (typeof updateData.categories === "string") {
+    // ===== Parse nested JSON strings =====
+    const nestedFields = [
+      "dimensions",
+      "location",
+      "ageRange",
+      "qualityAssurance",
+      "bookedDates",
+    ];
+    nestedFields.forEach((field) => {
+      if (updateData[field] && typeof updateData[field] === "string") {
         try {
-          // Try JSON first
-          const parsed = JSON.parse(updateData.categories);
-          if (Array.isArray(parsed)) {
-            categoriesArray = parsed;
-          } else {
-            categoriesArray = [parsed];
-          }
+          updateData[field] = JSON.parse(updateData[field]);
         } catch {
-          // If not JSON, try comma-separated
-          categoriesArray = updateData.categories
-            .split(",")
-            .map((cat: string) => cat.trim())
-            .filter((cat: string) => cat.length > 0);
+          throw new ApiError(`Invalid JSON for field ${field}`, 400);
         }
       }
+    });
 
-      if (categoriesArray.length > 0) {
-        updateData.categories = categoriesArray;
-      } else {
-        delete updateData.categories;
+    // ===== Convert category strings to ObjectIds =====
+    if (updateData.categories) {
+      if (typeof updateData.categories === "string") {
+        // Comma separated string
+        updateData.categories = updateData.categories
+          .split(",")
+          .map((id: string) => new Types.ObjectId(id.trim()));
+      } else if (Array.isArray(updateData.categories)) {
+        updateData.categories = updateData.categories.map(
+          (id: string) => new Types.ObjectId(id),
+        );
       }
     }
 
-    console.log("Update data prepared:", {
-      fields: Object.keys(updateData),
-      hasFiles: !!(updateData.newImageCover || updateData.newImages),
+    // ===== Convert vendor, discount, stock, active fields to correct types =====
+    const numberFields = [
+      "price",
+      "perDayPrice",
+      "perWeekPrice",
+      "priceDiscount",
+      "discount",
+      "stock",
+      "deliveryTimeFee",
+      "collectionTimeFee",
+      "maxGroupSize",
+      "topPickRank",
+      "salesCount",
+    ];
+    numberFields.forEach((field) => {
+      if (updateData[field] !== undefined)
+        updateData[field] = Number(updateData[field]);
     });
 
-    // Update the product
-    try {
-      const product = await productService.updateProduct(productId, updateData);
-      console.log("Product updated successfully");
+    const booleanFields = [
+      "active",
+      "isSensitive",
+      "isTopPick",
+      "isTopSelling",
+    ];
+    booleanFields.forEach((field) => {
+      if (updateData[field] !== undefined)
+        updateData[field] =
+          updateData[field] === "true" || updateData[field] === true;
+    });
 
-      res.status(200).json({
-        status: "success",
-        message: "Product updated successfully",
-        data: {
-          product,
-        },
-      });
-    } catch (error: any) {
-      console.error("Error updating product:", error);
-      throw new ApiError(`Failed to update product: ${error.message}`, 500);
-    }
+    const dateFields = ["availableFrom", "availableUntil"];
+    dateFields.forEach((field) => {
+      if (updateData[field]) updateData[field] = new Date(updateData[field]);
+    });
+
+    // ===== Call service to update product =====
+    const product = await productService.updateProductService(
+      productId,
+      updateData,
+    );
+
+    res.status(200).json({
+      status: "success",
+      message: "Product updated successfully",
+      data: { product },
+    });
   },
 );
 

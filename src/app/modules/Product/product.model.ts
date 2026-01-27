@@ -5,6 +5,14 @@ export type IProductModel = IProduct & mongoose.Document;
 
 const productSchema: Schema = new Schema(
   {
+    vendor: {
+      type: String,
+      required: false,
+    },
+
+    warehouse: {
+      type: String,
+    },
     discount: {
       type: Number,
       min: 0,
@@ -343,7 +351,7 @@ const productSchema: Schema = new Schema(
     timestamps: true,
     toJSON: { virtuals: true },
     toObject: { virtuals: true },
-  }
+  },
 );
 // In productSchema.index section, add:
 productSchema.index({ "frequentlyBoughtTogether.frequency": -1 });
@@ -382,11 +390,11 @@ productSchema.virtual("deliveryInfo").get(function (this: IProductModel) {
     collectionFee: this.collectionTimeFee,
   };
 });
-productSchema
-  .virtual("formattedDimensions")
-  .get(function (this: IProductModel) {
-    return `${this.dimensions.length}ft x ${this.dimensions.width}ft x ${this.dimensions.height}ft`;
-  });
+productSchema.virtual("formattedDimensions").get(function (
+  this: IProductModel,
+) {
+  return `${this.dimensions.length}ft x ${this.dimensions.width}ft x ${this.dimensions.height}ft`;
+});
 
 productSchema.virtual("formattedAgeRange").get(function (this: IProductModel) {
   return `${this.ageRange.min}-${this.ageRange.max} ${this.ageRange.unit}`;
@@ -424,7 +432,7 @@ productSchema.index({ "qualityAssurance.isCertified": 1 });
 
 const Product: Model<IProductModel> = mongoose.model<IProductModel>(
   "Product",
-  productSchema
+  productSchema,
 );
 
 export default Product;

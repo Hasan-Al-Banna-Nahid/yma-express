@@ -229,6 +229,12 @@ export interface FilterOptions {
   paymentMethod?: string;
   minAmount?: number;
   maxAmount?: number;
+  sortBy?: "createdAt" | "totalAmount" | "startDate" | "deliveryDate";
+  sortOrder?: "asc" | "desc";
+  rentalFrom?: string; // ISO date e.g. "2026-03-10T00:00:00.000Z"
+  rentalTo?: string;
+  createdFrom?: string;
+  createdTo?: string;
 }
 
 export interface ICustomerStats {

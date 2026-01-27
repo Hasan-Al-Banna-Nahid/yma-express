@@ -349,6 +349,12 @@ export const deleteOrder = async (
 // ───────────────────────────────────────────────
 // GET ALL ORDERS (ADMIN) - with filters & pagination
 // ───────────────────────────────────────────────
+// ───────────────────────────────────────────────
+// GET ALL ORDERS (ADMIN) - with filters & pagination
+// ───────────────────────────────────────────────
+// ───────────────────────────────────────────────
+// GET ALL ORDERS (ADMIN) - with filters & pagination
+// ───────────────────────────────────────────────
 export const getAllOrders = async (
   page: number = 1,
   limit: number = 20,
@@ -370,36 +376,42 @@ export const getAllOrders = async (
     console.log("Filters received:", filters);
     console.log("Page:", page, "Limit:", limit);
 
+    // Status filter
     if (filters.status && filters.status !== "all") {
       query.status = filters.status;
       console.log("Applied status filter:", filters.status);
     }
 
+    // User filter
     if (filters.userId && mongoose.Types.ObjectId.isValid(filters.userId)) {
       query.user = new mongoose.Types.ObjectId(filters.userId);
       console.log("Applied user filter:", filters.userId);
     }
 
+    // Payment method filter
     if (filters.paymentMethod && filters.paymentMethod !== "all") {
       query.paymentMethod = filters.paymentMethod;
       console.log("Applied payment method filter:", filters.paymentMethod);
     }
 
-    if (filters.startDate) {
-      query.createdAt = { $gte: new Date(filters.startDate) };
-      console.log("Applied start date filter:", filters.startDate);
+    // Created-at date range (when the order was placed)
+    if (filters.createdFrom || filters.createdTo) {
+      query.createdAt = {};
+      if (filters.createdFrom) {
+        query.createdAt.$gte = new Date(filters.createdFrom);
+        console.log("Applied createdFrom:", filters.createdFrom);
+      }
+      if (filters.createdTo) {
+        query.createdAt.$lte = new Date(filters.createdTo);
+        console.log("Applied createdTo:", filters.createdTo);
+      }
     }
 
-    if (filters.endDate) {
-      query.createdAt = { ...query.createdAt, $lte: new Date(filters.endDate) };
-      console.log("Applied end date filter:", filters.endDate);
-    }
-
+    // Amount range filter
     if (filters.minAmount !== undefined) {
       query.totalAmount = { $gte: filters.minAmount };
       console.log("Applied min amount filter:", filters.minAmount);
     }
-
     if (filters.maxAmount !== undefined) {
       if (query.totalAmount) {
         query.totalAmount.$lte = filters.maxAmount;
@@ -409,6 +421,7 @@ export const getAllOrders = async (
       console.log("Applied max amount filter:", filters.maxAmount);
     }
 
+    // Text search
     if (filters.search && filters.search.trim()) {
       const searchRegex = new RegExp(filters.search.trim(), "i");
       query.$or = [
@@ -424,6 +437,42 @@ export const getAllOrders = async (
         { "user.email": searchRegex },
       ];
       console.log("Applied search filter:", filters.search);
+    }
+
+    // ───────────────────────────────────────────────
+    //       RENTAL PERIOD OVERLAP FILTER
+    //       (the actual hire/from → to date filter)
+    // ───────────────────────────────────────────────
+    if (filters.rentalFrom || filters.rentalTo) {
+      const rentalMatch: any = {
+        "items.startDate": { $exists: true },
+        "items.endDate": { $exists: true },
+      };
+
+      if (filters.rentalFrom) {
+        const fromDate = new Date(filters.rentalFrom);
+        // The rental must not END before the requested start date
+        rentalMatch["items.endDate"] = { $gte: fromDate };
+        console.log(
+          "Applied rentalFrom (items.endDate >=):",
+          fromDate.toISOString(),
+        );
+      }
+
+      if (filters.rentalTo) {
+        const toDate = new Date(filters.rentalTo);
+        // The rental must not START after the requested end date
+        rentalMatch["items.startDate"] = { $lte: toDate };
+        console.log(
+          "Applied rentalTo (items.startDate <=):",
+          toDate.toISOString(),
+        );
+      }
+
+      // Use $elemMatch so it applies to at least one item in the array
+      query["items"] = { $elemMatch: rentalMatch };
+
+      console.log("Applied rental period overlap filter");
     }
 
     console.log("Final query:", JSON.stringify(query, null, 2));
@@ -447,6 +496,31 @@ export const getAllOrders = async (
       };
     }
 
+    // ─── Sorting ────────────────────────────────────────────────
+    let sortObj: any = { createdAt: -1 }; // default newest first
+
+    if (filters.sortBy) {
+      switch (filters.sortBy) {
+        case "startDate":
+          sortObj = {
+            "items.startDate": filters.sortOrder === "desc" ? -1 : 1,
+          };
+          break;
+        case "deliveryDate":
+          sortObj = { deliveryDate: filters.sortOrder === "desc" ? -1 : 1 };
+          break;
+        case "totalAmount":
+          sortObj = { totalAmount: filters.sortOrder === "desc" ? -1 : 1 };
+          break;
+        case "createdAt":
+        default:
+          sortObj = { createdAt: filters.sortOrder === "desc" ? -1 : 1 };
+          break;
+      }
+    }
+
+    console.log("Sort applied:", sortObj);
+
     const orders = await Order.find(query)
       .populate({
         path: "user",
@@ -458,7 +532,7 @@ export const getAllOrders = async (
         select: "name imageCover price category sku",
         model: Product,
       })
-      .sort({ createdAt: -1, orderNumber: -1 })
+      .sort(sortObj)
       .skip(skip)
       .limit(limit)
       .lean();
