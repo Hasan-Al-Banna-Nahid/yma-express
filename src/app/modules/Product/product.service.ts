@@ -2,7 +2,12 @@ import Category from "../Category/category.model";
 import Product, { IProductModel } from "./product.model";
 import ApiError from "../../utils/apiError";
 import { ObjectId, Types } from "mongoose";
-import { CreateProductData } from "./product.interface";
+import {
+  CreateProductData,
+  DeepPartial,
+  IProduct,
+  UpdateProductData,
+} from "./product.interface";
 import { deleteFromCloudinary } from "../../utils/cloudinary.util";
 import Booking from "../../modules/Bookings/booking.model";
 
@@ -124,153 +129,61 @@ export const createProduct = async (
 /* =========================
    UPDATE PRODUCT WITH CLOUDINARY
 ========================= */
-export const updateProduct = async (
-  productId: string,
-  updateData: any & {
-    newImageCover?: Express.Multer.File;
-    newImages?: Express.Multer.File[];
-  },
-): Promise<IProductModel> => {
-  if (!Types.ObjectId.isValid(productId)) {
-    throw new ApiError("Invalid product ID", 400);
-  }
 
-  const existingProduct = await Product.findById(productId);
-  if (!existingProduct) {
-    throw new ApiError("Product not found", 404);
-  }
+// Flatten nested objects for $set
+const flattenForUpdate = (obj: any, prefix = ""): any => {
+  const flattened: any = {};
+  Object.keys(obj).forEach((key) => {
+    const value = obj[key];
+    const path = prefix ? `${prefix}.${key}` : key;
 
-  const cleanUpdateData: any = {};
-
-  const basicFields = [
-    "name",
-    "description",
-    "summary",
-    "price",
-    "perDayPrice",
-    "perWeekPrice",
-    "deliveryAndCollection",
-    "priceDiscount",
-    "duration",
-    "maxGroupSize",
-    "difficulty",
-    "size",
-    "active",
-    "stock",
-    "isSensitive",
-    "material",
-    "design",
-    "dateAdded",
-    "deliveryTimeOptions",
-    "collectionTimeOptions",
-    "defaultDeliveryTime",
-    "defaultCollectionTime",
-    "deliveryTimeFee",
-    "collectionTimeFee",
-  ];
-
-  basicFields.forEach((field) => {
-    if (updateData[field] !== undefined) {
-      cleanUpdateData[field] = updateData[field];
+    if (
+      value &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      !(value instanceof Date)
+    ) {
+      Object.assign(flattened, flattenForUpdate(value, path));
+    } else {
+      flattened[path] = value;
     }
   });
+  return flattened;
+};
 
-  if (updateData.categories?.length) {
-    const categoryIds = updateData.categories.map(
-      (id: string) => new Types.ObjectId(id),
-    );
+type ForbiddenFields = "_id" | "createdAt" | "updatedAt";
 
-    const categories = await Category.find({
-      _id: { $in: categoryIds },
-      isActive: true,
-    });
+export const updateProductService = async (
+  productId: string,
+  updateData: Partial<IProduct>,
+): Promise<IProduct> => {
+  if (!Types.ObjectId.isValid(productId))
+    throw new ApiError("Invalid product id", 400);
 
-    if (categories.length !== categoryIds.length) {
-      throw new ApiError("One or more categories are invalid or inactive", 400);
-    }
+  const product = await Product.findById(productId);
+  if (!product) throw new ApiError("Product not found", 404);
 
-    cleanUpdateData.categories = categoryIds;
-  }
+  // Remove forbidden fields
+  const cleanData = { ...updateData };
+  delete cleanData._id;
+  delete cleanData.createdAt;
+  delete cleanData.updatedAt;
 
-  if (updateData.location) {
-    cleanUpdateData.location = {
-      country: "England",
-      state: updateData.location.state || "",
-      city: updateData.location.city || "",
-    };
-  }
+  // Flatten nested objects (location, dimensions, ageRange, qualityAssurance, etc.)
+  const update = flattenForUpdate(cleanData);
 
-  if (updateData.dimensions) {
-    const { length, width, height } = updateData.dimensions;
-    cleanUpdateData.dimensions = {
-      length: length || 1,
-      width: width || 1,
-      height: height || 1,
-    };
-  }
+  // Automatically set topPickUpdatedAt
+  if (updateData.isTopPick) update.topPickUpdatedAt = new Date();
 
-  if (updateData.availableFrom) {
-    cleanUpdateData.availableFrom = new Date(updateData.availableFrom);
-  }
+  const updatedProduct = await Product.findByIdAndUpdate(
+    productId,
+    { $set: update },
+    { new: true, runValidators: true },
+  ).lean(); // return plain JS object
 
-  if (updateData.availableUntil) {
-    cleanUpdateData.availableUntil = new Date(updateData.availableUntil);
-  }
+  if (!updatedProduct) throw new ApiError("Failed to update product", 500);
 
-  if (updateData.ageRange) {
-    const { min, max, unit } = updateData.ageRange;
-    cleanUpdateData.ageRange = {
-      min: min || 0,
-      max: max || 0,
-      unit: unit || "years",
-    };
-  }
-
-  if (updateData.safetyFeatures !== undefined) {
-    if (!Array.isArray(updateData.safetyFeatures)) {
-      throw new ApiError("Safety features must be an array", 400);
-    }
-    cleanUpdateData.safetyFeatures = updateData.safetyFeatures;
-  }
-
-  if (updateData.qualityAssurance) {
-    const { isCertified, certification, warrantyPeriod, warrantyDetails } =
-      updateData.qualityAssurance;
-
-    cleanUpdateData.qualityAssurance = {
-      isCertified: isCertified !== undefined ? isCertified : false,
-      certification: certification || undefined,
-      warrantyPeriod: warrantyPeriod || undefined,
-      warrantyDetails: warrantyDetails || undefined,
-    };
-  }
-
-  if (updateData.newImages && Array.isArray(updateData.newImages)) {
-    if (updateData.newImages.length > 5) {
-      throw new ApiError("Maximum 5 images allowed", 400);
-    }
-    cleanUpdateData.images = updateData.newImages;
-  }
-
-  if (updateData.newImageCover) {
-    cleanUpdateData.imageCover = updateData.newImageCover;
-  }
-
-  if (cleanUpdateData.images && cleanUpdateData.images.length > 5) {
-    throw new ApiError("Maximum 5 images allowed", 400);
-  }
-
-  const product = await Product.findByIdAndUpdate(productId, cleanUpdateData, {
-    new: true,
-    runValidators: true,
-    context: "query",
-  }).populate("categories", "name slug description image");
-
-  if (!product) {
-    throw new ApiError("Product not found", 404);
-  }
-
-  return product;
+  return updatedProduct;
 };
 
 /* =========================
@@ -592,16 +505,23 @@ const getProductAvailability = async (
    GET ALL PRODUCTS WITH BOOKED DATES
 ========================= */
 export const getAllProducts = async (
-  page = 1,
-  limit = 10,
+  page: number = 1,
+  limit: number = 10,
   state?: string,
   category?: string,
   minPrice?: number,
   maxPrice?: number,
   search?: string,
-): Promise<{ products: IProductModel[]; total: number; pages: number }> => {
+  sortBy: "price" | "createdAt" | "name" = "createdAt", // ← added
+  sortOrder: "asc" | "desc" = "asc", // ← added
+): Promise<{
+  products: IProductModel[];
+  total: number;
+  pages: number;
+}> => {
   const skip = (page - 1) * limit;
 
+  // Build filter object
   const filter: any = { ...AVAILABLE_PRODUCT_FILTER };
 
   // 🔍 Product name search
@@ -626,11 +546,22 @@ export const getAllProducts = async (
     if (maxPrice !== undefined) filter.price.$lte = maxPrice;
   }
 
+  // ── Dynamic sorting ───────────────────────────────────────
+  let sortObj: Record<string, 1 | -1> = { createdAt: -1 }; // default: newest first
+
+  if (sortBy === "price") {
+    sortObj = { price: sortOrder === "asc" ? 1 : -1 };
+  } else if (sortBy === "name") {
+    sortObj = { name: sortOrder === "asc" ? 1 : -1 };
+  } else if (sortBy === "createdAt") {
+    sortObj = { createdAt: sortOrder === "asc" ? 1 : -1 };
+  }
+
   // 📦 Fetch products
   const products = await Product.find(filter)
     .populate("categories", "name description")
     .select("-__v")
-    .sort({ createdAt: -1 })
+    .sort(sortObj) // ← dynamic sort applied here
     .skip(skip)
     .limit(limit)
     .lean();
@@ -643,7 +574,6 @@ export const getAllProducts = async (
       const bookedDates = await getBookedDatesForProduct(
         product._id.toString(),
       );
-
       const availability = await getProductAvailability(
         product._id.toString(),
         30,

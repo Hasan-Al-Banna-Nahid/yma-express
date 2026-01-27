@@ -62,37 +62,33 @@ router.post(
     { name: "imageCover", maxCount: 1 },
     { name: "images[]", maxCount: 5 },
   ]),
-  createProduct
+  createProduct,
 );
-router.patch(
-  "/:id",
-  restrictTo("superadmin", "admin", "editor"),
-  updateProduct
-);
+router.patch("/:id", restrictTo("admin", "editor"), updateProduct);
 router.delete(
   "/:id",
   restrictTo("superadmin", "admin", "editor"),
-  deleteProduct
+  deleteProduct,
 );
 router.patch(
   "/:id/stock",
   restrictTo("superadmin", "admin", "editor"),
-  updateProductStock
+  updateProductStock,
 );
 router.get(
   "/search/admin",
   restrictTo("superadmin", "admin", "editor"),
-  adminSearchProducts
+  adminSearchProducts,
 );
 router.patch(
   "/:productId/top-selling",
   restrictTo("superadmin", "admin", "editor"),
-  markAsTopSelling
+  markAsTopSelling,
 );
 router.patch(
   "/:productId/top-pick",
   restrictTo("superadmin", "admin", "editor"),
-  markAsTopPick
+  markAsTopPick,
 );
 // In the protected routes section:
 router.post(
@@ -102,7 +98,7 @@ router.post(
     { name: "images[]", maxCount: 5 }, // For updating product images
     { name: "newImageCover", maxCount: 1 }, // For updating cover image
   ]),
-  createFrequentlyBoughtRelationships
+  createFrequentlyBoughtRelationships,
 );
 // NEW PROTECTED ROUTE (for recording purchases):
 router.post("/recommendations/record-purchase", recordPurchase);

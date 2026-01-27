@@ -36,7 +36,7 @@ export const createSendToken = (
   user: IUser,
   statusCode: number,
   _req: Request,
-  res: any
+  res: any,
 ) => {
   const token = signToken(user._id.toString());
   res.status(statusCode).json({
@@ -52,7 +52,7 @@ export const signup = async (
   email: string,
   password: string,
   passwordConfirm: string,
-  photo?: Express.Multer.File
+  photo?: Express.Multer.File,
 ) => {
   if (password !== passwordConfirm)
     throw new ApiError("Passwords do not match", 400);
@@ -81,7 +81,7 @@ export const login = async (email: string, password: string) => {
     throw new ApiError("Please provide email and password", 400);
 
   const user = await User.findOne({ email }).select(
-    "+password +refreshTokenHash +refreshTokenExpiresAt"
+    "+password +refreshTokenHash +refreshTokenExpiresAt",
   );
   if (!user || !user.password)
     throw new ApiError("Incorrect email or password", 401);
@@ -111,7 +111,7 @@ export const forgotPassword = async (email: string) => {
     await sendPasswordResetEmail(
       user.email,
       (user as any).name || "Customer",
-      resetURL
+      resetURL,
     );
 
     console.log(`Password reset email sent to: ${user.email}`);
@@ -126,7 +126,7 @@ export const forgotPassword = async (email: string) => {
 
     throw new ApiError(
       "There was an error sending the email. Try again later!",
-      500
+      500,
     );
   }
 };
@@ -135,7 +135,7 @@ export const forgotPassword = async (email: string) => {
 export const resetPassword = async (
   token: string,
   password: string,
-  passwordConfirm: string
+  passwordConfirm: string,
 ) => {
   const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
 
@@ -163,7 +163,7 @@ export const resetPassword = async (
 
   // Fire-and-forget confirmation
   sendResetSuccessEmail(user.email, (user as any).name || "there").catch(
-    () => {}
+    () => {},
   );
 
   return user;
@@ -174,10 +174,10 @@ export const updatePassword = async (
   userId: string,
   currentPassword: string,
   newPassword: string,
-  newPasswordConfirm: string
+  newPasswordConfirm: string,
 ) => {
   const user = await User.findById(userId).select(
-    "+password +refreshTokenHash +refreshTokenExpiresAt"
+    "+password +refreshTokenHash +refreshTokenExpiresAt",
   );
   if (!user) throw new ApiError("User not found", 404);
   if (!user.password) throw new ApiError("User has no password set", 400);
@@ -202,7 +202,7 @@ export const protect = async (token: string): Promise<IUser> => {
   if (!token)
     throw new ApiError(
       "You are not logged in! Please log in to get access.",
-      401
+      401,
     );
 
   type Decoded = JwtPayload & { id: string; iat: number };
@@ -227,7 +227,7 @@ export const protect = async (token: string): Promise<IUser> => {
   if (!currentUser)
     throw new ApiError(
       "The user belonging to this token does no longer exist.",
-      401
+      401,
     );
 
   if ((currentUser as any).active === false) {
@@ -257,7 +257,7 @@ export const registerWithEmailVerification = async (
   name: string,
   email: string,
   password?: string, // Make password optional
-  photo?: Express.Multer.File
+  photo?: Express.Multer.File,
 ): Promise<{ user: IUser; temporaryPassword?: string }> => {
   // Check if user already exists
   const existingUser = await User.findOne({ email });
@@ -304,7 +304,7 @@ export const registerWithEmailVerification = async (
     email,
     name,
     verificationLink,
-    temporaryPassword || "Use the password you set during registration"
+    temporaryPassword || "Use the password you set during registration",
   );
 
   return {
@@ -344,7 +344,7 @@ export const verifyEmailToken = async (token: string): Promise<IUser> => {
       if (expiredUser) {
         throw new ApiError(
           "Verification link has expired. Please request a new one.",
-          400
+          400,
         );
       }
       throw new ApiError("Invalid verification token", 400);
@@ -382,7 +382,7 @@ export const resendVerificationEmail = async (email: string): Promise<void> => {
   if (!user) {
     // For security, don't reveal if user exists
     console.log(
-      `Resend verification requested for non-existent email: ${email}`
+      `Resend verification requested for non-existent email: ${email}`,
     );
     return;
   }
@@ -391,7 +391,7 @@ export const resendVerificationEmail = async (email: string): Promise<void> => {
   if (user.isEmailVerified) {
     throw new ApiError(
       "Email is already verified. You can login directly.",
-      400
+      400,
     );
   }
 
@@ -404,7 +404,7 @@ export const resendVerificationEmail = async (email: string): Promise<void> => {
     if (hoursDiff < 24) {
       throw new ApiError(
         "Too many verification requests. Please try again tomorrow.",
-        429
+        429,
       );
     } else {
       // Reset attempts if more than 24 hours passed
@@ -425,6 +425,6 @@ export const resendVerificationEmail = async (email: string): Promise<void> => {
     user.email,
     user.name,
     verificationLink,
-    "Use your existing password to login"
+    "Use your existing password to login",
   );
 };

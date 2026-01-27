@@ -141,3 +141,91 @@ export interface SimilarProductItem {
   similarityScore: number;
   basedOn: string[];
 }
+export type DeepPartial<T> = {
+  [K in keyof T]?: T[K] extends Array<infer U>
+    ? Array<DeepPartial<U>>
+    : T[K] extends object
+      ? DeepPartial<T[K]>
+      : T[K];
+};
+
+export type UpdateProductData = DeepPartial<{
+  name: string;
+  description: string;
+  summary?: string;
+  price: number;
+  perDayPrice?: number;
+  perWeekPrice?: number;
+  deliveryAndCollection: string;
+  priceDiscount?: number;
+  duration: string;
+  maxGroupSize: number;
+  difficulty: "easy" | "medium" | "difficult";
+  categories: Types.ObjectId[];
+  images: string[];
+  imageCover: string;
+
+  location: {
+    country: "England";
+    state: string;
+    city?: string;
+  };
+
+  dimensions: {
+    length: number;
+    width: number;
+    height: number;
+  };
+
+  availableFrom: Date;
+  availableUntil: Date;
+  size?: string;
+  active: boolean;
+  stock: number;
+  isSensitive: boolean;
+  material: string;
+  design: string;
+
+  ageRange: {
+    min: number;
+    max: number;
+    unit: "years" | "months";
+  };
+
+  safetyFeatures: string[];
+
+  qualityAssurance: {
+    isCertified: boolean;
+    certification?: string;
+    warrantyPeriod?: string;
+    warrantyDetails?: string;
+  };
+
+  isTopPick?: boolean;
+  topPickRank?: number;
+  topPickUpdatedAt?: Date;
+
+  purchaseHistory?: PurchaseHistoryItem[];
+  frequentlyBoughtTogether?: FrequentlyBoughtItem[];
+  similarProducts?: SimilarProductItem[];
+
+  quantity?: number;
+  vendor?: string;
+  warehouse?: Types.ObjectId;
+
+  deliveryTimeOptions?: string[];
+  collectionTimeOptions?: string[];
+  defaultDeliveryTime?: string;
+  defaultCollectionTime?: string;
+  deliveryTimeFee?: number;
+  collectionTimeFee?: number;
+
+  discount?: number;
+
+  bookedDates?: Array<{
+    startDate: Date;
+    endDate: Date;
+    bookingId?: Types.ObjectId;
+    status?: "confirmed" | "pending" | "cancelled";
+  }>;
+}>;

@@ -19,7 +19,7 @@ import Inventory from "../../modules/Inventory/inventory.model";
 export class BookingService {
   static async createBooking(
     userId: Types.ObjectId,
-    data: CreateBookingData
+    data: CreateBookingData,
   ): Promise<IBookingDocument> {
     const session = await mongoose.startSession();
     session.startTransaction();
@@ -39,7 +39,7 @@ export class BookingService {
         console.log("❌ Missing shipping address or payment method");
         throw new ApiError(
           "Shipping address and payment method are required",
-          400
+          400,
         );
       }
 
@@ -78,7 +78,7 @@ export class BookingService {
         endDate.setHours(23, 59, 59, 999);
 
         const totalDays = Math.ceil(
-          (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
+          (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24),
         );
 
         console.log("📅 Date Analysis:");
@@ -97,7 +97,7 @@ export class BookingService {
           product._id.toString(),
           startDate,
           endDate,
-          item.quantity
+          item.quantity,
         );
 
         console.log("📊 Availability Result:", {
@@ -128,7 +128,7 @@ export class BookingService {
 
           throw new ApiError(
             `"${product.name}" is not available for the selected dates. ${availability.message}`,
-            400
+            400,
           );
         }
 
@@ -140,7 +140,7 @@ export class BookingService {
           startDate,
           endDate,
           item.quantity,
-          tempBookingId
+          tempBookingId,
         );
 
         console.log("✅ Reserved items:", reservedItems?.length || 0);
@@ -149,7 +149,7 @@ export class BookingService {
           console.log("❌ Failed to reserve inventory");
           throw new ApiError(
             `Failed to reserve inventory for ${product.name}`,
-            400
+            400,
           );
         }
 
@@ -247,7 +247,7 @@ export class BookingService {
         endDate.setHours(23, 59, 59, 999);
 
         const totalDays = Math.ceil(
-          (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
+          (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24),
         );
 
         for (let day = 0; day < totalDays; day++) {
@@ -292,14 +292,14 @@ export class BookingService {
       console.log("🔄 Updating inventory with actual booking ID...");
       await Inventory.updateMany(
         { "bookedDates.bookingId": tempBookingId },
-        { $set: { "bookedDates.$.bookingId": booking._id } }
+        { $set: { "bookedDates.$.bookingId": booking._id } },
       ).session(session);
 
       await session.commitTransaction();
       console.log("✅ Transaction committed successfully");
 
       const populatedBooking = await this.getBookingById(
-        (booking._id as string).toString()
+        (booking._id as string).toString(),
       );
 
       console.log("📧 Sending confirmation emails...");
@@ -307,7 +307,7 @@ export class BookingService {
       await EmailService.sendBookingConfirmation(populatedBooking);
       await EmailService.sendAdminNotification(
         populatedBooking,
-        "New Booking Created"
+        "New Booking Created",
       );
 
       console.log("✅ Booking process completed successfully!");
@@ -341,7 +341,7 @@ export class BookingService {
   static async getAllBookings(
     filters: BookingFilter = {},
     page: number = 1,
-    limit: number = 20
+    limit: number = 20,
   ): Promise<{ bookings: IBookingDocument[]; total: number; pages: number }> {
     const skip = (page - 1) * limit;
     const query: any = {};
@@ -386,7 +386,7 @@ export class BookingService {
   static async updateBooking(
     bookingId: string,
     updateData: UpdateBookingData,
-    adminId: Types.ObjectId
+    adminId: Types.ObjectId,
   ): Promise<IBookingDocument> {
     const booking = await Booking.findById(bookingId);
     if (!booking) {
@@ -408,12 +408,12 @@ export class BookingService {
     if (updateData.adminNotes) booking.adminNotes = updateData.adminNotes;
     if (updateData.estimatedDeliveryDate) {
       booking.estimatedDeliveryDate = new Date(
-        updateData.estimatedDeliveryDate
+        updateData.estimatedDeliveryDate,
       );
     }
     if (updateData.estimatedCollectionDate) {
       booking.estimatedCollectionDate = new Date(
-        updateData.estimatedCollectionDate
+        updateData.estimatedCollectionDate,
       );
     }
 
@@ -424,7 +424,7 @@ export class BookingService {
   static async cancelBooking(
     bookingId: string,
     userId: Types.ObjectId,
-    reason: string
+    reason: string,
   ): Promise<IBookingDocument> {
     const session = await mongoose.startSession();
     session.startTransaction();
@@ -463,7 +463,7 @@ export class BookingService {
       await EmailService.sendBookingStatusUpdate(populatedBooking);
       await EmailService.sendAdminNotification(
         populatedBooking,
-        "Booking Cancelled"
+        "Booking Cancelled",
       );
 
       return populatedBooking;
@@ -592,7 +592,7 @@ export class BookingService {
   }
 
   static async getBookingsByOrderId(
-    orderId: string
+    orderId: string,
   ): Promise<IBookingDocument[]> {
     const Order = require("../Order/order.model").default;
 

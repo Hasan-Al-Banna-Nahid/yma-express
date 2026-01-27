@@ -39,7 +39,7 @@ export const sendWelcomeVerificationEmail = async (
   email: string,
   name: string,
   verificationLink: string,
-  temporaryPassword: string
+  temporaryPassword: string,
 ): Promise<void> => {
   const logoUrl =
     "https://res.cloudinary.com/dj785gqtu/image/upload/v1767711924/logo2_xos8xa.png";
@@ -485,7 +485,7 @@ ${supportEmail}
 // Send verification success email
 export const sendVerificationSuccessEmail = async (
   email: string,
-  name: string
+  name: string,
 ): Promise<void> => {
   const logoUrl =
     "https://res.cloudinary.com/dj785gqtu/image/upload/v1767711924/logo2_xos8xa.png";
@@ -721,7 +721,7 @@ export const sendVerificationSuccessEmail = async (
 export const sendPasswordResetEmail = async (
   email: string,
   name: string,
-  resetLink: string
+  resetLink: string,
 ): Promise<void> => {
   const logoUrl =
     "https://res.cloudinary.com/dj785gqtu/image/upload/v1767711924/logo2_xos8xa.png";
@@ -1134,7 +1134,7 @@ YMA Bouncy Castle Team
 
 export const sendResetSuccessEmail = async (
   email: string,
-  name: string
+  name: string,
 ): Promise<void> => {
   const logoUrl =
     "https://res.cloudinary.com/dj785gqtu/image/upload/v1767711924/logo2_xos8xa.png";

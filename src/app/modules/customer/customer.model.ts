@@ -1,4 +1,3 @@
-// src/models/customer.model.ts
 import mongoose, { Schema } from "mongoose";
 import { ICustomer } from "./customer.interface";
 
@@ -16,12 +15,12 @@ const customerSchema = new Schema<ICustomer>(
       required: true,
       trim: true,
       lowercase: true,
-      index: { unique: true },
+      index: true,
     },
     phone: {
       type: String,
       trim: true,
-      sparse: true, // allow multiple nulls
+      sparse: true,
     },
     name: {
       type: String,
@@ -32,44 +31,32 @@ const customerSchema = new Schema<ICustomer>(
       type: Schema.Types.ObjectId,
       ref: "User",
       sparse: true,
-      unique: true, // one customer per user
     },
     address: String,
     city: String,
     postcode: String,
     country: String,
+
     orders: [
       {
         type: Schema.Types.ObjectId,
         ref: "Order",
       },
     ],
-    totalOrders: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
-    totalSpent: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
+
+    totalOrders: { type: Number, default: 0, min: 0 },
+    totalSpent: { type: Number, default: 0, min: 0 },
     firstOrderDate: Date,
     lastOrderDate: Date,
     averageOrderValue: Number,
+
     customerType: {
       type: String,
       enum: ["retail", "corporate", "guest"],
       default: "guest",
     },
-    isFavorite: {
-      type: Boolean,
-      default: false,
-    },
-    tags: {
-      type: [String],
-      default: [],
-    },
+    isFavorite: { type: Boolean, default: false },
+    tags: { type: [String], default: [] },
     notes: String,
   },
   {
@@ -79,18 +66,22 @@ const customerSchema = new Schema<ICustomer>(
   },
 );
 
-// Virtual for nicer output
+// Virtual
 customerSchema.virtual("orderCount").get(function () {
-  return this.orders?.length || this.totalOrders || 0;
+  return this.totalOrders || this.orders?.length || 0;
 });
 
-// Pre-save hook to maintain counters (optional – can also be done in service)
+// Auto-update counters & dates
 customerSchema.pre("save", function (next) {
   if (this.isModified("orders")) {
     this.totalOrders = this.orders.length;
     this.lastOrderDate = new Date();
     if (!this.firstOrderDate && this.orders.length > 0) {
       this.firstOrderDate = new Date();
+    }
+    // Optional: recalculate average (simple version)
+    if (this.totalOrders > 0 && this.totalSpent > 0) {
+      this.averageOrderValue = Math.round(this.totalSpent / this.totalOrders);
     }
   }
   next();

@@ -1,161 +1,165 @@
-// src/modules/Customer/customer.interface.ts
 import { Document, Types } from "mongoose";
-import { IOrder } from "../Checkout/checkout.interface"; // Adjust path if needed
 
-/**
- * Main Customer Document Interface (what is stored in MongoDB)
- */
+// ───────────────────────────────────────────────
+// MAIN CUSTOMER DOCUMENT
+// ───────────────────────────────────────────────
+
 export interface ICustomer extends Document {
-  /** Auto-generated unique identifier for the customer (e.g. CUST-ABC123XYZ) */
-  customerId: string;
-
-  /** Email address (normalized to lowercase) - primary lookup key */
+  customerId: string; // CUST-XXXXXX
   email: string;
-
-  /** Phone number (optional - not all customers provide it) */
   phone?: string;
-
-  /** Full name of the customer (e.g. "John Doe") */
   name: string;
-
-  /** Reference to User document (optional - null for guest checkouts) */
-  user?: Types.ObjectId;
-
-  // Address snapshot (from most recent or checkout data)
+  user?: Types.ObjectId; // link to authenticated user (optional)
   address?: string;
   city?: string;
   postcode?: string;
   country?: string;
 
-  // Order references & aggregates (maintained by hooks or service logic)
-  /** Array of Order ObjectIds - pure references, not populated */
-  orders: Types.ObjectId[];
-
+  orders: Types.ObjectId[]; // array of order _ids
   totalOrders: number;
   totalSpent: number;
   firstOrderDate?: Date;
   lastOrderDate?: Date;
   averageOrderValue?: number;
 
-  // Customer classification & marketing fields
   customerType: "retail" | "corporate" | "guest";
-
   isFavorite: boolean;
   tags: string[];
-
-  /** Internal/admin notes about this customer */
   notes?: string;
 
-  // Auto-managed timestamps
   createdAt: Date;
   updatedAt: Date;
 }
 
-/**
- * Aggregated statistics for admin dashboard / reports
- */
-export interface ICustomerStats {
-  totalCustomers: number;
-  newCustomersToday: number;
-  repeatCustomers: number;
-  totalRevenue: number;
-  averageOrderValue: number;
-  topCustomers: Array<{
-    customerId: string;
-    name: string;
-    email: string;
-    totalOrders: number;
-    totalSpent: number;
+// ───────────────────────────────────────────────
+// API RESPONSE SHAPES
+// ───────────────────────────────────────────────
+
+export interface CustomerListItem {
+  customerId: string;
+  name: string;
+  email: string;
+  phone?: string;
+  city?: string;
+  totalOrders: number;
+  totalSpent: number;
+  lastOrderDate?: Date;
+  customerType: string;
+  isFavorite: boolean;
+  orders?: Array<{
+    orderNumber: string;
+    totalAmount: number;
+    createdAt: Date;
+    status: string;
   }>;
 }
 
-/**
- * Query filters for searching/listing customers (admin panel)
- */
-export interface CustomerSearchFilters {
-  search?: string; // fuzzy match on name/email/phone
-  email?: string;
-  phone?: string;
-  name?: string;
-  city?: string;
-  postcode?: string;
-  customerType?: "retail" | "corporate" | "guest";
-  tags?: string[];
-  minOrders?: number;
-  maxOrders?: number;
-  minSpent?: number;
-  maxSpent?: number;
-  startDate?: Date | string;
-  endDate?: Date | string;
-  isFavorite?: boolean;
-  hasNotes?: boolean;
+export interface CustomerListResponse {
+  data: CustomerListItem[];
+  pagination: {
+    total: number;
+    page: number;
+    limit: number;
+    pages: number;
+  };
+  appliedFilters?: Record<string, any>;
 }
 
-/**
- * Simplified order summary for customer profile/history views
- */
-export interface CustomerOrder {
-  orderId: string; // string for safe frontend usage
-  orderNumber?: string;
-  totalAmount: number;
-  status: string;
-  orderDate: Date;
-  deliveryDate?: Date;
-  itemsCount: number;
-  mainProductName?: string; // e.g. name of first/most important product
-}
-
-/**
- * Full enriched customer profile response (for GET /customers/:id or similar)
- */
-export interface CustomerOrderHistory {
+export interface CustomerDetailResponse {
   customer: {
     customerId: string;
     name: string;
     email: string;
     phone?: string;
+    address?: string;
+    city?: string;
+    postcode?: string;
+    country?: string;
     customerType: string;
+    isFavorite: boolean;
+    tags: string[];
+    notes?: string;
     totalOrders: number;
     totalSpent: number;
-  };
-
-  /** Enriched/populated order details (display-ready) */
-  orderHistory: CustomerOrder[];
-
-  stats: {
-    totalOrders: number;
-    totalSpent: number;
-    averageOrderValue: number;
     firstOrderDate?: Date;
     lastOrderDate?: Date;
-    favoriteProduct?: string; // most frequently ordered product name (optional)
+    averageOrderValue?: number;
+    createdAt: Date;
+    updatedAt: Date;
+  };
+  recentOrders: Array<{
+    orderId: string;
+    orderNumber: string;
+    totalAmount: number;
+    status: string;
+    createdAt: Date;
+    deliveryDate?: Date;
+    itemsCount: number;
+    mainProduct?: string;
+  }>;
+  stats: {
+    favoriteProduct?: string;
   };
 }
 
-/**
- * Standard paginated API response shape
- */
-export interface PaginatedResponse<T> {
-  data: T[];
-  total: number;
-  page: number;
-  limit: number;
-  pages: number;
-  filters?: CustomerSearchFilters; // optional - return what filters were applied
+// ───────────────────────────────────────────────
+// QUERY DTO for list endpoint
+// ───────────────────────────────────────────────
+
+export interface CustomerListQueryDto {
+  page?: number;
+  limit?: number;
+  search?: string;
+  minOrders?: number;
+  maxOrders?: number;
+  minSpent?: number;
+  maxSpent?: number;
+  fromDate?: string | Date;
+  toDate?: string | Date;
+  customerType?: "retail" | "corporate" | "guest";
+  isFavorite?: boolean;
+  hasOrders?: boolean;
+  sortBy?:
+    | "totalSpent"
+    | "totalOrders"
+    | "createdAt"
+    | "name"
+    | "lastOrderDate";
+  sortOrder?: "asc" | "desc";
+  includeOrders?: boolean; // embed last 5 orders
 }
 
-/**
- * DTO for creating/updating customer from checkout flow
- */
-export interface CreateCustomerFromCheckoutDto {
-  name: string;
-  email: string;
-  phone?: string;
-  address?: string;
-  city?: string;
-  postcode?: string;
-  country?: string;
-  customerType?: "retail" | "corporate" | "guest";
-  orderId: Types.ObjectId;
-  userId?: Types.ObjectId; // only if authenticated user exists
+// ───────────────────────────────────────────────
+// REORDER HELPER RESPONSE
+// ───────────────────────────────────────────────
+
+export interface ReorderResponse {
+  originalOrderId: string;
+  items: Array<{
+    product: Types.ObjectId;
+    name: string;
+    quantity: number;
+    price: number;
+    startDate?: Date;
+    endDate?: Date;
+    hireOccasion?: string;
+    keepOvernight?: boolean;
+  }>;
+  suggestedAddress?: any; // IShippingAddress
+}
+export interface PaginationOptions {
+  page?: number;
+  limit?: number;
+  sortBy?: string;
+  sortOrder?: "asc" | "desc";
+}
+
+export interface PaginatedResult<T> {
+  data: T[];
+  pagination: {
+    total: number;
+    page: number;
+    limit: number;
+    pages: number;
+  };
 }

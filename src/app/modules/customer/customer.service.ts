@@ -1,587 +1,364 @@
-// import mongoose, { Types } from "mongoose";
-// import Customer from "./customer.model";
-// import { ICustomer } from "./customer.interface";
-// import Order from "../../modules/Order/order.model";
-// import User from "../Auth/user.model";
-// import ApiError from "../../utils/apiError";
-// import {
-//   CustomerSearchFilters,
-//   CustomerOrderHistory,
-//   ICustomerStats,
-//   PaginatedResponse,
-// } from "./customer.interface";
-// import { AnyARecord } from "dns";
-//
-// export const syncCustomerFromOrder = async (
-//   userId: Types.ObjectId,
-//   orderData: any,
-// ): Promise<ICustomer> => {
-//   const session = await mongoose.startSession();
-//   session.startTransaction();
-//
-//   try {
-//     // Find existing customer
-//     let customer = await Customer.findOne({ user: userId }).session(session);
-//
-//     const shippingAddress = orderData.shippingAddress;
-//     const name = `${shippingAddress.firstName} ${shippingAddress.lastName}`;
-//     const email = shippingAddress.email.toLowerCase();
-//     const phone = shippingAddress.phone;
-//
-//     const customerData = {
-//       user: userId,
-//       name: name.trim(),
-//       email,
-//       phone,
-//       address: shippingAddress.street || "",
-//       city: shippingAddress.city || "",
-//       postcode: shippingAddress.zipCode || "",
-//       country: shippingAddress.country || "UK",
-//       customerType: shippingAddress.companyName ? "corporate" : "retail",
-//       notes: shippingAddress.notes || "",
-//     };
-//
-//     if (customer) {
-//       // Update existing customer
-//       customer.totalOrders += 1;
-//       customer.totalSpent += orderData.totalAmount || 0;
-//       customer.lastOrderDate = new Date();
-//
-//       if (!customer.firstOrderDate) {
-//         customer.firstOrderDate = new Date();
-//       }
-//
-//       // Update contact info if not present
-//       if (!customer.phone && phone) customer.phone = phone;
-//       if (!customer.address && shippingAddress.street)
-//         customer.address = shippingAddress.street;
-//       if (!customer.city && shippingAddress.city)
-//         customer.city = shippingAddress.city;
-//       if (!customer.postcode && shippingAddress.zipCode)
-//         customer.postcode = shippingAddress.zipCode;
-//
-//       // Update customer type if corporate
-//       if (
-//         shippingAddress.companyName &&
-//         customer.customerType !== "corporate"
-//       ) {
-//         customer.customerType = "corporate";
-//       }
-//
-//       await customer.save({ session });
-//     } else {
-//       // Create new customer
-//       customer = new Customer({
-//         ...customerData,
-//         customerId: `CUST${Date.now().toString().slice(-8)}`,
-//         totalOrders: 1,
-//         totalSpent: orderData.totalAmount || 0,
-//         firstOrderDate: new Date(),
-//         lastOrderDate: new Date(),
-//         isFavorite: false,
-//         tags: ["new-customer"],
-//       });
-//
-//       await customer.save({ session });
-//     }
-//
-//     // Update user profile
-//     await User.findByIdAndUpdate(
-//       userId,
-//       {
-//         $set: {
-//           phone: phone || undefined,
-//           address: shippingAddress.street || undefined,
-//           city: shippingAddress.city || undefined,
-//           postcode: shippingAddress.zipCode || undefined,
-//         },
-//       },
-//       { session },
-//     );
-//
-//     await session.commitTransaction();
-//     session.endSession();
-//
-//     return customer;
-//   } catch (error) {
-//     await session.abortTransaction();
-//     session.endSession();
-//     throw error;
-//   }
-// };
-//
-// export const getAllCustomers = async (
-//   page: number = 1,
-//   limit: number = 20,
-//   filters: CustomerSearchFilters = {},
-// ): Promise<PaginatedResponse<ICustomer>> => {
-//   const skip = (page - 1) * limit;
-//   const query: any = {};
-//
-//   // Apply filters
-//   if (filters.search) {
-//     const searchRegex = new RegExp(filters.search, "i");
-//     query.$or = [
-//       { name: searchRegex },
-//       { email: searchRegex },
-//       { phone: searchRegex },
-//       { customerId: searchRegex },
-//       { address: searchRegex },
-//       { city: searchRegex },
-//     ];
-//   }
-//
-//   if (filters.phone) {
-//     query.phone = { $regex: filters.phone, $options: "i" };
-//   }
-//
-//   if (filters.email) {
-//     query.email = filters.email.toLowerCase();
-//   }
-//
-//   if (filters.name) {
-//     query.name = { $regex: filters.name, $options: "i" };
-//   }
-//
-//   if (filters.city) {
-//     query.city = { $regex: filters.city, $options: "i" };
-//   }
-//
-//   if (filters.postcode) {
-//     query.postcode = { $regex: filters.postcode, $options: "i" };
-//   }
-//
-//   if (filters.customerType) {
-//     query.customerType = filters.customerType;
-//   }
-//
-//   if (filters.tags && filters.tags.length > 0) {
-//     query.tags = { $all: filters.tags };
-//   }
-//
-//   if (filters.minOrders !== undefined) {
-//     query.totalOrders = { $gte: filters.minOrders };
-//   }
-//
-//   if (filters.maxOrders !== undefined) {
-//     query.totalOrders = { ...query.totalOrders, $lte: filters.maxOrders };
-//   }
-//
-//   if (filters.minSpent !== undefined) {
-//     query.totalSpent = { $gte: filters.minSpent };
-//   }
-//
-//   if (filters.maxSpent !== undefined) {
-//     query.totalSpent = { ...query.totalSpent, $lte: filters.maxSpent };
-//   }
-//
-//   if (filters.startDate) {
-//     query.lastOrderDate = { $gte: filters.startDate };
-//   }
-//
-//   if (filters.endDate) {
-//     query.lastOrderDate = { ...query.lastOrderDate, $lte: filters.endDate };
-//   }
-//
-//   if (filters.isFavorite !== undefined) {
-//     query.isFavorite = filters.isFavorite;
-//   }
-//
-//   if (filters.hasNotes !== undefined) {
-//     if (filters.hasNotes) {
-//       query.notes = { $exists: true, $ne: "" };
-//     } else {
-//       query.$or = [
-//         { notes: { $exists: false } },
-//         { notes: "" },
-//         { notes: { $exists: true, $eq: null } },
-//       ];
-//     }
-//   }
-//
-//   const [data, total] = await Promise.all([
-//     Customer.find(query)
-//       .sort({ lastOrderDate: -1, createdAt: -1 })
-//       .skip(skip)
-//       .limit(limit)
-//       .lean(),
-//     Customer.countDocuments(query),
-//   ]);
-//
-//   return {
-//     data,
-//     total,
-//     page,
-//     limit,
-//     pages: Math.ceil(total / limit),
-//   };
-// };
-//
-// export const getCustomerById = async (
-//   customerId: string,
-// ): Promise<ICustomer | null> => {
-//   if (!mongoose.Types.ObjectId.isValid(customerId)) {
-//     throw new ApiError("Invalid customer ID", 400);
-//   }
-//
-//   const customer = await Customer.findById(customerId).lean();
-//   if (!customer) {
-//     throw new ApiError("Customer not found", 404);
-//   }
-//
-//   return customer;
-// };
-//
-// export const getCustomerByUserId = async (
-//   userId: string,
-// ): Promise<ICustomer | null> => {
-//   if (!mongoose.Types.ObjectId.isValid(userId)) {
-//     throw new ApiError("Invalid user ID", 400);
-//   }
-//
-//   const customer = await Customer.findOne({ user: userId }).lean();
-//   return customer;
-// };
-//
-// export const searchCustomers = async (
-//   searchTerm: string,
-//   page: number = 1,
-//   limit: number = 20,
-// ): Promise<PaginatedResponse<ICustomer>> => {
-//   if (!searchTerm || searchTerm.trim().length < 2) {
-//     throw new ApiError("Search term must be at least 2 characters", 400);
-//   }
-//
-//   const skip = (page - 1) * limit;
-//   const searchRegex = new RegExp(searchTerm.trim(), "i");
-//
-//   const [data, total] = await Promise.all([
-//     Customer.find({
-//       $or: [
-//         { name: searchRegex },
-//         { email: searchRegex },
-//         { phone: searchRegex },
-//         { customerId: searchRegex },
-//         { address: searchRegex },
-//         { city: searchRegex },
-//         { postcode: searchRegex },
-//       ],
-//     })
-//       .sort({ lastOrderDate: -1 })
-//       .skip(skip)
-//       .limit(limit)
-//       .lean(),
-//     Customer.countDocuments({
-//       $or: [
-//         { name: searchRegex },
-//         { email: searchRegex },
-//         { phone: searchRegex },
-//         { customerId: searchRegex },
-//         { address: searchRegex },
-//         { city: searchRegex },
-//         { postcode: searchRegex },
-//       ],
-//     }),
-//   ]);
-//
-//   return {
-//     data,
-//     total,
-//     page,
-//     limit,
-//     pages: Math.ceil(total / limit),
-//   };
-// };
-//
-// export const getCustomerOrderHistory = async (
-//   customerId: string,
-// ): Promise<CustomerOrderHistory> => {
-//   const customer = await Customer.findById(customerId).lean();
-//   if (!customer) {
-//     throw new ApiError("Customer not found", 404);
-//   }
-//
-//   const orders = await Order.find({ user: customer.user })
-//     .sort({ createdAt: -1 })
-//     .populate("items.product", "name")
-//     .lean();
-//
-//   const orderHistory = orders.map((order) => ({
-//     orderId: order._id as Types.ObjectId,
-//     orderNumber: order.orderNumber || "",
-//     productName: order.items[0]?.name || "Multiple Items",
-//     quantity: order.items.reduce(
-//       (sum: any, item: any) => sum + item.quantity,
-//       0,
-//     ),
-//     totalAmount: order.totalAmount,
-//     status: order.status,
-//     orderDate: order.createdAt,
-//     deliveryDate: order.deliveryDate,
-//   }));
-//
-//   const favoriteProduct =
-//     orders.length > 0
-//       ? orders.reduce(
-//           (acc, order) => {
-//             order.items.forEach((item: any) => {
-//               const productName = item.name;
-//               acc[productName] = (acc[productName] || 0) + 1;
-//             });
-//             return acc;
-//           },
-//           {} as Record<string, number>,
-//         )
-//       : {};
-//
-//   const favoriteProductName =
-//     Object.keys(favoriteProduct).length > 0
-//       ? Object.entries(favoriteProduct).sort(([, a], [, b]) => b - a)[0][0]
-//       : undefined;
-//
-//   return {
-//     customer: {
-//       _id: customer._id,
-//       customerId: customer.customerId,
-//       name: customer.name,
-//       email: customer.email,
-//       phone: customer.phone,
-//       address: customer.address,
-//       city: customer.city,
-//       postcode: customer.postcode,
-//       totalOrders: customer.totalOrders,
-//       totalSpent: customer.totalSpent,
-//       lastOrderDate: customer.lastOrderDate,
-//     },
-//     orders: orderHistory,
-//     stats: {
-//       totalOrders: customer.totalOrders,
-//       totalSpent: customer.totalSpent,
-//       averageOrderValue:
-//         customer.totalOrders > 0
-//           ? Math.round(customer.totalSpent / customer.totalOrders)
-//           : 0,
-//       favoriteProduct: favoriteProductName,
-//       lastOrderDate: customer.lastOrderDate,
-//     },
-//   };
-// };
-//
-// export const getCustomerStats = async (): Promise<ICustomerStats> => {
-//   // Set today's date for "new customers today" calculation
-//   const today = new Date();
-//   today.setHours(0, 0, 0, 0);
-//   const topCustomersFromDB = await Customer.find()
-//     .sort({ totalSpent: -1 })
-//     .limit(10)
-//     .select("customerId name email totalOrders totalSpent")
-//     .lean<
-//       {
-//         customerId: string;
-//         name: string;
-//         email: string;
-//         totalOrders: number;
-//         totalSpent: number;
-//       }[]
-//     >();
-//
-//   // Run all DB queries in parallel for performance
-//   const [totalCustomers, newCustomersToday, repeatCustomers, revenueResult] =
-//     await Promise.all([
-//       // Total customers
-//       Customer.countDocuments(),
-//
-//       // Customers who placed their first order today
-//       Customer.countDocuments({ firstOrderDate: { $gte: today } }),
-//
-//       // Customers with more than 1 order
-//       Customer.countDocuments({ totalOrders: { $gt: 1 } }),
-//
-//       // Aggregate total revenue and total orders
-//       Customer.aggregate([
-//         {
-//           $group: {
-//             _id: null,
-//             totalRevenue: { $sum: "$totalSpent" },
-//             totalOrders: { $sum: "$totalOrders" },
-//           },
-//         },
-//       ]),
-//
-//       // Top 10 customers by spending
-//       Customer.find()
-//         .sort({ totalSpent: -1 })
-//         .limit(10)
-//         .select("customerId name email totalOrders totalSpent")
-//         .lean<{
-//           customerId: string;
-//           name: string;
-//           email: string;
-//           totalOrders: number;
-//           totalSpent: number;
-//         }>(),
-//     ]);
-//
-//   // Extract revenue and total orders from aggregation result
-//   const totalRevenue = revenueResult[0]?.totalRevenue || 0;
-//   const totalOrders = revenueResult[0]?.totalOrders || 0;
-//   const averageOrderValue =
-//     totalOrders > 0 ? parseFloat((totalRevenue / totalOrders).toFixed(2)) : 0;
-//
-//   // Map DB result to typed topCustomers array
-//   const topCustomers = topCustomersFromDB.map((customer) => ({
-//     customerId: customer.customerId, // business ID (string)
-//     name: customer.name,
-//     email: customer.email,
-//     totalOrders: customer.totalOrders,
-//     totalSpent: customer.totalSpent,
-//   }));
-//
-//   // Return fully typed ICustomerStats object
-//   return {
-//     totalCustomers,
-//     newCustomersToday,
-//     repeatCustomers,
-//     totalRevenue,
-//     averageOrderValue,
-//     topCustomers,
-//   };
-// };
-//
-// export const updateCustomer = async (
-//   customerId: string,
-//   updateData: Partial<ICustomer>,
-// ): Promise<ICustomer> => {
-//   const allowedFields = [
-//     "name",
-//     "phone",
-//     "address",
-//     "city",
-//     "postcode",
-//     "country",
-//     "notes",
-//     "customerType",
-//     "isFavorite",
-//     "tags",
-//   ];
-//
-//   const filteredData: Partial<ICustomer> = {};
-//   allowedFields.forEach((field) => {
-//     if (updateData[field as keyof ICustomer] !== undefined) {
-//       filteredData[field as keyof ICustomer] =
-//         updateData[field as keyof ICustomer];
-//     }
-//   });
-//
-//   const customer = await Customer.findByIdAndUpdate(
-//     customerId,
-//     { $set: filteredData },
-//     { new: true, runValidators: true },
-//   ).lean();
-//
-//   if (!customer) {
-//     throw new ApiError("Customer not found", 404);
-//   }
-//
-//   return customer;
-// };
-//
-// export const deleteCustomer = async (customerId: string): Promise<void> => {
-//   const customer = await Customer.findById(customerId);
-//   if (!customer) {
-//     throw new ApiError("Customer not found", 404);
-//   }
-//
-//   // Check if customer has orders
-//   const orderCount = await Order.countDocuments({ user: customer.user });
-//   if (orderCount > 0) {
-//     throw new ApiError(
-//       "Cannot delete customer with existing orders. Archive instead.",
-//       400,
-//     );
-//   }
-//
-//   await customer.deleteOne();
-// };
-//
-// export const getCustomersByDateRange = async (
-//   startDate: Date,
-//   endDate: Date,
-//   page: number = 1,
-//   limit: number = 50,
-// ): Promise<PaginatedResponse<ICustomer>> => {
-//   const skip = (page - 1) * limit;
-//
-//   const [data, total] = await Promise.all([
-//     Customer.find({
-//       lastOrderDate: {
-//         $gte: startDate,
-//         $lte: endDate,
-//       },
-//     })
-//       .sort({ lastOrderDate: -1 })
-//       .skip(skip)
-//       .limit(limit)
-//       .lean(),
-//     Customer.countDocuments({
-//       lastOrderDate: {
-//         $gte: startDate,
-//         $lte: endDate,
-//       },
-//     }),
-//   ]);
-//
-//   return {
-//     data,
-//     total,
-//     page,
-//     limit,
-//     pages: Math.ceil(total / limit),
-//   };
-// };
-//
-// export const toggleFavorite = async (
-//   customerId: string,
-// ): Promise<ICustomer> => {
-//   const customer = await Customer.findById(customerId);
-//   if (!customer) {
-//     throw new ApiError("Customer not found", 404);
-//   }
-//
-//   customer.isFavorite = !customer.isFavorite;
-//   await customer.save();
-//
-//   return customer.toObject();
-// };
-//
-// export const addCustomerTag = async (
-//   customerId: string,
-//   tag: string,
-// ): Promise<ICustomer> => {
-//   const customer = await Customer.findById(customerId);
-//   if (!customer) {
-//     throw new ApiError("Customer not found", 404);
-//   }
-//
-//   if (!customer.tags.includes(tag)) {
-//     customer.tags.push(tag);
-//     await customer.save();
-//   }
-//
-//   return customer.toObject();
-// };
-//
-// export const removeCustomerTag = async (
-//   customerId: string,
-//   tag: string,
-// ): Promise<ICustomer> => {
-//   const customer = await Customer.findById(customerId);
-//   if (!customer) {
-//     throw new ApiError("Customer not found", 404);
-//   }
-//
-//   customer.tags = customer.tags.filter((t) => t !== tag);
-//   await customer.save();
-//
-//   return customer.toObject();
-// };
+// src/modules/customer/customer.service.ts
+import { Types } from "mongoose";
+import Customer from "./customer.model";
+import Order from "../../modules/Order/order.model";
+import { sendCustomerOrderEmail } from "./email.service";
+import Product from "../../modules/Product/product.model";
+
+// ─── Minimal types for clarity ──────────────────────────────────────
+interface ListQuery {
+  page?: number;
+  limit?: number;
+  search?: string;
+  minOrders?: number;
+  maxOrders?: number;
+  minSpent?: number;
+  maxSpent?: number;
+  fromDate?: string;
+  toDate?: string;
+  customerType?: "retail" | "corporate" | "guest";
+  isFavorite?: boolean;
+  hasOrders?: boolean;
+  sortBy?:
+    | "totalSpent"
+    | "totalOrders"
+    | "createdAt"
+    | "name"
+    | "lastOrderDate";
+  sortOrder?: "asc" | "desc";
+  includeOrders?: boolean;
+}
+
+interface Paginated<T> {
+  data: T[];
+  pagination: {
+    total: number;
+    page: number;
+    limit: number;
+    pages: number;
+  };
+}
+interface ReorderItemInput {
+  productId: string;
+  startDate: string; // ISO string
+  endDate: string; // ISO string
+}
+export interface PreparedReorderItem {
+  product: string;
+  name: string;
+  quantity: number;
+  price: number;
+  startDate?: Date;
+  endDate?: Date;
+}
+// ─── Shipping Address (lean-safe) ────────────────────────────────────
+interface ShippingAddress {
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  email?: string;
+  country?: string;
+  city?: string;
+  street?: string;
+  zipCode?: string;
+  apartment?: string;
+  location?: string;
+  companyName?: string;
+  locationAccessibility?: string;
+  deliveryTime?: string;
+  collectionTime?: string;
+  floorType?: string;
+  userType?: string;
+  keepOvernight?: boolean;
+  hireOccasion?: string;
+  notes?: string;
+  differentBillingAddress?: boolean;
+  billingFirstName?: string;
+  billingLastName?: string;
+  billingStreet?: string;
+  billingCity?: string;
+  billingZipCode?: string;
+  billingCompanyName?: string;
+}
+interface LeanOrderForReorder {
+  _id: Types.ObjectId;
+  user?: {
+    _id?: Types.ObjectId;
+    name?: string;
+    email?: string;
+    phone?: string;
+    address?: string;
+    city?: string;
+    postcode?: string;
+  };
+  items?: Array<{
+    product: Types.ObjectId;
+    name: string;
+    quantity: number;
+    price: number;
+    startDate?: Date;
+    endDate?: Date;
+    hireOccasion?: string;
+    keepOvernight?: boolean;
+  }>;
+  shippingAddress?: ShippingAddress;
+}
+
+// ─── Utils ──────────────────────────────────────────────────────────
+function splitFullName(fullName?: string | null): {
+  firstName: string;
+  lastName: string;
+} {
+  if (!fullName?.trim()) return { firstName: "", lastName: "" };
+
+  const parts = fullName.trim().split(/\s+/);
+  if (parts.length === 1) return { firstName: parts[0], lastName: "" };
+
+  return {
+    firstName: parts[0],
+    lastName: parts.slice(1).join(" "),
+  };
+}
+
+// ─── Service ────────────────────────────────────────────────────────
+export class CustomerService {
+  /**
+   * Get list of customers with filters & pagination
+   */
+  static async getCustomers(query: ListQuery): Promise<Paginated<any>> {
+    const {
+      page = 1,
+      limit = 20,
+      search = "",
+      minOrders,
+      maxOrders,
+      minSpent,
+      maxSpent,
+      fromDate,
+      toDate,
+      customerType,
+      isFavorite,
+      hasOrders,
+      sortBy = "createdAt",
+      sortOrder = "desc",
+      includeOrders = false,
+    } = query;
+
+    const filter: Record<string, any> = {};
+
+    // Search
+    if (search.trim()) {
+      const regex = new RegExp(search.trim(), "i");
+      filter.$or = [
+        { name: regex },
+        { email: regex },
+        { phone: regex },
+        { customerId: regex },
+      ];
+    }
+
+    if (customerType) filter.customerType = customerType;
+    if (typeof isFavorite === "boolean") filter.isFavorite = isFavorite;
+
+    if (hasOrders === true) {
+      filter.totalOrders = { ...(filter.totalOrders || {}), $gt: 0 };
+    }
+
+    if (minOrders !== undefined || maxOrders !== undefined) {
+      filter.totalOrders = filter.totalOrders || {};
+      if (minOrders !== undefined) filter.totalOrders.$gte = minOrders;
+      if (maxOrders !== undefined) filter.totalOrders.$lte = maxOrders;
+    }
+
+    if (minSpent !== undefined || maxSpent !== undefined) {
+      filter.totalSpent = filter.totalSpent || {};
+      if (minSpent !== undefined) filter.totalSpent.$gte = minSpent;
+      if (maxSpent !== undefined) filter.totalSpent.$lte = maxSpent;
+    }
+
+    if (fromDate || toDate) {
+      filter.lastOrderDate = filter.lastOrderDate || {};
+      if (fromDate) filter.lastOrderDate.$gte = new Date(fromDate);
+      if (toDate) filter.lastOrderDate.$lte = new Date(toDate);
+    }
+
+    const skip = (page - 1) * limit;
+
+    const sort: Record<string, 1 | -1> = {
+      [sortBy]: sortOrder === "asc" ? 1 : -1,
+    };
+
+    const queryBuilder = Customer.find(filter)
+      .sort(sort)
+      .skip(skip)
+      .limit(limit);
+
+    if (includeOrders) {
+      queryBuilder.populate("orders");
+    }
+
+    const customers = await queryBuilder.lean();
+    const total = await Customer.countDocuments(filter);
+    const pages = Math.ceil(total / limit);
+
+    const data = customers.map((c: any) => ({
+      customerId: c.customerId,
+      name: c.name,
+      email: c.email,
+      phone: c.phone,
+      city: c.city,
+      totalOrders: c.totalOrders ?? 0,
+      totalSpent: c.totalSpent ?? 0,
+      lastOrderDate: c.lastOrderDate ?? null,
+      customerType: c.customerType,
+      isFavorite: c.isFavorite ?? false,
+      orders: Array.isArray(c.orders) ? c.orders : [],
+    }));
+
+    return {
+      data,
+      pagination: { total, page, limit, pages },
+    };
+  }
+
+  /**
+   * Get detailed view of a single customer + recent orders
+   */
+  static async getCustomerDetail(customerId: string) {
+    const customer = await Customer.findOne({ customerId })
+      .populate({
+        path: "orders",
+        options: { sort: { createdAt: -1 }, limit: 10 },
+        select: "orderNumber totalAmount status createdAt deliveryDate items",
+      })
+      .lean();
+
+    if (!customer) {
+      throw new Error("Customer not found");
+    }
+
+    const recentOrders = (customer.orders || []).map((order: any) => ({
+      orderId: String(order._id),
+      orderNumber: order.orderNumber,
+      totalAmount: order.totalAmount,
+      status: order.status,
+      createdAt: order.createdAt,
+      deliveryDate: order.deliveryDate,
+      itemsCount: order.items?.length || 0,
+      mainProduct: order.items?.[0]?.name || null,
+    }));
+
+    return {
+      customer: {
+        customerId: customer.customerId,
+        name: customer.name,
+        email: customer.email,
+        phone: customer.phone,
+        address: customer.address,
+        city: customer.city,
+        postcode: customer.postcode,
+        country: customer.country,
+        customerType: customer.customerType,
+        isFavorite: customer.isFavorite,
+        tags: customer.tags,
+        notes: customer.notes,
+        totalOrders: customer.totalOrders,
+        totalSpent: customer.totalSpent,
+        firstOrderDate: customer.firstOrderDate,
+        lastOrderDate: customer.lastOrderDate,
+        averageOrderValue: customer.averageOrderValue,
+        createdAt: customer.createdAt,
+        updatedAt: customer.updatedAt,
+      },
+      recentOrders,
+      stats: {
+        favoriteProduct: recentOrders[0]?.mainProduct || null,
+      },
+    };
+  }
+
+  /**
+   * Prepare data for re-ordering
+   */
+  // ─── Lean order type with optional fields ──────────────
+
+  // ─── Prepare reorder safely ─────────────────────────────
+  static async prepareReorder(
+    customerId: string,
+    itemsToReorder: ReorderItemInput[],
+  ): Promise<{
+    customerId: string;
+    items: PreparedReorderItem[];
+    suggestedAddress: ShippingAddress;
+    totalAmount: number;
+  }> {
+    // Find customer
+    const customer = await Customer.findOne({ customerId }).lean();
+    if (!customer) throw new Error("Customer not found");
+
+    if (!customer.email) throw new Error("Customer email not found");
+
+    const shipping =
+      customer.orders && customer.orders.length > 0
+        ? {} // if you want, you can fetch last order's shippingAddress
+        : {};
+
+    // Get product details from Product collection
+    const productIds = itemsToReorder.map((i) => i.productId);
+    const products = await Product.find({ _id: { $in: productIds } }).lean();
+
+    // Prepare items
+    const items: PreparedReorderItem[] = itemsToReorder.map((r) => {
+      const product = products.find((p) => String(p._id) === r.productId);
+      return {
+        product: r.productId,
+        name: product?.name || "Product not available",
+        quantity: 1,
+        price: product?.price || 0,
+        startDate: new Date(r.startDate),
+        endDate: new Date(r.endDate),
+      };
+    });
+
+    const totalAmount = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
+
+    const suggestedAddress: ShippingAddress = {
+      firstName: customer.name?.split(" ")[0] || "",
+      lastName: customer.name?.split(" ").slice(1).join(" ") || "",
+      phone: customer.phone || "",
+      email: customer.email,
+      country: customer.country || "Bangladesh",
+      city: customer.city || "",
+      street: customer.address || "",
+      zipCode: customer.postcode || "",
+      deliveryTime: "09:00",
+      keepOvernight: false,
+      hireOccasion: "",
+      notes: "",
+    };
+
+    // Send email
+    await sendCustomerOrderEmail("order-received", {
+      to: customer.email,
+      customerName: customer.name || "Customer",
+      orderId: "N/A",
+      eventDate: items.map((i) => i.startDate || "2026-02-01") as any,
+      deliveryTime: suggestedAddress.deliveryTime as any,
+      deliveryAddress: `${suggestedAddress.street}, ${suggestedAddress.city}`,
+      totalAmount,
+      orderItems: items.map((i) => ({
+        name: i.name,
+        quantity: i.quantity,
+        price: i.price,
+        subtotal: i.price * i.quantity,
+      })),
+    });
+
+    return {
+      customerId,
+      items,
+      suggestedAddress,
+      totalAmount,
+    };
+  }
+}
