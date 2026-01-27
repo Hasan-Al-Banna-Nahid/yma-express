@@ -59,12 +59,24 @@ router.post(
 
   restrictTo("superadmin", "admin", "editor"),
   upload.fields([
-    { name: "imageCover", maxCount: 1 },
-    { name: "images[]", maxCount: 5 },
+    { name: "imageCover", maxCount: 1 }, // cover image
+    { name: "imageCover[]", maxCount: 1 }, // just in case frontend sends array
+    { name: "images", maxCount: 5 }, // product images
+    { name: "images[]", maxCount: 5 }, // product images as array
   ]),
   createProduct,
 );
-router.patch("/:id", restrictTo("admin", "editor"), updateProduct);
+router.patch(
+  "/:id",
+  restrictTo("admin", "editor"),
+  upload.fields([
+    { name: "imageCover", maxCount: 1 },
+    { name: "imageCover[]", maxCount: 1 },
+    { name: "images", maxCount: 5 },
+    { name: "images[]", maxCount: 5 },
+  ]),
+  updateProduct,
+);
 router.delete(
   "/:id",
   restrictTo("superadmin", "admin", "editor"),

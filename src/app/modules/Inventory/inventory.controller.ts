@@ -4,356 +4,198 @@ import ApiError from "../../utils/apiError";
 import { ApiResponse } from "../../utils/apiResponse";
 import {
   createInventoryItem,
+  updateInventoryItem,
   getInventoryItem,
   getInventoryItems,
-  updateInventoryItem,
   deleteInventoryItem,
   getAvailableInventory,
   getBookedInventory,
   checkInventoryAvailability,
-  // releaseExpiredCartItems,
 } from "./inventory.service";
-import Product from "../../modules/Product/product.model";
-import Inventory from "../../modules/Inventory/inventory.model";
 
-// inventory.controller.ts
+/* ---------------------------------- */
+/* CREATE INVENTORY ITEM               */
+/* ---------------------------------- */
 export const createInventoryItemHandler = asyncHandler(
   async (req: Request, res: Response) => {
-    console.log("📦 Request body keys:", Object.keys(req.body));
-    console.log("📦 Request body values:", req.body);
-    console.log("📦 Files received:", req.files?.length || 0);
+    const inventoryData = { ...req.body };
 
-    // Log all fields to see what's actually coming in
-    for (const [key, value] of Object.entries(req.body)) {
-      console.log(`📋 ${key}: ${value} (type: ${typeof value})`);
-    }
-
-    // Destructure with defaults to avoid undefined errors
-    const {
-      productName = "",
-      width = "",
-      length = "",
-      height = "",
-      isSensitive = "false",
-      deliveryTime = "",
-      collectionTime = "",
-      rentalPrice = "",
-      quantity = "",
-      categories = "",
-      warehouse = "",
-      vendor = "",
-      status = "available",
-    } = req.body;
-
-    // VALIDATION: Check required fields
-    const requiredFields = [
-      { field: "productName", value: productName },
-      { field: "width", value: width },
-      { field: "length", value: length },
-      { field: "height", value: height },
-      { field: "deliveryTime", value: deliveryTime },
-      { field: "collectionTime", value: collectionTime },
-      { field: "rentalPrice", value: rentalPrice },
-      { field: "quantity", value: quantity },
-      { field: "categories", value: categories },
-      { field: "warehouse", value: warehouse },
-      { field: "vendor", value: vendor },
-    ];
-
-    const missingFields = requiredFields
-      .filter((item) => !item.value || item.value.trim() === "")
-      .map((item) => item.field);
-
-    console.log("🔍 Missing fields:", missingFields);
-
-    if (missingFields.length > 0) {
-      throw new ApiError(
-        `Missing required fields: ${missingFields.join(", ")}`,
-        400
+    // Handle uploaded files
+    if (req.files && Array.isArray(req.files)) {
+      inventoryData.images = req.files.map(
+        (file: Express.Multer.File) => file.path,
       );
     }
 
-    // Handle file uploads for images
-    const images: string[] = [];
-    if (req.files && Array.isArray(req.files)) {
-      console.log("📸 Processing uploaded files...");
-      images.push(...req.files.map((file: Express.Multer.File) => file.path));
-      console.log("📸 Images paths:", images);
+    // Parse dimensions if passed as strings
+    if (inventoryData.dimensions) {
+      if (typeof inventoryData.dimensions === "string") {
+        inventoryData.dimensions = JSON.parse(inventoryData.dimensions);
+      }
+      // ensure numeric
+      inventoryData.dimensions.width = parseFloat(
+        inventoryData.dimensions.width,
+      );
+      inventoryData.dimensions.length = parseFloat(
+        inventoryData.dimensions.length,
+      );
+      inventoryData.dimensions.height = parseFloat(
+        inventoryData.dimensions.height,
+      );
     }
 
-    if (images.length === 0) {
-      throw new ApiError("At least one image is required", 400);
-    }
-
-    // Prepare inventory data
-    const inventoryData = {
-      productName: productName.trim(),
-      description: `${productName.trim()} - Available for rent`,
-      dimensions: {
-        width: parseFloat(width),
-        length: parseFloat(length),
-        height: parseFloat(height),
-        unit: "feet",
-      },
-      isSensitive: isSensitive === "true" || isSensitive === true,
-      images: images,
-      deliveryTime: parseInt(deliveryTime),
-      collectionTime: parseInt(collectionTime),
-      rentalPrice: parseFloat(rentalPrice),
-      quantity: parseInt(quantity),
-      // Handle categories - could be string or array
-      category: Array.isArray(categories)
-        ? categories[0]
-        : typeof categories === "string"
-        ? categories.split(",")[0].trim()
-        : categories,
-      categories: Array.isArray(categories)
-        ? categories
-        : typeof categories === "string"
-        ? categories.split(",").map((cat: string) => cat.trim())
-        : [categories],
-      warehouse: warehouse,
-      vendor: vendor,
-      status: status,
-    };
-
-    console.log("✅ Final inventory data:", {
-      productName: inventoryData.productName,
-      categories: inventoryData.categories,
-      hasCategories: inventoryData.categories.length > 0,
-      category: inventoryData.category,
-    });
-
-    // Create inventory item
-    const inventoryItem = await createInventoryItem(inventoryData);
-
-    console.log(`✅ Inventory item created: ${inventoryItem._id}`);
+    const item = await createInventoryItem(inventoryData);
 
     ApiResponse(res, 201, "Inventory item created successfully", {
-      inventoryItem: {
-        id: inventoryItem._id,
-        productName: inventoryItem.productName,
-        quantity: inventoryItem.quantity,
-        warehouse: inventoryItem.warehouse,
-        vendor: inventoryItem.vendor,
-        rentalPrice: inventoryItem.rentalPrice,
-        status: inventoryItem.status,
-        categories: inventoryItem.categories,
-      },
+      inventoryItem: item,
     });
-  }
+  },
 );
 
+/* ---------------------------------- */
+/* UPDATE INVENTORY ITEM               */
+/* ---------------------------------- */
 export const updateInventoryItemHandler = asyncHandler(
   async (req: Request, res: Response) => {
     const inventoryId = req.params.id;
-    const updateData = req.body;
+    const updateData = { ...req.body };
 
-    console.log("🔄 Update inventory request:", {
-      inventoryId,
-      updateData: Object.keys(updateData),
-    });
-
-    // Handle file uploads - all optional
-    if (req.files && Array.isArray(req.files) && req.files.length > 0) {
+    // Handle uploaded files
+    if (req.files && Array.isArray(req.files)) {
       const newImages = req.files.map((file: Express.Multer.File) => file.path);
-      const existingItem = await Inventory.findById(inventoryId);
-      const existingImages = existingItem?.images || [];
-      updateData.images = [...existingImages, ...newImages];
+      const existingItem = await getInventoryItem(inventoryId);
+      updateData.images = [...(existingItem.images || []), ...newImages];
     }
 
-    // Parse numeric fields if provided (all optional)
-    const numericFields = [
-      "width",
-      "length",
-      "height",
-      "rentalPrice",
-      "quantity",
-      "deliveryTime",
-      "collectionTime",
-      "minBookingDays",
-      "maxBookingDays",
-    ];
-
-    numericFields.forEach((field) => {
-      if (req.body[field] !== undefined && req.body[field] !== "") {
-        if (field === "width" || field === "length" || field === "height") {
-          if (!updateData.dimensions) updateData.dimensions = {};
-          updateData.dimensions[field] = parseFloat(req.body[field]);
-        } else {
-          updateData[field] = parseFloat(req.body[field]);
-        }
-      }
-    });
-
-    // Parse boolean fields if provided
-    if (req.body.isSensitive !== undefined) {
-      updateData.isSensitive =
-        req.body.isSensitive === "true" || req.body.isSensitive === true;
+    // Parse numeric fields in dimensions if present
+    if (updateData.dimensions && typeof updateData.dimensions === "string") {
+      updateData.dimensions = JSON.parse(updateData.dimensions);
     }
 
-    // Update product if productName is provided
-    if (req.body.productName) {
-      const inventoryItem = await Inventory.findById(inventoryId);
-      if (inventoryItem && inventoryItem.product) {
-        await Product.findByIdAndUpdate(
-          inventoryItem.product,
-          {
-            name: req.body.productName,
-            title: req.body.productName,
-          },
-          { new: true }
-        );
-        updateData.productName = req.body.productName;
-      }
-    }
-
-    console.log("📋 Update data to save:", updateData);
-
-    const inventoryItem = await updateInventoryItem(inventoryId, updateData);
+    const updatedItem = await updateInventoryItem(inventoryId, updateData);
 
     ApiResponse(res, 200, "Inventory item updated successfully", {
-      inventoryItem,
+      inventoryItem: updatedItem,
     });
-  }
+  },
 );
 
-// Keep all other functions exactly as they are
+/* ---------------------------------- */
+/* GET SINGLE INVENTORY ITEM           */
+/* ---------------------------------- */
 export const getInventoryItemHandler = asyncHandler(
   async (req: Request, res: Response) => {
-    const inventoryItem = await getInventoryItem(req.params.id);
-
+    const item = await getInventoryItem(req.params.id);
     ApiResponse(res, 200, "Inventory item retrieved successfully", {
-      inventoryItem,
+      inventoryItem: item,
     });
-  }
+  },
 );
 
+/* ---------------------------------- */
+/* GET ALL INVENTORY ITEMS             */
+/* ---------------------------------- */
 export const getInventoryItemsHandler = asyncHandler(
   async (req: Request, res: Response) => {
-    const inventoryItems = await getInventoryItems(req.query);
-
+    const { startDate, endDate, ...filter } = req.query;
+    const items = await getInventoryItems(
+      filter,
+      startDate ? new Date(startDate as string) : undefined,
+      endDate ? new Date(endDate as string) : undefined,
+    );
     ApiResponse(res, 200, "Inventory items retrieved successfully", {
-      inventoryItems,
+      inventoryItems: items,
     });
-  }
+  },
 );
 
+/* ---------------------------------- */
+/* DELETE INVENTORY ITEM               */
+/* ---------------------------------- */
 export const deleteInventoryItemHandler = asyncHandler(
   async (req: Request, res: Response) => {
     await deleteInventoryItem(req.params.id);
-
     ApiResponse(res, 200, "Inventory item deleted successfully", {});
-  }
+  },
 );
 
+/* ---------------------------------- */
+/* GET AVAILABLE INVENTORY             */
+/* ---------------------------------- */
 export const getAvailableInventoryHandler = asyncHandler(
   async (req: Request, res: Response) => {
-    const { productId, startDate, endDate, warehouse } = req.query;
+    const { productName, startDate, endDate, warehouse } = req.query;
 
-    if (!productId || !startDate || !endDate) {
+    if (!productName || !startDate || !endDate) {
       throw new ApiError(
-        "Please provide productId, startDate and endDate query parameters",
-        400
+        "Please provide productName, startDate, and endDate",
+        400,
       );
     }
 
-    const availableInventory = await getAvailableInventory(
-      productId as string,
+    const items = await getAvailableInventory(
+      productName as string,
       new Date(startDate as string),
       new Date(endDate as string),
-      warehouse as string | undefined
+      warehouse as string | undefined,
     );
 
     ApiResponse(res, 200, "Available inventory retrieved successfully", {
-      availableInventory,
+      availableInventory: items,
     });
-  }
+  },
 );
 
+/* ---------------------------------- */
+/* GET BOOKED INVENTORY                */
+/* ---------------------------------- */
 export const getBookedInventoryHandler = asyncHandler(
   async (req: Request, res: Response) => {
-    const { productId, startDate, endDate, warehouse } = req.query;
+    const { productName, startDate, endDate, warehouse } = req.query;
 
-    if (!productId || !startDate || !endDate) {
+    if (!productName || !startDate || !endDate) {
       throw new ApiError(
-        "Please provide productId, startDate and endDate query parameters",
-        400
+        "Please provide productName, startDate, and endDate",
+        400,
       );
     }
 
-    const bookedInventory = await getBookedInventory(
-      productId as string,
+    const items = await getBookedInventory(
+      productName as string,
       new Date(startDate as string),
       new Date(endDate as string),
-      warehouse as string | undefined
+      warehouse as string | undefined,
     );
 
     ApiResponse(res, 200, "Booked inventory retrieved successfully", {
-      bookedInventory,
+      bookedInventory: items,
     });
-  }
+  },
 );
 
+/* ---------------------------------- */
+/* CHECK INVENTORY AVAILABILITY        */
+/* ---------------------------------- */
 export const checkInventoryAvailabilityHandler = asyncHandler(
   async (req: Request, res: Response) => {
-    const { productId, startDate, endDate, quantity } = req.query;
+    const { productName, startDate, endDate, quantity } = req.body;
 
-    if (!productId || !startDate || !endDate || !quantity) {
+    if (!productName || !startDate || !endDate || !quantity) {
       throw new ApiError(
-        "Please provide productId, startDate, endDate and quantity query parameters",
-        400
+        "Please provide productName, startDate, endDate, and quantity",
+        400,
       );
     }
 
     const availability = await checkInventoryAvailability(
-      productId as string,
+      productName as string,
       new Date(startDate as string),
       new Date(endDate as string),
-      parseInt(quantity as string)
+      parseInt(quantity as string),
     );
 
     ApiResponse(res, 200, "Inventory availability checked successfully", {
       availability,
     });
-  }
-);
-
-// export const releaseExpiredCartItemsHandler = asyncHandler(
-//   async (req: Request, res: Response) => {
-//     const count = await releaseExpiredCartItems();
-//
-//     ApiResponse(res, 200, "Expired cart items released successfully", {
-//       count,
-//     });
-//   }
-// );
-
-// New endpoint for product availability
-export const checkProductAvailabilityHandler = asyncHandler(
-  async (req: Request, res: Response) => {
-    const { productId, startDate, endDate, quantity } = req.body;
-
-    if (!productId || !startDate || !endDate || !quantity) {
-      throw new ApiError(
-        "Please provide productId, startDate, endDate and quantity in request body",
-        400
-      );
-    }
-
-    const availability = await checkInventoryAvailability(
-      productId,
-      new Date(startDate),
-      new Date(endDate),
-      quantity
-    );
-
-    ApiResponse(res, 200, "Product availability checked successfully", {
-      productId,
-      startDate,
-      endDate,
-      requestedQuantity: quantity,
-      ...availability,
-    });
-  }
+  },
 );

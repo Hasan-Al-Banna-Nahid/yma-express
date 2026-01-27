@@ -5,6 +5,7 @@ import ApiError from "../../utils/apiError";
 import { Types } from "mongoose";
 import Category from "../Category/category.model";
 import { uploadToCloudinary } from "../../utils/cloudinary.util";
+import Product from "./product.model";
 
 // Add these functions to your existing product.controller.ts
 
@@ -250,571 +251,72 @@ const validateRequiredFields = (
   return missing;
 };
 
-/* =========================
-   CREATE PRODUCT WITH FILE UPLOAD
-========================= */
+/* ---------------- CREATE PRODUCT ---------------- */
 export const createProduct = asyncHandler(
   async (req: Request, res: Response, next: NextFunction) => {
-    console.log("=== CREATE PRODUCT CONTROLLER START ===");
-    console.log("Request headers:", req.headers["content-type"]);
-    console.log("Request body keys:", Object.keys(req.body));
-    console.log("Request files type:", typeof req.files);
-
-    // Check if files exist in the request
-    if (!req.files) {
-      console.log("ERROR: No files found in request");
-      throw new ApiError("No files uploaded. Please upload images.", 400);
-    }
-
-    // Debug the files structure
-    const files = req.files as any;
-    console.log("Files object structure:", JSON.stringify(files, null, 2));
-    console.log("Files object keys:", Object.keys(files));
-
-    // Extract files with proper type handling
-    let imageCoverFile: Express.Multer.File | undefined;
-    let imageFiles: Express.Multer.File[] = [];
-
-    // Handle imageCover - check multiple possible field names
-    if (files.imageCover && files.imageCover.length > 0) {
-      imageCoverFile = files.imageCover[0];
-    } else if (files["imageCover[]"] && files["imageCover[]"].length > 0) {
-      imageCoverFile = files["imageCover[]"][0];
-    } else if (Array.isArray(files) && files.length > 0) {
-      // If files is an array (unlikely but possible)
-      const fileArray = files as Express.Multer.File[];
-      imageCoverFile = fileArray[0];
-      console.log(
-        "Found imageCover in files array:",
-        imageCoverFile.originalname,
-      );
-    }
-
-    if (!imageCoverFile) {
-      console.log("ERROR: No imageCover file found");
-      throw new ApiError("Cover image is required", 400);
-    }
-
-    // Handle images - check multiple possible field names
-    if (
-      files.images &&
-      Array.isArray(files.images) &&
-      files.images.length > 0
-    ) {
-      imageFiles = files.images;
-      console.log(`Found ${imageFiles.length} images in 'images' field`);
-    } else if (
-      files["images[]"] &&
-      Array.isArray(files["images[]"]) &&
-      files["images[]"].length > 0
-    ) {
-      imageFiles = files["images[]"];
-      console.log(`Found ${imageFiles.length} images in 'images[]' field`);
-    } else if (files.image && files.image.length > 0) {
-      // Check singular 'image' field
-      imageFiles = Array.isArray(files.image) ? files.image : [files.image];
-      console.log(`Found ${imageFiles.length} images in 'image' field`);
-    }
-
-    // If still no images, check if there's a single file that's not the cover
-    if (imageFiles.length === 0) {
-      // Check all file fields
-      for (const fieldName in files) {
-        if (fieldName !== "imageCover" && fieldName !== "imageCover[]") {
-          const fieldFiles = files[fieldName];
-          if (Array.isArray(fieldFiles) && fieldFiles.length > 0) {
-            imageFiles = fieldFiles;
-            console.log(
-              `Found ${imageFiles.length} images in '${fieldName}' field`,
-            );
-            break;
-          }
-        }
-      }
-    }
-
-    if (imageFiles.length === 0) {
-      console.log("ERROR: No product images found");
-      throw new ApiError("At least one product image is required", 400);
-    }
-
-    if (imageFiles.length > 5) {
-      throw new ApiError("Maximum 5 images allowed", 400);
-    }
-
-    console.log(
-      `Processing: 1 cover image and ${imageFiles.length} product images`,
-    );
-
-    // Upload files to Cloudinary
-    let imageCoverUrl = "";
-    let imageUrls: string[] = [];
-
     try {
-      console.log("Uploading cover image to Cloudinary...");
-      imageCoverUrl = await uploadToCloudinary(imageCoverFile);
-      console.log("Cover image uploaded successfully:", imageCoverUrl);
+      const files = req.files as Express.Multer.File[] | undefined;
+      const imageUrls: string[] = [];
 
-      console.log("Uploading product images to Cloudinary...");
-      for (let i = 0; i < imageFiles.length; i++) {
-        const file = imageFiles[i];
-        console.log(
-          `Uploading product image ${i + 1}/${imageFiles.length}: ${
-            file.originalname
-          }`,
-        );
-        const url = await uploadToCloudinary(file);
-        imageUrls.push(url);
-        console.log(`Image ${i + 1} uploaded: ${url}`);
-      }
-      console.log("All images uploaded successfully");
-    } catch (error: any) {
-      console.error("Cloudinary upload error:", error);
-      throw new ApiError(`Failed to upload images: ${error.message}`, 500);
-    }
-
-    // Get and validate text fields from request body
-    console.log("Processing request body fields...");
-    const {
-      name,
-      description,
-      summary,
-      price,
-      perDayPrice,
-      perWeekPrice,
-      deliveryAndCollection,
-      priceDiscount,
-      duration,
-      maxGroupSize,
-      difficulty,
-      categories,
-      location,
-      dimensions,
-      availableFrom,
-      availableUntil,
-      size,
-      active = "true",
-      stock,
-      isSensitive = "false",
-      material,
-      design,
-      ageRange,
-      safetyFeatures,
-      qualityAssurance,
-      deliveryTimeOptions,
-      collectionTimeOptions,
-      defaultDeliveryTime,
-      defaultCollectionTime,
-      deliveryTimeFee,
-      collectionTimeFee,
-    } = req.body;
-
-    // Log received fields for debugging
-    console.log("Received fields:", {
-      name,
-      description: description ? `${description.substring(0, 50)}...` : "empty",
-      price,
-      categories,
-      material,
-      design,
-    });
-
-    // Validate required fields
-    const missingFields = [];
-    if (!name) missingFields.push("name");
-    if (!description) missingFields.push("description");
-    if (!price) missingFields.push("price");
-    if (!material) missingFields.push("material");
-    if (!design) missingFields.push("design");
-    if (!categories) missingFields.push("categories");
-
-    if (missingFields.length > 0) {
-      console.log("ERROR: Missing required fields:", missingFields);
-      throw new ApiError(
-        `Missing required fields: ${missingFields.join(", ")}`,
-        400,
-      );
-    }
-
-    // Parse categories
-    let categoriesArray: string[] = [];
-    try {
-      if (Array.isArray(categories)) {
-        categoriesArray = categories;
-      } else if (typeof categories === "string") {
-        // Try JSON first
-        try {
-          const parsed = JSON.parse(categories);
-          if (Array.isArray(parsed)) {
-            categoriesArray = parsed;
-          } else {
-            categoriesArray = [parsed];
-          }
-        } catch {
-          // If not JSON, try comma-separated
-          categoriesArray = categories
-            .split(",")
-            .map((cat) => cat.trim())
-            .filter((cat) => cat.length > 0);
-        }
+      if (files && files.length > 0) {
+        // Multer + CloudinaryStorage already uploads images
+        files.forEach((file) => {
+          if (!file.path) throw new Error("Image upload failed");
+          imageUrls.push(file.path); // Cloudinary URL
+        });
       }
 
-      if (categoriesArray.length === 0) {
-        throw new ApiError("At least one category is required", 400);
-      }
+      const productData = {
+        ...req.body,
+        images: imageUrls,
+      };
 
-      console.log("Categories parsed:", categoriesArray);
-    } catch (error: any) {
-      throw new ApiError(`Invalid categories: ${error.message}`, 400);
-    }
-
-    // Helper function to parse JSON fields
-    const parseJsonField = (field: any, fieldName: string): any => {
-      if (!field && field !== 0 && field !== false) return undefined;
-
-      if (typeof field === "object") return field;
-
-      if (typeof field === "string") {
-        try {
-          return JSON.parse(field);
-        } catch {
-          return field;
-        }
-      }
-
-      return field;
-    };
-
-    // Helper function to parse numeric fields
-    const parseNumber = (value: any): number | undefined => {
-      if (value === undefined || value === null || value === "")
-        return undefined;
-      const num = parseFloat(value);
-      return isNaN(num) ? undefined : num;
-    };
-
-    // Helper function to parse boolean fields
-    const parseBoolean = (value: any): boolean => {
-      if (value === undefined || value === null) return false;
-      if (typeof value === "boolean") return value;
-      if (typeof value === "string") {
-        return value.toLowerCase() === "true" || value === "1";
-      }
-      if (typeof value === "number") return value !== 0;
-      return Boolean(value);
-    };
-
-    // Build product data object
-    const productData: any = {
-      name: String(name),
-      description: String(description),
-      summary: summary ? String(summary) : undefined,
-      price: parseNumber(price) || 0,
-      perDayPrice: parseNumber(perDayPrice),
-      perWeekPrice: parseNumber(perWeekPrice),
-      deliveryAndCollection: deliveryAndCollection
-        ? String(deliveryAndCollection)
-        : "",
-      priceDiscount: parseNumber(priceDiscount),
-      duration: duration ? String(duration) : "",
-      maxGroupSize: parseInt(String(maxGroupSize || 1)) || 1,
-      difficulty: (difficulty as "easy" | "medium" | "difficult") || "medium",
-      categories: categoriesArray,
-      images: imageUrls,
-      imageCover: imageCoverUrl,
-      location: {
-        state: "",
-        city: "",
-      },
-      dimensions: {
-        length: 1,
-        width: 1,
-        height: 1,
-      },
-      availableFrom: availableFrom ? new Date(availableFrom) : new Date(),
-      availableUntil: availableUntil
-        ? new Date(availableUntil)
-        : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
-      size: size ? String(size) : undefined,
-      active: parseBoolean(active),
-      stock: parseInt(String(stock || 0)) || 0,
-      isSensitive: parseBoolean(isSensitive),
-      material: String(material),
-      design: String(design),
-      ageRange: {
-        min: 0,
-        max: 0,
-        unit: "years" as "years" | "months",
-      },
-      safetyFeatures: [],
-      qualityAssurance: {
-        isCertified: false,
-      },
-      deliveryTimeOptions: ["8am-12pm", "12pm-4pm", "4pm-8pm"],
-      collectionTimeOptions: ["before_5pm", "after_5pm", "next_day"],
-      defaultDeliveryTime: "8am-12pm",
-      defaultCollectionTime: "before_5pm",
-      deliveryTimeFee: 0,
-      collectionTimeFee: 0,
-    };
-
-    // Parse location
-    try {
-      const parsedLocation = parseJsonField(location, "location");
-      if (parsedLocation) {
-        if (typeof parsedLocation === "object") {
-          if (parsedLocation.state)
-            productData.location.state = String(parsedLocation.state);
-          if (parsedLocation.city)
-            productData.location.city = String(parsedLocation.city);
-        } else {
-          productData.location.state = String(parsedLocation);
-        }
-      }
-    } catch (error) {
-      console.warn("Failed to parse location:", error);
-    }
-
-    // Parse dimensions
-    try {
-      const parsedDimensions = parseJsonField(dimensions, "dimensions");
-      if (parsedDimensions && typeof parsedDimensions === "object") {
-        if (parsedDimensions.length)
-          productData.dimensions.length =
-            parseNumber(parsedDimensions.length) || 1;
-        if (parsedDimensions.width)
-          productData.dimensions.width =
-            parseNumber(parsedDimensions.width) || 1;
-        if (parsedDimensions.height)
-          productData.dimensions.height =
-            parseNumber(parsedDimensions.height) || 1;
-      }
-    } catch (error) {
-      console.warn("Failed to parse dimensions:", error);
-    }
-
-    // Parse age range
-    try {
-      const parsedAgeRange = parseJsonField(ageRange, "ageRange");
-      if (parsedAgeRange && typeof parsedAgeRange === "object") {
-        if (parsedAgeRange.min !== undefined)
-          productData.ageRange.min = parseInt(String(parsedAgeRange.min)) || 0;
-        if (parsedAgeRange.max !== undefined)
-          productData.ageRange.max = parseInt(String(parsedAgeRange.max)) || 0;
-        if (
-          parsedAgeRange.unit &&
-          ["years", "months"].includes(parsedAgeRange.unit)
-        ) {
-          productData.ageRange.unit = parsedAgeRange.unit;
-        }
-      }
-    } catch (error) {
-      console.warn("Failed to parse ageRange:", error);
-    }
-
-    // Parse safety features
-    try {
-      const parsedSafetyFeatures = parseJsonField(
-        safetyFeatures,
-        "safetyFeatures",
-      );
-      if (parsedSafetyFeatures) {
-        if (Array.isArray(parsedSafetyFeatures)) {
-          productData.safetyFeatures = parsedSafetyFeatures.map(String);
-        } else if (typeof parsedSafetyFeatures === "string") {
-          productData.safetyFeatures = [parsedSafetyFeatures];
-        }
-      }
-    } catch (error) {
-      console.warn("Failed to parse safetyFeatures:", error);
-    }
-
-    // Parse quality assurance
-    try {
-      const parsedQA = parseJsonField(qualityAssurance, "qualityAssurance");
-      if (parsedQA) {
-        productData.qualityAssurance = {
-          isCertified: parseBoolean(parsedQA.isCertified),
-          certification: parsedQA.certification
-            ? String(parsedQA.certification)
-            : undefined,
-          warrantyPeriod: parsedQA.warrantyPeriod
-            ? String(parsedQA.warrantyPeriod)
-            : undefined,
-          warrantyDetails: parsedQA.warrantyDetails
-            ? String(parsedQA.warrantyDetails)
-            : undefined,
-        };
-      }
-    } catch (error) {
-      console.warn("Failed to parse qualityAssurance:", error);
-    }
-
-    // Parse delivery/collection options
-    try {
-      const parsedDeliveryOptions = parseJsonField(
-        deliveryTimeOptions,
-        "deliveryTimeOptions",
-      );
-      if (parsedDeliveryOptions && Array.isArray(parsedDeliveryOptions)) {
-        productData.deliveryTimeOptions = parsedDeliveryOptions.map(String);
-      }
-    } catch (error) {
-      console.warn("Failed to parse deliveryTimeOptions:", error);
-    }
-
-    try {
-      const parsedCollectionOptions = parseJsonField(
-        collectionTimeOptions,
-        "collectionTimeOptions",
-      );
-      if (parsedCollectionOptions && Array.isArray(parsedCollectionOptions)) {
-        productData.collectionTimeOptions = parsedCollectionOptions.map(String);
-      }
-    } catch (error) {
-      console.warn("Failed to parse collectionTimeOptions:", error);
-    }
-
-    if (defaultDeliveryTime)
-      productData.defaultDeliveryTime = String(defaultDeliveryTime);
-    if (defaultCollectionTime)
-      productData.defaultCollectionTime = String(defaultCollectionTime);
-    if (deliveryTimeFee)
-      productData.deliveryTimeFee = parseNumber(deliveryTimeFee) || 0;
-    if (collectionTimeFee)
-      productData.collectionTimeFee = parseNumber(collectionTimeFee) || 0;
-
-    console.log("Product data prepared. Creating product...");
-    console.log("Product data summary:", {
-      name: productData.name,
-      price: productData.price,
-      categories: productData.categories.length,
-      images: productData.images.length,
-      coverImage: !!productData.imageCover,
-      material: productData.material,
-      design: productData.design,
-    });
-
-    // Create the product
-    try {
-      const product = await productService.createProduct(productData);
-      console.log("Product created successfully with ID:", product._id);
-
-      res.status(201).json({
-        status: "success",
-        message: "Product created successfully",
-        data: { product },
-      });
-    } catch (error: any) {
-      console.error("Error creating product in service:", error);
-      throw new ApiError(`Failed to create product: ${error.message}`, 500);
+      const product = await Product.create(productData);
+      res.status(201).json({ status: "success", product });
+    } catch (err: any) {
+      res.status(400).json({ status: "error", message: err.message });
     }
   },
 );
 
-/* =========================
-   UPDATE PRODUCT WITH FILE UPLOAD
-========================= */
-
+/* ---------------- UPDATE PRODUCT ---------------- */
 export const updateProduct = asyncHandler(
-  async (req: Request, res: Response) => {
-    const productId = req.params.id;
-    const updateData: any = { ...req.body };
-    const files = req.files as any;
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const productId = req.params.id;
+      const files = req.files as Express.Multer.File[] | undefined;
+      const imageUrls: string[] = [];
 
-    // ===== Handle Cover Image =====
-    if (files?.imageCover?.[0]) {
-      updateData.imageCover = await uploadToCloudinary(files.imageCover[0]);
-    }
+      // Upload new images if provided
+      if (files && files.length > 0) {
+        files.forEach((file) => {
+          if (!file.path) throw new Error("Image upload failed");
+          imageUrls.push(file.path);
+        });
+      }
 
-    // ===== Handle Product Images =====
-    if (files?.images?.length) {
-      if (files.images.length > 5)
-        throw new ApiError("Maximum 5 images allowed", 400);
-      updateData.images = await Promise.all(
-        files.images.map((file: any) => uploadToCloudinary(file)),
+      // Merge with old images if any
+      const existingProduct = await Product.findById(productId);
+      if (!existingProduct)
+        return res
+          .status(404)
+          .json({ status: "error", message: "Product not found" });
+
+      const updatedData = {
+        ...req.body,
+        images: imageUrls.length > 0 ? imageUrls : existingProduct.images,
+      };
+
+      const updatedProduct = await Product.findByIdAndUpdate(
+        productId,
+        updatedData,
+        { new: true },
       );
+
+      res.status(200).json({ status: "success", product: updatedProduct });
+    } catch (err: any) {
+      res.status(400).json({ status: "error", message: err.message });
     }
-
-    // ===== Parse nested JSON strings =====
-    const nestedFields = [
-      "dimensions",
-      "location",
-      "ageRange",
-      "qualityAssurance",
-      "bookedDates",
-    ];
-    nestedFields.forEach((field) => {
-      if (updateData[field] && typeof updateData[field] === "string") {
-        try {
-          updateData[field] = JSON.parse(updateData[field]);
-        } catch {
-          throw new ApiError(`Invalid JSON for field ${field}`, 400);
-        }
-      }
-    });
-
-    // ===== Convert category strings to ObjectIds =====
-    if (updateData.categories) {
-      if (typeof updateData.categories === "string") {
-        // Comma separated string
-        updateData.categories = updateData.categories
-          .split(",")
-          .map((id: string) => new Types.ObjectId(id.trim()));
-      } else if (Array.isArray(updateData.categories)) {
-        updateData.categories = updateData.categories.map(
-          (id: string) => new Types.ObjectId(id),
-        );
-      }
-    }
-
-    // ===== Convert vendor, discount, stock, active fields to correct types =====
-    const numberFields = [
-      "price",
-      "perDayPrice",
-      "perWeekPrice",
-      "priceDiscount",
-      "discount",
-      "stock",
-      "deliveryTimeFee",
-      "collectionTimeFee",
-      "maxGroupSize",
-      "topPickRank",
-      "salesCount",
-    ];
-    numberFields.forEach((field) => {
-      if (updateData[field] !== undefined)
-        updateData[field] = Number(updateData[field]);
-    });
-
-    const booleanFields = [
-      "active",
-      "isSensitive",
-      "isTopPick",
-      "isTopSelling",
-    ];
-    booleanFields.forEach((field) => {
-      if (updateData[field] !== undefined)
-        updateData[field] =
-          updateData[field] === "true" || updateData[field] === true;
-    });
-
-    const dateFields = ["availableFrom", "availableUntil"];
-    dateFields.forEach((field) => {
-      if (updateData[field]) updateData[field] = new Date(updateData[field]);
-    });
-
-    // ===== Call service to update product =====
-    const product = await productService.updateProductService(
-      productId,
-      updateData,
-    );
-
-    res.status(200).json({
-      status: "success",
-      message: "Product updated successfully",
-      data: { product },
-    });
   },
 );
 
