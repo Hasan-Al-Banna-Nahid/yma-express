@@ -330,12 +330,17 @@ export const getAllProducts = asyncHandler(
     const minPrice = req.query.minPrice
       ? parseFloat(req.query.minPrice as string)
       : undefined;
-
     const maxPrice = req.query.maxPrice
       ? parseFloat(req.query.maxPrice as string)
       : undefined;
 
-    const search = req.query.search as string; // 🔍 product name
+    const search = req.query.search as string;
+    const startDate = req.query.startDate as string;
+    const endDate = req.query.endDate as string;
+
+    const sortBy =
+      (req.query.sortBy as "price" | "createdAt" | "name") || "createdAt";
+    const sortOrder = (req.query.sortOrder as "asc" | "desc") || "desc";
 
     const result = await productService.getAllProducts(
       page,
@@ -345,6 +350,10 @@ export const getAllProducts = asyncHandler(
       minPrice,
       maxPrice,
       search,
+      startDate,
+      endDate,
+      sortBy,
+      sortOrder,
     );
 
     res.status(200).json({

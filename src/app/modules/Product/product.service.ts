@@ -558,71 +558,67 @@ const getProductAvailability = async (
 /* =========================
    GET ALL PRODUCTS WITH BOOKED DATES
 ========================= */
+
 export const getAllProducts = async (
   page: number = 1,
   limit: number = 10,
   state?: string,
-  category?: string,
+  category?: string, // will be ObjectId string
   minPrice?: number,
   maxPrice?: number,
   search?: string,
-  sortBy: "price" | "createdAt" | "name" = "createdAt", // ← added
-  sortOrder: "asc" | "desc" = "asc", // ← added
-): Promise<{
-  products: IProductModel[];
-  total: number;
-  pages: number;
-}> => {
+  startDate?: string,
+  endDate?: string,
+  sortBy: "price" | "createdAt" | "name" = "createdAt",
+  sortOrder: "asc" | "desc" = "asc",
+): Promise<{ products: IProductModel[]; total: number; pages: number }> => {
   const skip = (page - 1) * limit;
+  const filter: any = { active: true };
 
-  // Build filter object
-  const filter: any = { ...AVAILABLE_PRODUCT_FILTER };
+  // 🔹 Name search
+  if (search) filter.name = { $regex: search, $options: "i" };
 
-  // 🔍 Product name search
-  if (search) {
-    filter.name = { $regex: search, $options: "i" };
-  }
+  // 🔹 State filter
+  if (state) filter["location.state"] = { $regex: state, $options: "i" };
 
-  // 📍 State filter
-  if (state) {
-    filter["location.state"] = { $regex: state, $options: "i" };
-  }
-
-  // 🗂 Category filter
+  // 🔹 Category filter (ObjectId)
   if (category && Types.ObjectId.isValid(category)) {
-    filter.categories = new Types.ObjectId(category);
+    filter.categories = { $in: [new Types.ObjectId(category)] };
   }
 
-  // 💰 Price range filter
+  // 🔹 Price filter
   if (minPrice !== undefined || maxPrice !== undefined) {
     filter.price = {};
     if (minPrice !== undefined) filter.price.$gte = minPrice;
     if (maxPrice !== undefined) filter.price.$lte = maxPrice;
   }
 
-  // ── Dynamic sorting ───────────────────────────────────────
-  let sortObj: Record<string, 1 | -1> = { createdAt: -1 }; // default: newest first
-
-  if (sortBy === "price") {
-    sortObj = { price: sortOrder === "asc" ? 1 : -1 };
-  } else if (sortBy === "name") {
-    sortObj = { name: sortOrder === "asc" ? 1 : -1 };
-  } else if (sortBy === "createdAt") {
-    sortObj = { createdAt: sortOrder === "asc" ? 1 : -1 };
+  // 🔹 Availability dates filter (overlap)
+  if (startDate || endDate) {
+    filter.$and = [];
+    if (startDate)
+      filter.$and.push({ availableUntil: { $gte: new Date(startDate) } });
+    if (endDate)
+      filter.$and.push({ availableFrom: { $lte: new Date(endDate) } });
   }
 
-  // 📦 Fetch products
+  // 🔹 Sorting
+  const sortObj: Record<string, 1 | -1> = {
+    [sortBy]: sortOrder === "asc" ? 1 : -1,
+  };
+
+  // 🔹 Fetch products
   const products = await Product.find(filter)
-    .populate("categories", "name description")
     .select("-__v")
-    .sort(sortObj) // ← dynamic sort applied here
+    .populate("categories", "name description") // optional
+    .sort(sortObj)
     .skip(skip)
     .limit(limit)
     .lean();
 
   const total = await Product.countDocuments(filter);
 
-  // 📅 Booking + availability enrichment
+  // 🔹 Add bookedDates + availability info
   const productsWithBookedDates = await Promise.all(
     products.map(async (product: any) => {
       const bookedDates = await getBookedDatesForProduct(
@@ -636,28 +632,19 @@ export const getAllProducts = async (
       return {
         ...product,
         bookedDates: bookedDates.map((bd) => ({
-          date: bd.date,
+          startDate: bd.startDate,
+          endDate: bd.endDate,
           bookingId: bd.bookingId,
-          bookingNumber: bd.bookingNumber,
           status: bd.status,
-          quantity: bd.quantity,
         })),
         availability: {
           bookedCount: bookedDates.length,
           next30Days: availability,
-          isAvailable: bookedDates.length === 0,
+          isAvailable: bookedDates.length === 0 && product.stock > 0,
         },
-        images: product.images || [],
-        discount: product.discount || 0,
-        discountPrice:
-          product.price - (product.price * (product.discount || 0)) / 100,
-        dimensions: product.dimensions || {
-          length: 0,
-          width: 0,
-          height: 0,
-        },
-        _id: product._id,
-        id: product._id.toString(),
+        discountPrice: product.discount
+          ? product.price - (product.price * product.discount) / 100
+          : product.price,
       };
     }),
   );
