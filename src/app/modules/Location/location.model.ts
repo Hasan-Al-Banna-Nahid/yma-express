@@ -133,6 +133,16 @@ const LocationSchema = new Schema<ILocation>(
       type: Schema.Types.Mixed,
       default: {},
     },
+    parent: {
+      type: Schema.Types.ObjectId,
+      ref: "Location",
+      default: null,
+    },
+    children: {
+      type: Schema.Types.ObjectId,
+      ref: "Location",
+      default: null,
+    },
   },
   {
     timestamps: true,

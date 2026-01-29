@@ -24,6 +24,8 @@ export interface ILocation extends Document {
   name: string;
   type: "country" | "state" | "city" | "area" | "postcode";
   parent: Types.ObjectId | null;
+  children?: Types.ObjectId[];
+
   country?: string;
   state?: string;
   city?: string;
@@ -65,8 +67,7 @@ export interface ICreateDeliveryAreaData {
   isActive?: boolean;
 }
 
-export interface IUpdateDeliveryAreaData
-  extends Partial<ICreateDeliveryAreaData> {}
+export interface IUpdateDeliveryAreaData extends Partial<ICreateDeliveryAreaData> {}
 
 export interface ILocationFilters {
   search?: string;
