@@ -101,7 +101,11 @@ const shippingAddressSchema = new Schema<IShippingAddress>(
 // Main Order Schema
 const orderSchema = new Schema<IOrderDocument>(
   {
-    user: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
     items: { type: [orderItemSchema], required: true },
     subtotalAmount: { type: Number, required: true, default: 0 },
     deliveryFee: { type: Number, required: true, default: 0 },

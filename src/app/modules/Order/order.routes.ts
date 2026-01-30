@@ -25,6 +25,7 @@ import { restrictTo } from "../../middlewares/authorization.middleware";
 const router = express.Router();
 
 // ==================== USER ROUTES ====================
+router.use(protectRoute);
 
 // Order operations
 router.post("/", createOrderHandler); // Create new order
@@ -39,7 +40,6 @@ router.delete("/:id", deleteOrderHandler); // Delete order
 router.post("/:orderId/invoice/send", generateInvoiceHandler);
 router.get("/:orderId/invoice/download", downloadInvoiceHandler);
 router.get("/:orderId/invoice/preview", previewInvoiceHandler);
-router.use(protectRoute);
 
 // ==================== ADMIN ROUTES ====================
 router.get("/admin/all", isAdmin, getAllOrdersHandler); // Get all orders with filters
