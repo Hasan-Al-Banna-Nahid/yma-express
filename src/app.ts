@@ -26,6 +26,7 @@ import newsletterRoutes from "./app/modules/newsletter/newsletter.routes"; // Ad
 import blogRoutes from "./app/modules/Blog/blog.routes"; // Add this line
 import promoRoutes from "./app/modules/promos/promos.routes";
 import customerRoutes from "./app/modules/customer/customer.routes";
+import seoSettingsRoutes from "./app/modules/SeoSettings/seo.routes";
 import { requestPerformance } from "./app/middlewares/performance.middleware";
 import { globalCache } from "./app/middlewares/globalCache";
 import mongoose from "mongoose";
@@ -93,6 +94,7 @@ app.use("/api/v1", newsletterRoutes);
 app.use("/api/v1/blogs", blogRoutes);
 app.use("/api/v1", promoRoutes);
 app.use("/api/v1/customers", customerRoutes);
+app.use("/api/v1/seo-settings", seoSettingsRoutes);
 
 // app.use(compression());
 
