@@ -79,6 +79,7 @@ export interface IOrderItem {
   hireOccasion?: string;
   keepOvernight?: boolean;
   promoId?: Types.ObjectId;
+  imageCover: string; // Add this line to match checkout.interface
 }
 
 export interface IOrderItemDocument extends IOrderItem, Document {}

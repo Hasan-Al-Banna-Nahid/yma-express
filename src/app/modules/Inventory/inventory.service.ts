@@ -195,10 +195,12 @@ export const checkInventoryAvailability = async (
   requestedQuantity: number,
   warehouse?: string,
 ) => {
-  // Ensure we are working with Date objects
   const start = new Date(startDate);
   const end = new Date(endDate);
 
+  // 1. Fetch items and ensure we populate the references
+  // Note: Adjust the 'getAvailableInventory' internal logic to allow population
+  // or populate them here if it returns a Mongoose Query.
   const availableItems = await getAvailableInventory(
     productName,
     start,
@@ -206,7 +208,6 @@ export const checkInventoryAvailability = async (
     warehouse,
   );
 
-  // Sum up the quantity from all available inventory documents
   const totalAvailable = availableItems.reduce(
     (acc, item) => acc + (item.quantity || 0),
     0,
@@ -219,16 +220,44 @@ export const checkInventoryAvailability = async (
     period: { start, end },
     message:
       totalAvailable >= requestedQuantity
-        ? `Success: ${totalAvailable} items available for this period.`
-        : `Shortage: Only ${totalAvailable} items available, but ${requestedQuantity} requested.`,
-    // Return all specific available items
-    availableItems: availableItems.map((item) => ({
+        ? `Success: ${totalAvailable} items available.`
+        : `Shortage: Only ${totalAvailable} available.`,
+
+    // 2. Return expanded data with Vendor, Category, and Product details
+    availableItems: availableItems.map((item: any) => ({
       inventoryId: item._id,
       productName: item.productName,
-      // sku: item.sku,
       warehouse: item.warehouse,
       currentQuantity: item.quantity,
       rentalPrice: item.rentalPrice,
+
+      // --- NEW FIELDS & REFERENCES ---
+      // Returns the ID and the full object if populated
+      vendor: item.vendor
+        ? {
+            _id: item.vendor._id || item.vendor,
+            name: item.vendor.name,
+            contact: item.vendor.contact,
+          }
+        : null,
+
+      category: item.category
+        ? {
+            _id: item.category._id || item.category,
+            name: item.category.name,
+            slug: item.category.slug,
+          }
+        : null,
+
+      product: item.product
+        ? {
+            _id: item.product._id || item.product,
+            name: item.product.name,
+            basePrice: item.product.price,
+            images: item.product.images,
+          }
+        : null,
+      // -------------------------------
     })),
   };
 };

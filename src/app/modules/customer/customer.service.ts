@@ -7,64 +7,77 @@ export class CustomerService {
    * Get all customers with date filtering and full order details
    */
   static async getCustomers(query: any) {
-    const {
-      page = 1,
-      limit = 20,
-      fromDate,
-      toDate,
-      search = "",
-      includeOrders = "true", // Default to true to ensure they show
-    } = query;
+    const { search, fromDate, toDate, page = 1, limit = 10 } = query;
+    const skip = (Number(page) - 1) * Number(limit);
 
-    const skip = (page - 1) * limit;
-    const filter: any = {};
+    // 1. Initialize empty filter
+    let filter: any = {};
 
-    // 1. Search Logic
-    if (search.trim()) {
-      const regex = new RegExp(search.trim(), "i");
+    // 2. Fix Search: Handle multiple fields with Case-Insensitive Regex
+    if (search && search !== "undefined" && search.trim() !== "") {
+      const searchRegex = new RegExp(search.trim(), "i");
       filter.$or = [
-        { name: regex },
-        { email: regex },
-        { phone: regex },
-        { customerId: regex },
+        { name: searchRegex },
+        { email: searchRegex },
+        { phone: searchRegex },
+        { customerId: searchRegex },
+        { city: searchRegex },
       ];
     }
 
-    // 2. Date Range Filter (Based on Customer Creation or lastOrderDate)
-    if (fromDate || toDate) {
+    // 3. Fix Dates: Convert String to proper ISODate Objects
+    // This is crucial because your DB stores dates as { "$date": ... }
+    if (
+      (fromDate && fromDate !== "undefined") ||
+      (toDate && toDate !== "undefined")
+    ) {
       filter.createdAt = {};
-      if (fromDate) filter.createdAt.$gte = new Date(fromDate);
-      if (toDate) filter.createdAt.$lte = new Date(toDate);
+
+      if (fromDate && fromDate !== "undefined") {
+        const start = new Date(fromDate);
+        if (!isNaN(start.getTime())) {
+          filter.createdAt.$gte = start;
+        }
+      }
+
+      if (toDate && toDate !== "undefined") {
+        const end = new Date(toDate);
+        if (!isNaN(end.getTime())) {
+          // Set to 23:59:59 to include everything on that final day
+          end.setHours(23, 59, 59, 999);
+          filter.createdAt.$lte = end;
+        }
+      }
     }
 
-    const queryBuilder = Customer.find(filter)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(Number(limit));
+    try {
+      // 4. Execute Query with Deep Population
+      const customers = await Customer.find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(Number(limit))
+        .populate({
+          path: "orders", // Populates the array of OIDs seen in your JSON
+          options: { sort: { createdAt: -1 } },
+        })
+        .lean(); // Faster performance for read-only data
 
-    // 3. Deep Populate Orders -> Items -> Product (to get the Image)
-    if (includeOrders === "true" || includeOrders === true) {
-      queryBuilder.populate({
-        path: "orders",
-        populate: {
-          path: "items.product",
-          select: "name price image mainImage", // Fetches the product image
+      const total = await Customer.countDocuments(filter);
+
+      return {
+        success: true,
+        data: customers,
+        pagination: {
+          total,
+          page: Number(page),
+          limit: Number(limit),
+          totalPages: Math.ceil(total / Number(limit)),
         },
-      });
+      };
+    } catch (error) {
+      console.error("Filter Error:", error);
+      throw error;
     }
-
-    const customers = await queryBuilder.lean();
-    const total = await Customer.countDocuments(filter);
-
-    return {
-      data: customers,
-      pagination: {
-        total,
-        page: Number(page),
-        limit: Number(limit),
-        pages: Math.ceil(total / limit),
-      },
-    };
   }
 
   /**

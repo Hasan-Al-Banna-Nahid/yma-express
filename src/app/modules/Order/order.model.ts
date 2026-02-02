@@ -16,7 +16,7 @@ import {
 const orderItemSchema = new Schema<IOrderItem>(
   {
     promoId: { type: Schema.Types.ObjectId, ref: "Promo" },
-
+    imageCover: { type: String, required: false }, // <--- ADD THIS TO SCHEMA
     product: { type: Schema.Types.ObjectId, ref: "Product", required: true },
     quantity: { type: Number, required: true, min: 1 },
     price: { type: Number, required: true },

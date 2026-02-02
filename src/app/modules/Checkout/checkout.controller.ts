@@ -800,7 +800,7 @@ export const quickCheckout = asyncHandler(
         promoCode,
       } = req.body;
 
-      // ─── Validation ────────────────────────────────────────────────────────
+      // ─── 1. VALIDATION ────────────────────────────────────────────────────────
       if (!Array.isArray(products) || products.length === 0) {
         throw new ApiError("At least one product is required", 400);
       }
@@ -819,75 +819,38 @@ export const quickCheckout = asyncHandler(
         "zipCode",
         "country",
       ];
-
       for (const field of requiredShipping) {
         if (!shippingAddress[field]?.trim()) {
           throw new ApiError(`Shipping address ${field} is required`, 400);
         }
       }
 
-      // If different billing address is selected → validate billing fields
-      if (shippingAddress.differentBillingAddress === true) {
-        const requiredBilling = [
-          "billingFirstName",
-          "billingLastName",
-          "billingPhone",
-          "billingStreet",
-          "billingCity",
-          "billingZipCode",
-          "billingCountry",
-        ];
+      // ─── 2. USER CREATION / IDENTIFICATION ─────────────────────────────────────
+      const email = shippingAddress.email.trim().toLowerCase();
+      const fullName = `${shippingAddress.firstName.trim()} ${shippingAddress.lastName.trim()}`;
 
-        for (const field of requiredBilling) {
-          if (!shippingAddress[field]?.trim()) {
-            throw new ApiError(
-              `Billing address ${field} is required when using different billing address`,
-              400,
-            );
-          }
-        }
-      }
-
-      // ─── User creation logic (unchanged) ───────────────────────────────────
-      const fullName =
-        `${shippingAddress.firstName?.trim()} ${shippingAddress.lastName?.trim()}`.trim();
-
-      let user = await User.findOne({
-        email: shippingAddress.email.trim().toLowerCase(),
-      });
+      let user = await User.findOne({ email }).session(session);
       let isNewUser = false;
       let tempPassword: string | undefined;
 
       if (!user) {
-        if (
-          !shippingAddress.firstName?.trim() ||
-          !shippingAddress.lastName?.trim()
-        ) {
-          throw new ApiError(
-            "First name and last name are required for new users",
-            400,
-          );
-        }
-
-        const randomPass = Math.random().toString(36).slice(-10) + "X1!";
+        tempPassword = Math.random().toString(36).slice(-10) + "X1!";
         user = new User({
           firstName: shippingAddress.firstName.trim(),
           lastName: shippingAddress.lastName.trim(),
           name: fullName,
-          email: shippingAddress.email.trim().toLowerCase(),
+          email,
           phone: shippingAddress.phone?.trim(),
-          password: randomPass,
+          password: tempPassword,
           role: "customer",
           isEmailVerified: false,
           createdViaCheckout: true,
         });
-
         await user.save({ session });
         isNewUser = true;
-        tempPassword = randomPass;
       }
 
-      // ─── Products & stock (unchanged) ─────────────────────────────────────
+      // ─── 3. PRODUCTS & STOCK PROCESSING (Including imageCover) ──────────────────
       let subtotal = 0;
       const orderItems = [];
 
@@ -903,12 +866,15 @@ export const quickCheckout = asyncHandler(
           );
         }
 
+        // Deduct stock
         product.stock -= p.quantity;
         await product.save({ session });
 
+        // Capture snapshot of product at time of purchase
         orderItems.push({
           product: product._id,
           name: product.name,
+          imageCover: product.imageCover, // Storing image in order item
           quantity: p.quantity,
           price: product.price,
           startDate: p.startDate ? new Date(p.startDate) : undefined,
@@ -920,113 +886,104 @@ export const quickCheckout = asyncHandler(
         subtotal += product.price * p.quantity;
       }
 
-      // ─── Fees & discount (unchanged) ──────────────────────────────────────
-      const deliveryFee = 0; // ← add real calculation later
+      // ─── 4. FEES & TOTALS ────────────────────────────────────────────────────
+      // Note: calculateDeliveryFee should be imported or defined in this file
+      const deliveryFee = calculateDeliveryFee(
+        shippingAddress.deliveryTime,
+        shippingAddress.collectionTime,
+        shippingAddress.keepOvernight,
+      );
       const overnightFee = shippingAddress.keepOvernight ? 30 : 0;
-      const amountBeforeDiscount = subtotal + deliveryFee + overnightFee;
-      let discount = 0; // promo logic here
-      const total = amountBeforeDiscount - discount;
+      const totalAmount = subtotal + deliveryFee + overnightFee;
 
-      // ─── Create order (unchanged) ─────────────────────────────────────────
+      // ─── 5. CREATE ORDER ─────────────────────────────────────────────────────
       const order = new Order({
         user: user._id,
         items: orderItems,
         subtotalAmount: subtotal,
         deliveryFee,
         overnightFee,
-        discountAmount: discount,
-        totalAmount: total,
+        totalAmount,
         paymentMethod,
         status: "pending",
-        shippingAddress, // ← now includes all billing fields when needed
+        shippingAddress,
         termsAccepted: true,
         invoiceType,
         bankDetails: invoiceType === "corporate" ? bankDetails : undefined,
         promoCode,
-        estimatedDeliveryDate:
-          orderItems[0]?.startDate || new Date(Date.now() + 7 * 86400000),
+        estimatedDeliveryDate: orderItems[0]?.startDate || new Date(),
         deviceInfo: req.headers["user-agent"],
       });
 
       await order.save({ session });
 
-      // ─── Customer record (unchanged) ──────────────────────────────────────
-      let customer = await Customer.findOne({
-        email: shippingAddress.email.toLowerCase().trim(),
-      });
+      // ─── 6. SYNC TO CUSTOMER COLLECTION ──────────────────────────────────────
+      let customer = await Customer.findOne({ email }).session(session);
 
       if (!customer) {
         customer = new Customer({
-          user: user._id, // ✅ FIX
+          user: user._id,
           customerId: "CUST-" + Date.now().toString(36).toUpperCase(),
-          name: `${shippingAddress.firstName} ${shippingAddress.lastName}`,
-          email: shippingAddress.email.toLowerCase().trim(),
+          name: fullName,
+          email,
           phone: shippingAddress.phone,
-          address:
-            shippingAddress.street +
-            (shippingAddress.street2 ? " " + shippingAddress.street2 : ""),
+          address: `${shippingAddress.street} ${shippingAddress.street2 || ""}`,
           city: shippingAddress.city,
           postcode: shippingAddress.zipCode,
+          orders: [order._id],
           totalOrders: 1,
-          totalSpent: total,
+          totalSpent: totalAmount,
           firstOrderDate: new Date(),
           lastOrderDate: new Date(),
+          customerType: "guest",
         });
       } else {
         customer.orders.push(order._id);
         customer.totalOrders += 1;
-        customer.totalSpent += total;
+        customer.totalSpent += totalAmount;
         customer.lastOrderDate = new Date();
+
+        if (!customer.user) customer.user = user._id; // Link if previously unlinked
       }
 
       await customer.save({ session });
 
+      // ─── 7. FINALIZE TRANSACTION & SEND EMAILS ───────────────────────────────
       await session.commitTransaction();
+      session.endSession();
 
-      // ─── Emails (already added in previous step – kept as is) ─────────────
-      try {
-        console.log(`[EMAIL] Starting for order ${order._id}`);
-        await sendOrderReceivedEmail(order);
-        await sendOrderNotificationToAdmin(order);
-        if (isNewUser && tempPassword) {
-          await sendUserCredentialsEmail(
-            shippingAddress.email.trim(),
-            shippingAddress.firstName.trim(),
-            tempPassword,
-          );
-        }
-      } catch (emailErr) {
-        console.error("[EMAIL] Failed:", emailErr);
+      // Trigger emails in background
+      sendOrderReceivedEmail(order).catch((err) =>
+        console.error("Order Email Error:", err),
+      );
+      sendOrderNotificationToAdmin(order).catch((err) =>
+        console.error("Admin Email Error:", err),
+      );
+
+      if (isNewUser && tempPassword) {
+        // user.firstName is used with nullish coalescing for TS safety
+        sendUserCredentialsEmail(
+          email,
+          user.firstName ?? "Customer",
+          tempPassword,
+        ).catch((err) => console.error("Credentials Email Error:", err));
       }
 
-      // ─── Response ─────────────────────────────────────────────────────────
       res.status(201).json({
         success: true,
         message: "Order placed successfully",
-        order: {
-          id: order._id,
+        data: {
+          orderId: order._id,
           orderNumber: order.orderNumber,
-          totalAmount: order.totalAmount,
-          status: order.status,
+          customer: customer.customerId,
+          total: order.totalAmount,
         },
-        customer: {
-          id: customer._id,
-          customerId: customer.customerId,
-          email: customer.email,
-        },
-        newAccount: isNewUser
-          ? {
-              created: true,
-              email: user.email,
-              temporaryPassword: tempPassword,
-            }
-          : undefined,
       });
-    } catch (err) {
+    } catch (err: any) {
       await session.abortTransaction();
-      throw err;
-    } finally {
       session.endSession();
+      console.error("Quick Checkout Failure:", err.message);
+      throw err; // Passed to global error handler
     }
   },
 );
