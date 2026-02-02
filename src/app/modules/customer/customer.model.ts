@@ -86,5 +86,15 @@ customerSchema.pre("save", function (next) {
   }
   next();
 });
-
+// Add this virtual to your customerSchema
+customerSchema.virtual("allOrders", {
+  ref: "Order",
+  localField: "user", // Match the 'user' field in Customer
+  foreignField: "user", // With the 'user' field in Order
+});
+customerSchema.virtual("orderHistory", {
+  ref: "Order",
+  localField: "user",
+  foreignField: "user",
+});
 export default mongoose.model<ICustomer>("Customer", customerSchema);

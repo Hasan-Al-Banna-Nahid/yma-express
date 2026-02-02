@@ -10,6 +10,7 @@ export interface IOrderItem {
   endDate?: Date;
   hireOccasion?: string;
   keepOvernight?: boolean;
+  imageCover: string; // Ensure this field exists here
 }
 
 export interface IShippingAddress {

@@ -1,79 +1,35 @@
-import { NextFunction, Request, Response } from "express";
+import { Request, Response } from "express";
 import { CustomerService } from "./customer.service";
 
 export class CustomerController {
   static async getCustomers(req: Request, res: Response) {
     try {
-      const query = req.query as any;
-      const result = await CustomerService.getCustomers(query);
-
-      res.status(200).json({
-        success: true,
-        data: result.data,
-        pagination: result.pagination,
-      });
+      // Pass all query params including fromDate and toDate
+      const result = await CustomerService.getCustomers(req.query);
+      res.status(200).json({ ...result });
     } catch (error: any) {
-      res.status(500).json({
-        success: false,
-        message: error.message || "Server error while fetching customers",
-      });
+      res.status(500).json({ success: false, message: error.message });
     }
   }
 
   static async getCustomerDetail(req: Request, res: Response) {
     try {
       const { customerId } = req.params;
-      const detail = await CustomerService.getCustomerDetail(customerId);
-
-      res.status(200).json({
-        success: true,
-        data: detail,
-      });
+      const data = await CustomerService.getCustomerDetail(customerId);
+      res.status(200).json({ success: true, data });
     } catch (error: any) {
-      res.status(error.message.includes("not found") ? 404 : 500).json({
-        success: false,
-        message: error.message || "Error fetching customer detail",
-      });
+      res.status(404).json({ success: false, message: error.message });
     }
   }
 
-  static async prepareReorder(req: Request, res: Response, next: NextFunction) {
+  static async prepareReorder(req: Request, res: Response) {
     try {
-      const { customerId, itemsToReorder } = req.body;
-
-      // Validate request body
-      if (!customerId) {
-        return res
-          .status(400)
-          .json({ success: false, message: "Customer ID is required" });
-      }
-
-      if (
-        !itemsToReorder ||
-        !Array.isArray(itemsToReorder) ||
-        itemsToReorder.length === 0
-      ) {
-        return res
-          .status(400)
-          .json({ success: false, message: "Items to reorder are required" });
-      }
-
-      // Call service
-      const reorderData = await CustomerService.prepareReorder({
-        customerId,
-        itemsToReorder,
-      });
-
-      return res.status(200).json({
-        success: true,
-        message: "Reorder prepared and email sent successfully",
-        data: reorderData,
-      });
+      const data = await CustomerService.prepareReorder(req.body);
+      res
+        .status(200)
+        .json({ success: true, data, message: "Reorder ready and email sent" });
     } catch (error: any) {
-      return res.status(500).json({
-        success: false,
-        message: error.message || "Failed to prepare reorder",
-      });
+      res.status(500).json({ success: false, message: error.message });
     }
   }
 }

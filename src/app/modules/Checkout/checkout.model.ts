@@ -13,7 +13,7 @@ const orderItemSchema = new Schema<IOrderItem>(
     price: { type: Number, required: true },
     name: { type: String, required: true },
     startDate: { type: Date },
-    endDate: { type: Date },
+    imageCover: { type: String, required: false }, // <--- Add this line    endDate: { type: Date },
   },
   { _id: false },
 );
