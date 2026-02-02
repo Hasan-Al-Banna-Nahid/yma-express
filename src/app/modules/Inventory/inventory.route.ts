@@ -17,7 +17,7 @@ import { upload } from "../../utils/cloudinary.util";
 const router = express.Router();
 
 // Public routes
-router.post("/check-availability", checkInventoryAvailabilityHandler);
+router.get("/check-availability", checkInventoryAvailabilityHandler);
 
 // Protected routes
 router.use(protectRoute);

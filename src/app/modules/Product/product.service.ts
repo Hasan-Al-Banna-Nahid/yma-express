@@ -20,136 +20,61 @@ const AVAILABLE_PRODUCT_FILTER = {
 // CREATE PRODUCT
 // =========================
 
-export const createProduct = async (
-  productData: any,
-): Promise<IProductModel> => {
-  // Validate categories
-  if (!productData.categories || productData.categories.length === 0) {
-    throw new ApiError("At least one category is required", 400);
-  }
-  const categoryIds = productData.categories.map(
-    (id: string) => new Types.ObjectId(id),
-  );
-  const categories = await Category.find({
-    _id: { $in: categoryIds },
-    isActive: true,
-  });
-  if (categories.length !== categoryIds.length) {
-    throw new ApiError("One or more categories are invalid or inactive", 400);
+export const createProduct = async (productData: any) => {
+  // If categories are provided, validate them, otherwise default to empty
+  let categoryIds = [];
+  if (productData.categories) {
+    categoryIds = Array.isArray(productData.categories)
+      ? productData.categories.map((id: string) => new Types.ObjectId(id))
+      : [new Types.ObjectId(productData.categories)];
   }
 
-  // Ensure required nested fields have defaults
-  const now = new Date();
   const product = await Product.create({
     ...productData,
     categories: categoryIds,
+    // Ensure nested objects exist even if partially sent
     dimensions: {
-      length: productData.dimensions?.length || 1,
-      width: productData.dimensions?.width || 1,
-      height: productData.dimensions?.height || 1,
+      length:
+        productData["dimensions.length"] || productData.dimensions?.length || 1,
+      width:
+        productData["dimensions.width"] || productData.dimensions?.width || 1,
+      height:
+        productData["dimensions.height"] || productData.dimensions?.height || 1,
     },
     ageRange: {
-      min: productData.ageRange?.min ?? 0,
-      max: productData.ageRange?.max ?? 0,
-      unit: productData.ageRange?.unit || "years",
+      min: productData["ageRange.min"] || productData.ageRange?.min || 0,
+      max: productData["ageRange.max"] || productData.ageRange?.max || 0,
+      unit:
+        productData["ageRange.unit"] || productData.ageRange?.unit || "years",
     },
-    location: {
-      country: productData.location?.country || "Bangladesh",
-      state: productData.location?.state || "Unknown",
-      city: productData.location?.city || "Unknown",
-    },
-    safetyFeatures: productData.safetyFeatures?.length
-      ? productData.safetyFeatures
-      : ["Standard safety"],
-    qualityAssurance: {
-      isCertified: productData.qualityAssurance?.isCertified ?? false,
-      certification: productData.qualityAssurance?.certification || "",
-      warrantyPeriod: productData.qualityAssurance?.warrantyPeriod || "",
-      warrantyDetails: productData.qualityAssurance?.warrantyDetails || "",
-    },
-    images: productData.images || [],
-    imageCover: productData.imageCover || "",
-    availableFrom: productData.availableFrom
-      ? new Date(productData.availableFrom)
-      : now,
-    availableUntil: productData.availableUntil
-      ? new Date(productData.availableUntil)
-      : new Date(now.getFullYear() + 1, now.getMonth(), now.getDate()),
-    active: productData.active ?? true,
-    stock: productData.stock ?? 0,
-    deliveryTimeOptions: productData.deliveryTimeOptions || [
-      "8am-12pm",
-      "12pm-4pm",
-      "4pm-8pm",
-    ],
-    collectionTimeOptions: productData.collectionTimeOptions || [
-      "before_5pm",
-      "after_5pm",
-      "next_day",
-    ],
-    defaultDeliveryTime: productData.defaultDeliveryTime || "8am-12pm",
-    defaultCollectionTime: productData.defaultCollectionTime || "before_5pm",
-    deliveryTimeFee: productData.deliveryTimeFee ?? 0,
-    collectionTimeFee: productData.collectionTimeFee ?? 0,
   });
 
-  await product.populate({
-    path: "categories",
-    select: "name slug description image",
-  });
-
-  return product;
+  return product.populate("categories");
 };
 
 export const updateProductService = async (
   productId: string,
   updateData: any,
 ): Promise<IProductModel> => {
-  // -------------------------
-  // Validate product ID
-  // -------------------------
   if (!Types.ObjectId.isValid(productId))
     throw new ApiError("Invalid product ID", 400);
 
-  const product = await Product.findById(productId);
-  if (!product) throw new ApiError("Product not found", 404);
+  // 1. Check if product exists
+  const existingProduct = await Product.findById(productId);
+  if (!existingProduct) throw new ApiError("Product not found", 404);
 
-  // -------------------------
-  // Remove forbidden fields
-  // -------------------------
-  const forbiddenFields: string[] = ["_id", "createdAt", "updatedAt"];
+  // 2. Remove forbidden fields
+  const forbiddenFields = ["_id", "createdAt", "updatedAt"];
   forbiddenFields.forEach((field) => delete updateData[field]);
 
-  // -------------------------
-  // Parse nested JSON strings (from form-data)
-  // -------------------------
-  const parseNested = (field: any) => {
-    if (!field) return undefined;
-    if (typeof field === "string") {
-      try {
-        const parsed = JSON.parse(field);
-        if (typeof parsed === "object" && parsed !== null) return parsed;
-        return field; // fallback if parsed value is primitive
-      } catch {
-        return field; // leave as-is if not valid JSON
-      }
-    }
-    return field; // already an object
-  };
-
-  updateData.dimensions = parseNested(updateData.dimensions);
-  updateData.ageRange = parseNested(updateData.ageRange);
-  updateData.location = parseNested(updateData.location);
-  updateData.qualityAssurance = parseNested(updateData.qualityAssurance);
-
-  // -------------------------
-  // Flatten nested objects for MongoDB $set
-  // -------------------------
+  // 3. Flattening logic (Improved)
   const flatten = (obj: any, prefix = ""): any => {
     const flat: any = {};
     Object.keys(obj || {}).forEach((key) => {
       const value = obj[key];
       const path = prefix ? `${prefix}.${key}` : key;
+
+      // DO NOT flatten Arrays (like images or safetyFeatures) or Dates
       if (
         value &&
         typeof value === "object" &&
@@ -158,25 +83,22 @@ export const updateProductService = async (
       ) {
         Object.assign(flat, flatten(value, path));
       } else if (value !== undefined) {
-        flat[path] = value; // skip undefined fields
+        flat[path] = value;
       }
     });
     return flat;
   };
 
-  const update = flatten(updateData);
+  const updateFields = flatten(updateData);
 
-  // -------------------------
-  // Apply update
-  // -------------------------
+  // 4. Perform Update
   const updatedProduct = await Product.findByIdAndUpdate(
     productId,
-    { $set: update },
+    { $set: updateFields },
     { new: true, runValidators: true },
   ).populate("categories", "name slug description image");
 
   if (!updatedProduct) throw new ApiError("Failed to update product", 500);
-
   return updatedProduct;
 };
 

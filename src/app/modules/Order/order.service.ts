@@ -575,6 +575,7 @@ export const updateOrder = async (
     throw new ApiError("Invalid order ID", 400);
   }
 
+  // 1. Fetch existing order
   const order = await Order.findById(orderId);
   if (!order) {
     throw new ApiError("Order not found", 404);
@@ -582,68 +583,159 @@ export const updateOrder = async (
 
   const previousStatus = order.status;
 
-  // ─── Normalize delivery/collection time if provided ─────────────────────
-  if (updateData.shippingAddress?.deliveryTime) {
-    updateData.shippingAddress.deliveryTime = DeliveryTimeManager.normalize(
-      updateData.shippingAddress.deliveryTime,
-      "delivery",
-    );
-  }
-
-  if (updateData.shippingAddress?.collectionTime) {
-    updateData.shippingAddress.collectionTime = DeliveryTimeManager.normalize(
-      updateData.shippingAddress.collectionTime,
-      "collection",
-    );
-  }
-
-  // ─── Merge shipping address safely ──────────────────────────────────────
+  // 2. Handle Shipping Address Updates & Normalize Times
   if (updateData.shippingAddress) {
+    const existingAddr = order.shippingAddress
+      ? order.shippingAddress.toObject()
+      : {};
+    const newAddr = updateData.shippingAddress;
+
+    // Normalize times if provided
+    if (newAddr.deliveryTime) {
+      newAddr.deliveryTime = DeliveryTimeManager.normalize(
+        newAddr.deliveryTime,
+        "delivery",
+      );
+    }
+    if (newAddr.collectionTime) {
+      newAddr.collectionTime = DeliveryTimeManager.normalize(
+        newAddr.collectionTime,
+        "collection",
+      );
+    }
+
+    // Merge address
     order.shippingAddress = {
-      ...order.shippingAddress?.toObject(),
-      ...updateData.shippingAddress,
-    };
+      ...existingAddr,
+      ...newAddr,
+    } as any; // Type cast to satisfy strict partial matches
   }
 
-  // ─── Update top-level fields (PATCH behavior) ───────────────────────────
+  // 3. Handle ITEMS & PRICE Recalculation
+  // We check length. We cast to 'any[]' to fix the TS errors regarding missing properties like keepOvernight
+  if (updateData.items && updateData.items.length > 0) {
+    let newSubtotal = 0;
+    let newOvernightFee = 0;
+    const processedItems = [];
+
+    // FIX: Cast items to any[] to allow access to optional fields (startDate, keepOvernight, etc.)
+    const itemsInput = updateData.items as any[];
+
+    for (const item of itemsInput) {
+      // Logic: If item.product is an object, use ._id, otherwise use item.product directly
+      const productId = item.product?._id || item.product || item._id;
+
+      if (!productId) continue; // Skip invalid items
+
+      // Fetch current product details from DB for accurate pricing
+      const product = await Product.findById(productId);
+
+      // Use DB price if available, otherwise fallback to input price
+      const price = product ? product.price : item.price || 0;
+      const name = product ? product.name : item.name || "Unknown Item";
+
+      const itemTotal = price * item.quantity;
+      newSubtotal += itemTotal;
+
+      // Handle Overnight Fee
+      if (item.keepOvernight) {
+        newOvernightFee += 50; // Standard fee
+      }
+
+      processedItems.push({
+        product: productId,
+        name: name,
+        quantity: item.quantity,
+        price: price,
+        // Safely parse dates
+        startDate: item.startDate ? new Date(item.startDate) : undefined,
+        endDate: item.endDate ? new Date(item.endDate) : undefined,
+        hireOccasion: item.hireOccasion || "",
+        keepOvernight: !!item.keepOvernight,
+      });
+    }
+
+    // Update Order Items and Fees
+    order.items = processedItems as any;
+    order.subtotalAmount = newSubtotal;
+    order.overnightFee = newOvernightFee;
+
+    // Recalculate Delivery Fee based on address
+    const deliveryTime = order.shippingAddress?.deliveryTime || "09:00";
+    const deliveryFee = DeliveryTimeManager.getDeliveryFee(deliveryTime);
+
+    let collectionFee = 0;
+    if (order.shippingAddress?.collectionTime) {
+      collectionFee = DeliveryTimeManager.getCollectionFee(
+        order.shippingAddress.collectionTime,
+      );
+    }
+
+    order.deliveryFee = deliveryFee + collectionFee;
+
+    // Recalculate Total: Subtotal + Delivery + Overnight - Discount
+    order.totalAmount =
+      order.subtotalAmount +
+      order.deliveryFee +
+      order.overnightFee -
+      (order.discountAmount || 0);
+  }
+
+  // 4. Update Status (Explicitly)
+  if (updateData.status && updateData.status !== previousStatus) {
+    order.status = updateData.status;
+
+    // Auto-set delivery date if moving to Delivered
+    if (updateData.status === ORDER_STATUS.DELIVERED && !order.deliveryDate) {
+      order.deliveryDate = new Date();
+    }
+  }
+
+  // 5. Update other top-level fields
+  // Exclude fields we already handled manually to prevent overwriting
+  const excludedFields = [
+    "items",
+    "shippingAddress",
+    "status",
+    "subtotalAmount",
+    "totalAmount",
+    "deliveryFee",
+    "overnightFee",
+  ];
+
   Object.entries(updateData).forEach(([key, value]) => {
-    if (value !== undefined && key !== "shippingAddress") {
+    if (value !== undefined && !excludedFields.includes(key)) {
       (order as any)[key] = value;
     }
   });
 
-  // ─── Auto set deliveryDate when delivered ──────────────────────────────
-  if (
-    updateData.status === ORDER_STATUS.DELIVERED &&
-    updateData.status !== previousStatus
-  ) {
-    if (!order.deliveryDate) {
-      order.deliveryDate = new Date();
-      console.log(`[AUTO-updateOrder] deliveryDate set for ${orderId}`);
-    }
-  }
-
+  // 6. Save the Order
   await order.save();
 
-  // ─── Send status change emails (admin-only logic) ───────────────────────
+  // 7. Send Emails (Admin Logic) - Non-blocking
   if (updateData.status && updateData.status !== previousStatus) {
     const populatedOrder = await Order.findById(order._id)
       .populate("user", "name email phone")
       .populate("items.product", "name imageCover price");
 
     if (populatedOrder) {
-      switch (updateData.status) {
-        case ORDER_STATUS.CONFIRMED:
-          await sendOrderConfirmedEmail(populatedOrder);
-          break;
-
-        case ORDER_STATUS.SHIPPED:
-          await sendDeliveryReminderEmail(populatedOrder);
-          break;
-
-        case ORDER_STATUS.CANCELLED:
-          await sendOrderCancelledEmail(populatedOrder);
-          break;
+      try {
+        switch (updateData.status) {
+          case ORDER_STATUS.CONFIRMED:
+            await sendOrderConfirmedEmail(populatedOrder);
+            break;
+          case ORDER_STATUS.SHIPPED:
+            await sendDeliveryReminderEmail(populatedOrder);
+            break;
+          case ORDER_STATUS.CANCELLED:
+            await sendOrderCancelledEmail(populatedOrder);
+            break;
+          case ORDER_STATUS.DELIVERED:
+            await sendDeliveryCompleteEmail(populatedOrder);
+            break;
+        }
+      } catch (emailErr) {
+        console.error("Failed to send status update email:", emailErr);
       }
     }
   }

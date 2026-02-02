@@ -255,20 +255,32 @@ const validateRequiredFields = (
 export const createProduct = asyncHandler(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const files = req.files as Express.Multer.File[] | undefined;
+      // 1. Cast req.files to the correct Multer dictionary type
+      const files = req.files as
+        | { [fieldname: string]: Express.Multer.File[] }
+        | undefined;
+
+      let imageCoverUrl = "";
       const imageUrls: string[] = [];
 
-      if (files && files.length > 0) {
-        // Multer + CloudinaryStorage already uploads images
-        files.forEach((file) => {
-          if (!file.path) throw new Error("Image upload failed");
-          imageUrls.push(file.path); // Cloudinary URL
-        });
+      if (files) {
+        // 2. Extract the single cover image
+        if (files["imageCover"] && files["imageCover"][0]) {
+          imageCoverUrl = files["imageCover"][0].path; // Cloudinary URL
+        }
+
+        // 3. Extract the array of gallery images
+        if (files["images"]) {
+          files["images"].forEach((file) => {
+            imageUrls.push(file.path); // Cloudinary URLs
+          });
+        }
       }
 
       const productData = {
         ...req.body,
-        images: imageUrls,
+        imageCover: imageCoverUrl, // Assign the single cover
+        images: imageUrls, // Assign the array
       };
 
       const product = await Product.create(productData);
@@ -284,38 +296,39 @@ export const updateProduct = asyncHandler(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const productId = req.params.id;
-      const files = req.files as Express.Multer.File[] | undefined;
-      const imageUrls: string[] = [];
+      // Handle Multi-field files (imageCover vs images)
+      const files = req.files as
+        | { [fieldname: string]: Express.Multer.File[] }
+        | undefined;
 
-      // Upload new images if provided
-      if (files && files.length > 0) {
-        files.forEach((file) => {
-          if (!file.path) throw new Error("Image upload failed");
-          imageUrls.push(file.path);
-        });
+      const updateData = { ...req.body };
+
+      if (files) {
+        // Handle imageCover
+        if (files["imageCover"] && files["imageCover"][0]) {
+          updateData.imageCover = files["imageCover"][0].path;
+        }
+
+        // Handle images array (New images)
+        if (files["images"]) {
+          const newImages = files["images"].map((file) => file.path);
+          // Decide: Replace all images OR append?
+          // Usually, for a PUT/PATCH from form-data, we replace or handle specifically.
+          updateData.images = newImages;
+        }
       }
 
-      // Merge with old images if any
-      const existingProduct = await Product.findById(productId);
-      if (!existingProduct)
-        return res
-          .status(404)
-          .json({ status: "error", message: "Product not found" });
-
-      const updatedData = {
-        ...req.body,
-        images: imageUrls.length > 0 ? imageUrls : existingProduct.images,
-      };
-
-      const updatedProduct = await Product.findByIdAndUpdate(
+      // Call the service
+      const updatedProduct = await productService.updateProductService(
         productId,
-        updatedData,
-        { new: true },
+        updateData,
       );
 
       res.status(200).json({ status: "success", product: updatedProduct });
     } catch (err: any) {
-      res.status(400).json({ status: "error", message: err.message });
+      res
+        .status(err.statusCode || 400)
+        .json({ status: "error", message: err.message });
     }
   },
 );
