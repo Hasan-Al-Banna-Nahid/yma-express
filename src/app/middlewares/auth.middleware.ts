@@ -1,4 +1,4 @@
-// middlewares/auth.middleware.ts
+// src/app/middlewares/auth.middleware.ts
 import { Request, Response, NextFunction } from "express";
 import asyncHandler from "../utils/asyncHandler";
 import ApiError from "../utils/apiError";
@@ -25,7 +25,8 @@ export const protectRoute = asyncHandler(
       req.headers.authorization &&
       req.headers.authorization.startsWith("Bearer")
     ) {
-      token = req.headers.authorization.split(" ")[1];
+      // Added .trim() to ensure no hidden spaces cause "malformed" errors
+      token = req.headers.authorization.split(" ")[1]?.trim();
     }
 
     /* -------------------- 2. Cookie token -------------------- */
@@ -33,26 +34,48 @@ export const protectRoute = asyncHandler(
       token = req.cookies.accessToken;
     }
 
-    if (!token) {
-      throw new ApiError("Unauthorized", 401);
+    if (!token || token === "undefined" || token === "null") {
+      throw new ApiError(
+        "Authentication failed. Please login to get access.",
+        401,
+      );
     }
 
     /* -------------------- 3. Verify token -------------------- */
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as {
-      id: string;
-      iat: number;
-    };
+    let decoded: any;
+    try {
+      // We wrap this in a try-catch to handle "jwt malformed" or "jwt expired" errors gracefully
+      decoded = jwt.verify(token, process.env.JWT_SECRET!) as {
+        id: string;
+        iat: number;
+      };
+    } catch (error: any) {
+      if (error.name === "TokenExpiredError") {
+        throw new ApiError("Your token has expired. Please login again.", 401);
+      }
+      // This catches "jwt malformed", "invalid signature", etc.
+      throw new ApiError("Invalid token. Please login again.", 401);
+    }
 
     /* -------------------- 4. Get user -------------------- */
     const user = await User.findById(decoded.id);
 
     if (!user) {
-      throw new ApiError("User no longer exists", 401);
+      throw new ApiError(
+        "The user belonging to this token no longer exists.",
+        401,
+      );
     }
 
     /* -------------------- 5. Password changed check -------------------- */
-    if (user.changedPasswordAfter(decoded.iat)) {
-      throw new ApiError("Password changed, please login again", 401);
+    // Ensure the method exists on your user model
+    if (typeof user.changedPasswordAfter === "function") {
+      if (user.changedPasswordAfter(decoded.iat)) {
+        throw new ApiError(
+          "User recently changed password! Please login again.",
+          401,
+        );
+      }
     }
 
     /* -------------------- 6. Attach user -------------------- */
@@ -71,18 +94,15 @@ export function restrictTo(...roles: Array<IUser["role"]>) {
       userRole: aReq.user?.role,
       requiredRoles: roles,
       hasUser: !!aReq.user,
-      userAuthorized: aReq.user && roles.includes(aReq.user.role),
     });
 
     if (!aReq.user) {
-      throw new ApiError("Authentication required", 401);
+      throw new ApiError("Authentication required for this action", 401);
     }
 
     if (!roles.includes(aReq.user.role)) {
       throw new ApiError(
-        `Unauthorized - Required roles: ${roles.join(", ")}, Your role: ${
-          aReq.user.role
-        }`,
+        `Permission denied. Required roles: ${roles.join(", ")}`,
         403,
       );
     }

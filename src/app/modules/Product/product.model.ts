@@ -23,17 +23,17 @@ const productSchema: Schema = new Schema(
     dimensions: {
       length: {
         type: Number,
-        required: [true, "Length is required"],
+        required: [false, "Length is required"],
         min: [1, "Length must be at least 1 foot"],
       },
       width: {
         type: Number,
-        required: [true, "Width is required"],
+        required: [false, "Width is required"],
         min: [1, "Width must be at least 1 foot"],
       },
       height: {
         type: Number,
-        required: [true, "Height is required"],
+        required: [false, "Height is required"],
         min: [1, "Height must be at least 1 foot"],
       },
     },
@@ -44,11 +44,11 @@ const productSchema: Schema = new Schema(
       {
         startDate: {
           type: Date,
-          required: true,
+          required: false,
         },
         endDate: {
           type: Date,
-          required: true,
+          required: false,
         },
         bookingId: {
           type: Schema.Types.ObjectId,
@@ -101,13 +101,13 @@ const productSchema: Schema = new Schema(
     },
     name: {
       type: String,
-      required: [true, "Product name is required"],
+      required: [false, "Product name is required"],
       trim: true,
       maxlength: [100, "Product name cannot exceed 100 characters"],
     },
     description: {
       type: String,
-      required: [true, "Product description is required"],
+      required: [false, "Product description is required"],
     },
     summary: {
       type: String,
@@ -115,7 +115,7 @@ const productSchema: Schema = new Schema(
     },
     price: {
       type: Number,
-      required: [true, "Product price is required"],
+      required: [false, "Product price is required"],
       min: [0, "Price cannot be negative"],
     },
     perDayPrice: {
@@ -128,7 +128,7 @@ const productSchema: Schema = new Schema(
     },
     deliveryAndCollection: {
       type: String,
-      required: [true, "Delivery and collection information is required"],
+      required: [false, "Delivery and collection information is required"],
       trim: true,
     },
     priceDiscount: {
@@ -142,16 +142,16 @@ const productSchema: Schema = new Schema(
     },
     duration: {
       type: String,
-      required: [true, "Duration is required"],
+      required: [false, "Duration is required"],
     },
     maxGroupSize: {
       type: Number,
-      required: [true, "Max group size is required"],
+      required: [false, "Max group size is required"],
       min: [1, "Group size must be at least 1"],
     },
     difficulty: {
       type: String,
-      required: [true, "Difficulty level is required"],
+      required: [false, "Difficulty level is required"],
       enum: {
         values: ["easy", "medium", "difficult"],
         message: "Difficulty must be easy, medium, or difficult",
@@ -165,32 +165,32 @@ const productSchema: Schema = new Schema(
     ],
     imageCover: {
       type: String,
-      required: [true, "Image cover is required"],
+      required: [false, "Image cover is required"],
     },
     location: {
       country: {
         type: String,
         default: "England",
-        required: true,
+        required: false,
       },
       state: {
         type: String,
-        required: [true, "State is required"],
+        required: [false, "State is required"],
         trim: true,
       },
       city: {
         type: String,
-        trim: true,
+        trim: false,
       },
     },
 
     availableFrom: {
       type: Date,
-      required: [true, "Available from date is required"],
+      required: [false, "Available from date is required"],
     },
     availableUntil: {
       type: Date,
-      required: [true, "Available until date is required"],
+      required: [false, "Available until date is required"],
     },
     size: {
       type: String,
@@ -202,13 +202,13 @@ const productSchema: Schema = new Schema(
     },
     stock: {
       type: Number,
-      required: [true, "Stock quantity is required"],
+      required: [false, "Stock quantity is required"],
       min: [0, "Stock cannot be negative"],
       default: 0,
     },
     isSensitive: {
       type: Boolean,
-      required: [true, "Sensitive item status is required"],
+      required: [false, "Sensitive item status is required"],
       default: false,
     },
     dateAdded: {
@@ -217,23 +217,23 @@ const productSchema: Schema = new Schema(
     },
     material: {
       type: String,
-      required: [true, "Material information is required"],
+      required: [false, "Material information is required"],
       trim: true,
     },
     design: {
       type: String,
-      required: [true, "Design information is required"],
+      required: [false, "Design information is required"],
       trim: true,
     },
     ageRange: {
       min: {
         type: Number,
-        required: [true, "Minimum age is required"],
+        required: [false, "Minimum age is required"],
         min: [0, "Minimum age cannot be negative"],
       },
       max: {
         type: Number,
-        required: [true, "Maximum age is required"],
+        required: [false, "Maximum age is required"],
         validate: {
           validator: function (this: any, value: number): boolean {
             return value >= this.ageRange.min;
@@ -243,7 +243,7 @@ const productSchema: Schema = new Schema(
       },
       unit: {
         type: String,
-        required: [true, "Age unit is required"],
+        required: [false, "Age unit is required"],
         enum: {
           values: ["years", "months"],
           message: "Age unit must be years or months",
@@ -252,7 +252,7 @@ const productSchema: Schema = new Schema(
     },
     safetyFeatures: {
       type: [String],
-      required: [true, "At least one safety feature is required"],
+      required: [false, "At least one safety feature is required"],
       validate: {
         validator: function (value: string[]): boolean {
           return value.length > 0;
@@ -263,7 +263,7 @@ const productSchema: Schema = new Schema(
     qualityAssurance: {
       isCertified: {
         type: Boolean,
-        required: [true, "Certification status is required"],
+        required: [false, "Certification status is required"],
         default: false,
       },
       certification: {

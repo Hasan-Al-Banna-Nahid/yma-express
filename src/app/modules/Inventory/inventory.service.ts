@@ -156,19 +156,32 @@ export const getAvailableInventory = async (
   warehouse?: string,
 ) => {
   const query: any = {
+    // Search by product name (optional: you might prefer searching by productId)
     productName: { $regex: productName, $options: "i" },
     quantity: { $gt: 0 },
+    status: { $ne: "maintenance" }, // Ensure we don't pick broken items
   };
+
   if (warehouse) query.warehouse = warehouse;
 
   const inventoryItems = await Inventory.find(query);
 
+  // Filter out items that have an overlapping booking
   return inventoryItems.filter((item) => {
+    // If no bookings exist, it's available
     if (!item.bookedDates || item.bookedDates.length === 0) return true;
 
-    return !item.bookedDates.some((booking) => {
-      return !(endDate < booking.startDate || startDate > booking.endDate);
+    // Check for overlap:
+    // An overlap exists if: (RequestStart <= ExistingEnd) AND (RequestEnd >= ExistingStart)
+    const hasOverlap = item.bookedDates.some((booking: any) => {
+      return (
+        startDate <= new Date(booking.endDate) &&
+        endDate >= new Date(booking.startDate)
+      );
     });
+
+    // We want items that do NOT have an overlap
+    return !hasOverlap;
   });
 };
 
@@ -179,36 +192,43 @@ export const checkInventoryAvailability = async (
   productName: string,
   startDate: Date,
   endDate: Date,
-  quantity: number,
+  requestedQuantity: number,
   warehouse?: string,
 ) => {
+  // Ensure we are working with Date objects
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+
   const availableItems = await getAvailableInventory(
     productName,
-    startDate,
-    endDate,
+    start,
+    end,
     warehouse,
   );
 
+  // Sum up the quantity from all available inventory documents
   const totalAvailable = availableItems.reduce(
-    (acc, item) => acc + item.quantity,
+    (acc, item) => acc + (item.quantity || 0),
     0,
   );
 
   return {
-    isAvailable: totalAvailable >= quantity,
+    isAvailable: totalAvailable >= requestedQuantity,
     availableQuantity: totalAvailable,
+    requestedQuantity,
+    period: { start, end },
     message:
-      totalAvailable >= quantity
-        ? `Available: ${totalAvailable} items`
-        : `Only ${totalAvailable} items available`,
-    inventoryItems: availableItems.map((item) => ({
-      id: item._id,
+      totalAvailable >= requestedQuantity
+        ? `Success: ${totalAvailable} items available for this period.`
+        : `Shortage: Only ${totalAvailable} items available, but ${requestedQuantity} requested.`,
+    // Return all specific available items
+    availableItems: availableItems.map((item) => ({
+      inventoryId: item._id,
       productName: item.productName,
-      quantity: item.quantity,
+      // sku: item.sku,
       warehouse: item.warehouse,
-      vendor: item.vendor,
+      currentQuantity: item.quantity,
       rentalPrice: item.rentalPrice,
-      dimensions: item.dimensions,
     })),
   };
 };
