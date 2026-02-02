@@ -103,7 +103,10 @@ interface LeanOrderForReorder {
   }>;
   shippingAddress?: ShippingAddress;
 }
-
+interface ReorderRequest {
+  customerId: string;
+  itemsToReorder: ReorderItemInput[];
+}
 // ─── Utils ──────────────────────────────────────────────────────────
 function splitFullName(fullName?: string | null): {
   firstName: string;
@@ -283,51 +286,53 @@ export class CustomerService {
   // ─── Lean order type with optional fields ──────────────
 
   // ─── Prepare reorder safely ─────────────────────────────
-  static async prepareReorder(
-    customerId: string,
-    itemsToReorder: ReorderItemInput[],
-  ): Promise<{
-    customerId: string;
+  static async prepareReorder(body: ReorderRequest): Promise<{
     items: PreparedReorderItem[];
     suggestedAddress: ShippingAddress;
     totalAmount: number;
   }> {
-    // Find customer
+    const { customerId, itemsToReorder } = body;
+
+    // Find customer by customerId (not _id)
     const customer = await Customer.findOne({ customerId }).lean();
+
     if (!customer) throw new Error("Customer not found");
 
-    if (!customer.email) throw new Error("Customer email not found");
+    // If customer has no orders, we still allow reorder for any product
+    const orderItems: PreparedReorderItem[] = [];
 
-    const shipping =
-      customer.orders && customer.orders.length > 0
-        ? {} // if you want, you can fetch last order's shippingAddress
-        : {};
+    for (const item of itemsToReorder) {
+      // Fetch product details from your Product collection
+      const product = await Product.findById(item.productId).lean();
+      if (!product) {
+        // optional: skip or push placeholder
+        orderItems.push({
+          product: item.productId,
+          name: "Product not available",
+          quantity: 1,
+          price: 0,
+          startDate: new Date(item.startDate),
+          endDate: new Date(item.endDate),
+        });
+        continue;
+      }
 
-    // Get product details from Product collection
-    const productIds = itemsToReorder.map((i) => i.productId);
-    const products = await Product.find({ _id: { $in: productIds } }).lean();
-
-    // Prepare items
-    const items: PreparedReorderItem[] = itemsToReorder.map((r) => {
-      const product = products.find((p) => String(p._id) === r.productId);
-      return {
-        product: r.productId,
-        name: product?.name || "Product not available",
-        quantity: 1,
-        price: product?.price || 0,
-        startDate: new Date(r.startDate),
-        endDate: new Date(r.endDate),
-      };
-    });
-
-    const totalAmount = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
+      orderItems.push({
+        product: String(product._id),
+        name: product.name,
+        quantity: 1, // default or adjust as needed
+        price: product.price,
+        startDate: new Date(item.startDate),
+        endDate: new Date(item.endDate),
+      });
+    }
 
     const suggestedAddress: ShippingAddress = {
-      firstName: customer.name?.split(" ")[0] || "",
-      lastName: customer.name?.split(" ").slice(1).join(" ") || "",
+      firstName: customer.name.split(" ")[0] || "",
+      lastName: customer.name.split(" ").slice(1).join(" ") || "",
       phone: customer.phone || "",
       email: customer.email,
-      country: customer.country || "Bangladesh",
+      country: "Bangladesh",
       city: customer.city || "",
       street: customer.address || "",
       zipCode: customer.postcode || "",
@@ -337,26 +342,13 @@ export class CustomerService {
       notes: "",
     };
 
-    // Send email
-    await sendCustomerOrderEmail("order-received", {
-      to: customer.email,
-      customerName: customer.name || "Customer",
-      orderId: "N/A",
-      eventDate: items.map((i) => i.startDate || "2026-02-01") as any,
-      deliveryTime: suggestedAddress.deliveryTime as any,
-      deliveryAddress: `${suggestedAddress.street}, ${suggestedAddress.city}`,
-      totalAmount,
-      orderItems: items.map((i) => ({
-        name: i.name,
-        quantity: i.quantity,
-        price: i.price,
-        subtotal: i.price * i.quantity,
-      })),
-    });
+    const totalAmount = orderItems.reduce(
+      (sum, i) => sum + i.price * i.quantity,
+      0,
+    );
 
     return {
-      customerId,
-      items,
+      items: orderItems,
       suggestedAddress,
       totalAmount,
     };

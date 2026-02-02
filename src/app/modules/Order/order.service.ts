@@ -1172,6 +1172,7 @@ export const getOrdersByUserId = async (
   }
 
   const skip = (page - 1) * limit;
+
   const query = { user: new mongoose.Types.ObjectId(userId) };
 
   const [orders, total] = await Promise.all([
@@ -1183,7 +1184,11 @@ export const getOrdersByUserId = async (
     Order.countDocuments(query),
   ]);
 
-  return { orders, total, pages: Math.ceil(total / limit) };
+  return {
+    orders,
+    total,
+    pages: Math.ceil(total / limit),
+  };
 };
 
 export const searchOrders = async (

@@ -39,13 +39,30 @@ export class CustomerController {
 
   static async prepareReorder(req: Request, res: Response, next: NextFunction) {
     try {
-      const { orderId } = req.params;
-      const { items } = req.body; // [{ productId, startDate, endDate }]
+      const { customerId, itemsToReorder } = req.body;
 
-      if (!orderId)
-        return res.status(400).json({ message: "Order ID is required" });
+      // Validate request body
+      if (!customerId) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Customer ID is required" });
+      }
 
-      const reorderData = await CustomerService.prepareReorder(orderId, items);
+      if (
+        !itemsToReorder ||
+        !Array.isArray(itemsToReorder) ||
+        itemsToReorder.length === 0
+      ) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Items to reorder are required" });
+      }
+
+      // Call service
+      const reorderData = await CustomerService.prepareReorder({
+        customerId,
+        itemsToReorder,
+      });
 
       return res.status(200).json({
         success: true,

@@ -5,6 +5,7 @@ import ApiError from "../../utils/apiError";
 import { ApiResponse } from "../../utils/apiResponse";
 import * as orderService from "./order.service";
 import mongoose from "mongoose";
+import { IUser } from "../../modules/Auth/user.interface";
 
 export const createOrderHandler = asyncHandler(
   async (req: Request, res: Response) => {
@@ -122,30 +123,46 @@ export const createOrderHandler = asyncHandler(
     });
   },
 );
+type AuthenticatedRequest = Request & {
+  user?: IUser;
+};
 
 export const getMyOrders = asyncHandler(async (req: Request, res: Response) => {
-  const aReq = req as any;
-  const userId = aReq.user.id;
-  const page = parseInt(req.query.page as string) || 1;
-  const limit = parseInt(req.query.limit as string) || 10;
+  const aReq = req as AuthenticatedRequest;
 
-  const result = await orderService.getOrdersByUserId(userId, page, limit);
+  if (!aReq.user) {
+    throw new ApiError("Unauthorized", 401);
+  }
 
-  ApiResponse(res, 200, "Orders retrieved successfully", result);
+  const userId = aReq.user._id; // ⚠️ usually _id, not id
+  console.log(userId, aReq);
+  const page = Number(req.query.page) || 1;
+  const limit = Number(req.query.limit) || 10;
+
+  const result = await orderService.getOrdersByUserId(
+    userId.toString(),
+    page,
+    limit,
+  );
+
+  ApiResponse(res, 200, "My orders retrieved successfully", result);
 });
 
 export const getOrder = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
-  const aReq = req as any;
-  // const userId = aReq.user.id;
-  // const isAdmin = aReq.user.role === "admin";
-
+  const aReq = req as AuthenticatedRequest;
+  console.log(id, aReq);
   const order = await orderService.getOrderById(id);
 
-  // Check authorization
-  // if (!isAdmin && order.user.toString() !== userId.toString()) {
-  //   throw new ApiError("Not authorized to view this order", 403);
-  // }
+  if (!aReq.user) {
+    throw new ApiError("Unauthorized", 401);
+  }
+
+  const isAdmin = aReq.user.role === "admin";
+
+  if (!isAdmin && order.user.toString() !== aReq.user._id.toString()) {
+    throw new ApiError("Not authorized to view this order", 403);
+  }
 
   ApiResponse(res, 200, "Order retrieved successfully", { order });
 });
@@ -153,7 +170,7 @@ export const getOrder = asyncHandler(async (req: Request, res: Response) => {
 export const updateOrderHandler = asyncHandler(
   async (req: Request, res: Response) => {
     const { id } = req.params;
-    const aReq = req as any;
+    // const aReq = req as any;
     // const userId = aReq.user.id;
     // const isAdmin = aReq.user.role === "admin";
     const updateData = req.body;

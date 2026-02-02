@@ -16,82 +16,67 @@ const AVAILABLE_PRODUCT_FILTER = {
   stock: { $gt: 0 },
 };
 
-/* =========================
-   CREATE PRODUCT WITH CLOUDINARY
-========================= */
+// =========================
+// CREATE PRODUCT
+// =========================
+
 export const createProduct = async (
-  productData: CreateProductData & {
-    imageCover?: Express.Multer.File;
-    images?: Express.Multer.File[];
-  },
+  productData: any,
 ): Promise<IProductModel> => {
+  // Validate categories
   if (!productData.categories || productData.categories.length === 0) {
     throw new ApiError("At least one category is required", 400);
   }
-
-  if (!productData.images || productData.images.length === 0) {
-    throw new ApiError("At least one image is required", 400);
-  }
-
-  if (productData.images.length > 5) {
-    throw new ApiError("Maximum 5 images allowed", 400);
-  }
-
-  if (!productData.imageCover) {
-    throw new ApiError("Cover image is required", 400);
-  }
-
   const categoryIds = productData.categories.map(
-    (id) => new Types.ObjectId(id),
+    (id: string) => new Types.ObjectId(id),
   );
-
   const categories = await Category.find({
     _id: { $in: categoryIds },
     isActive: true,
   });
-
   if (categories.length !== categoryIds.length) {
     throw new ApiError("One or more categories are invalid or inactive", 400);
   }
 
+  // Ensure required nested fields have defaults
+  const now = new Date();
   const product = await Product.create({
-    name: productData.name,
-    description: productData.description,
-    summary: productData.summary,
-    price: productData.price,
-    perDayPrice: productData.perDayPrice,
-    perWeekPrice: productData.perWeekPrice,
-    deliveryAndCollection: productData.deliveryAndCollection,
-    priceDiscount: productData.priceDiscount,
-    duration: productData.duration,
-    maxGroupSize: productData.maxGroupSize,
-    difficulty: productData.difficulty,
+    ...productData,
     categories: categoryIds,
-    images: productData.images as string[],
-    imageCover: productData.imageCover as string,
+    dimensions: {
+      length: productData.dimensions?.length || 1,
+      width: productData.dimensions?.width || 1,
+      height: productData.dimensions?.height || 1,
+    },
+    ageRange: {
+      min: productData.ageRange?.min ?? 0,
+      max: productData.ageRange?.max ?? 0,
+      unit: productData.ageRange?.unit || "years",
+    },
     location: {
-      country: "England",
-      state: productData.location?.state || "",
-      city: productData.location?.city || "",
+      country: productData.location?.country || "Bangladesh",
+      state: productData.location?.state || "Unknown",
+      city: productData.location?.city || "Unknown",
     },
-    dimensions: productData.dimensions || {
-      length: 1,
-      width: 1,
-      height: 1,
+    safetyFeatures: productData.safetyFeatures?.length
+      ? productData.safetyFeatures
+      : ["Standard safety"],
+    qualityAssurance: {
+      isCertified: productData.qualityAssurance?.isCertified ?? false,
+      certification: productData.qualityAssurance?.certification || "",
+      warrantyPeriod: productData.qualityAssurance?.warrantyPeriod || "",
+      warrantyDetails: productData.qualityAssurance?.warrantyDetails || "",
     },
+    images: productData.images || [],
+    imageCover: productData.imageCover || "",
     availableFrom: productData.availableFrom
       ? new Date(productData.availableFrom)
-      : new Date(),
+      : now,
     availableUntil: productData.availableUntil
       ? new Date(productData.availableUntil)
-      : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
-    size: productData.size,
-    active: productData.active !== undefined ? productData.active : true,
-    stock: productData.stock || 0,
-    isSensitive: productData.isSensitive || false,
-    material: productData.material,
-    design: productData.design,
-    dateAdded: new Date(),
+      : new Date(now.getFullYear() + 1, now.getMonth(), now.getDate()),
+    active: productData.active ?? true,
+    stock: productData.stock ?? 0,
     deliveryTimeOptions: productData.deliveryTimeOptions || [
       "8am-12pm",
       "12pm-4pm",
@@ -104,26 +89,95 @@ export const createProduct = async (
     ],
     defaultDeliveryTime: productData.defaultDeliveryTime || "8am-12pm",
     defaultCollectionTime: productData.defaultCollectionTime || "before_5pm",
-    deliveryTimeFee: productData.deliveryTimeFee || 0,
-    collectionTimeFee: productData.collectionTimeFee || 0,
-    ageRange: productData.ageRange || {
-      min: 0,
-      max: 0,
-      unit: "years",
-    },
-    safetyFeatures: productData.safetyFeatures || [],
-    qualityAssurance: productData.qualityAssurance || {
-      isCertified: false,
-    },
+    deliveryTimeFee: productData.deliveryTimeFee ?? 0,
+    collectionTimeFee: productData.collectionTimeFee ?? 0,
   });
 
   await product.populate({
     path: "categories",
     select: "name slug description image",
-    match: { isActive: true },
   });
 
   return product;
+};
+
+export const updateProductService = async (
+  productId: string,
+  updateData: any,
+): Promise<IProductModel> => {
+  // -------------------------
+  // Validate product ID
+  // -------------------------
+  if (!Types.ObjectId.isValid(productId))
+    throw new ApiError("Invalid product ID", 400);
+
+  const product = await Product.findById(productId);
+  if (!product) throw new ApiError("Product not found", 404);
+
+  // -------------------------
+  // Remove forbidden fields
+  // -------------------------
+  const forbiddenFields: string[] = ["_id", "createdAt", "updatedAt"];
+  forbiddenFields.forEach((field) => delete updateData[field]);
+
+  // -------------------------
+  // Parse nested JSON strings (from form-data)
+  // -------------------------
+  const parseNested = (field: any) => {
+    if (!field) return undefined;
+    if (typeof field === "string") {
+      try {
+        const parsed = JSON.parse(field);
+        if (typeof parsed === "object" && parsed !== null) return parsed;
+        return field; // fallback if parsed value is primitive
+      } catch {
+        return field; // leave as-is if not valid JSON
+      }
+    }
+    return field; // already an object
+  };
+
+  updateData.dimensions = parseNested(updateData.dimensions);
+  updateData.ageRange = parseNested(updateData.ageRange);
+  updateData.location = parseNested(updateData.location);
+  updateData.qualityAssurance = parseNested(updateData.qualityAssurance);
+
+  // -------------------------
+  // Flatten nested objects for MongoDB $set
+  // -------------------------
+  const flatten = (obj: any, prefix = ""): any => {
+    const flat: any = {};
+    Object.keys(obj || {}).forEach((key) => {
+      const value = obj[key];
+      const path = prefix ? `${prefix}.${key}` : key;
+      if (
+        value &&
+        typeof value === "object" &&
+        !Array.isArray(value) &&
+        !(value instanceof Date)
+      ) {
+        Object.assign(flat, flatten(value, path));
+      } else if (value !== undefined) {
+        flat[path] = value; // skip undefined fields
+      }
+    });
+    return flat;
+  };
+
+  const update = flatten(updateData);
+
+  // -------------------------
+  // Apply update
+  // -------------------------
+  const updatedProduct = await Product.findByIdAndUpdate(
+    productId,
+    { $set: update },
+    { new: true, runValidators: true },
+  ).populate("categories", "name slug description image");
+
+  if (!updatedProduct) throw new ApiError("Failed to update product", 500);
+
+  return updatedProduct;
 };
 
 /* =========================
@@ -150,41 +204,41 @@ const flattenForUpdate = (obj: any, prefix = ""): any => {
   });
   return flattened;
 };
-
-type ForbiddenFields = "_id" | "createdAt" | "updatedAt";
-
-export const updateProductService = async (
-  productId: string,
-  updateData: Partial<IProduct>,
-): Promise<IProduct> => {
-  if (!Types.ObjectId.isValid(productId))
-    throw new ApiError("Invalid product id", 400);
-
-  const product = await Product.findById(productId);
-  if (!product) throw new ApiError("Product not found", 404);
-
-  // Remove forbidden fields
-  const cleanData = { ...updateData };
-  delete cleanData._id;
-  delete cleanData.createdAt;
-  delete cleanData.updatedAt;
-
-  // Flatten nested objects (location, dimensions, ageRange, qualityAssurance, etc.)
-  const update = flattenForUpdate(cleanData);
-
-  // Automatically set topPickUpdatedAt
-  if (updateData.isTopPick) update.topPickUpdatedAt = new Date();
-
-  const updatedProduct = await Product.findByIdAndUpdate(
-    productId,
-    { $set: update },
-    { new: true, runValidators: true },
-  ).lean(); // return plain JS object
-
-  if (!updatedProduct) throw new ApiError("Failed to update product", 500);
-
-  return updatedProduct;
-};
+//
+// type ForbiddenFields = "_id" | "createdAt" | "updatedAt";
+//
+// export const updateProductService = async (
+//   productId: string,
+//   updateData: Partial<IProduct>,
+// ): Promise<IProduct> => {
+//   if (!Types.ObjectId.isValid(productId))
+//     throw new ApiError("Invalid product id", 400);
+//
+//   const product = await Product.findById(productId);
+//   if (!product) throw new ApiError("Product not found", 404);
+//
+//   // Remove forbidden fields
+//   const cleanData = { ...updateData };
+//   delete cleanData._id;
+//   delete cleanData.createdAt;
+//   delete cleanData.updatedAt;
+//
+//   // Flatten nested objects (location, dimensions, ageRange, qualityAssurance, etc.)
+//   const update = flattenForUpdate(cleanData);
+//
+//   // Automatically set topPickUpdatedAt
+//   if (updateData.isTopPick) update.topPickUpdatedAt = new Date();
+//
+//   const updatedProduct = await Product.findByIdAndUpdate(
+//     productId,
+//     { $set: update },
+//     { new: true, runValidators: true },
+//   ).lean(); // return plain JS object
+//
+//   if (!updatedProduct) throw new ApiError("Failed to update product", 500);
+//
+//   return updatedProduct;
+// };
 
 /* =========================
    GET BOOKED DATES FOR A SINGLE PRODUCT
@@ -504,71 +558,67 @@ const getProductAvailability = async (
 /* =========================
    GET ALL PRODUCTS WITH BOOKED DATES
 ========================= */
+
 export const getAllProducts = async (
   page: number = 1,
   limit: number = 10,
   state?: string,
-  category?: string,
+  category?: string, // will be ObjectId string
   minPrice?: number,
   maxPrice?: number,
   search?: string,
-  sortBy: "price" | "createdAt" | "name" = "createdAt", // ← added
-  sortOrder: "asc" | "desc" = "asc", // ← added
-): Promise<{
-  products: IProductModel[];
-  total: number;
-  pages: number;
-}> => {
+  startDate?: string,
+  endDate?: string,
+  sortBy: "price" | "createdAt" | "name" = "createdAt",
+  sortOrder: "asc" | "desc" = "asc",
+): Promise<{ products: IProductModel[]; total: number; pages: number }> => {
   const skip = (page - 1) * limit;
+  const filter: any = { active: true };
 
-  // Build filter object
-  const filter: any = { ...AVAILABLE_PRODUCT_FILTER };
+  // 🔹 Name search
+  if (search) filter.name = { $regex: search, $options: "i" };
 
-  // 🔍 Product name search
-  if (search) {
-    filter.name = { $regex: search, $options: "i" };
-  }
+  // 🔹 State filter
+  if (state) filter["location.state"] = { $regex: state, $options: "i" };
 
-  // 📍 State filter
-  if (state) {
-    filter["location.state"] = { $regex: state, $options: "i" };
-  }
-
-  // 🗂 Category filter
+  // 🔹 Category filter (ObjectId)
   if (category && Types.ObjectId.isValid(category)) {
-    filter.categories = new Types.ObjectId(category);
+    filter.categories = { $in: [new Types.ObjectId(category)] };
   }
 
-  // 💰 Price range filter
+  // 🔹 Price filter
   if (minPrice !== undefined || maxPrice !== undefined) {
     filter.price = {};
     if (minPrice !== undefined) filter.price.$gte = minPrice;
     if (maxPrice !== undefined) filter.price.$lte = maxPrice;
   }
 
-  // ── Dynamic sorting ───────────────────────────────────────
-  let sortObj: Record<string, 1 | -1> = { createdAt: -1 }; // default: newest first
-
-  if (sortBy === "price") {
-    sortObj = { price: sortOrder === "asc" ? 1 : -1 };
-  } else if (sortBy === "name") {
-    sortObj = { name: sortOrder === "asc" ? 1 : -1 };
-  } else if (sortBy === "createdAt") {
-    sortObj = { createdAt: sortOrder === "asc" ? 1 : -1 };
+  // 🔹 Availability dates filter (overlap)
+  if (startDate || endDate) {
+    filter.$and = [];
+    if (startDate)
+      filter.$and.push({ availableUntil: { $gte: new Date(startDate) } });
+    if (endDate)
+      filter.$and.push({ availableFrom: { $lte: new Date(endDate) } });
   }
 
-  // 📦 Fetch products
+  // 🔹 Sorting
+  const sortObj: Record<string, 1 | -1> = {
+    [sortBy]: sortOrder === "asc" ? 1 : -1,
+  };
+
+  // 🔹 Fetch products
   const products = await Product.find(filter)
-    .populate("categories", "name description")
     .select("-__v")
-    .sort(sortObj) // ← dynamic sort applied here
+    .populate("categories", "name description") // optional
+    .sort(sortObj)
     .skip(skip)
     .limit(limit)
     .lean();
 
   const total = await Product.countDocuments(filter);
 
-  // 📅 Booking + availability enrichment
+  // 🔹 Add bookedDates + availability info
   const productsWithBookedDates = await Promise.all(
     products.map(async (product: any) => {
       const bookedDates = await getBookedDatesForProduct(
@@ -582,28 +632,19 @@ export const getAllProducts = async (
       return {
         ...product,
         bookedDates: bookedDates.map((bd) => ({
-          date: bd.date,
+          startDate: bd.startDate,
+          endDate: bd.endDate,
           bookingId: bd.bookingId,
-          bookingNumber: bd.bookingNumber,
           status: bd.status,
-          quantity: bd.quantity,
         })),
         availability: {
           bookedCount: bookedDates.length,
           next30Days: availability,
-          isAvailable: bookedDates.length === 0,
+          isAvailable: bookedDates.length === 0 && product.stock > 0,
         },
-        images: product.images || [],
-        discount: product.discount || 0,
-        discountPrice:
-          product.price - (product.price * (product.discount || 0)) / 100,
-        dimensions: product.dimensions || {
-          length: 0,
-          width: 0,
-          height: 0,
-        },
-        _id: product._id,
-        id: product._id.toString(),
+        discountPrice: product.discount
+          ? product.price - (product.price * product.discount) / 100
+          : product.price,
       };
     }),
   );

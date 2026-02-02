@@ -16,73 +16,51 @@ declare global {
   }
 }
 
-export const protectRoute = async (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => {
-  try {
-    let token;
+export const protectRoute = asyncHandler(
+  async (req: Request, _res: Response, next: NextFunction) => {
+    let token: string | undefined;
 
-    // 1️⃣ Bearer token (Postman / mobile / API)
+    /* -------------------- 1. Bearer token -------------------- */
     if (
       req.headers.authorization &&
-      req.headers.authorization.startsWith("Bearer ")
+      req.headers.authorization.startsWith("Bearer")
     ) {
       token = req.headers.authorization.split(" ")[1];
     }
 
-    // 2️⃣ Cookie token (Browser)
-    else if (req.cookies?.accessToken) {
+    /* -------------------- 2. Cookie token -------------------- */
+    if (!token && req.cookies?.accessToken) {
       token = req.cookies.accessToken;
     }
 
     if (!token) {
-      return next(
-        new ApiError(
-          "You are not logged in. Please log in to get access.",
-          401,
-        ),
-      );
+      throw new ApiError("Unauthorized", 401);
     }
 
+    /* -------------------- 3. Verify token -------------------- */
     const decoded = jwt.verify(token, process.env.JWT_SECRET!) as {
       id: string;
       iat: number;
-      exp: number;
     };
 
-    const user = await User.findById(decoded.id).select("+active");
+    /* -------------------- 4. Get user -------------------- */
+    const user = await User.findById(decoded.id);
 
     if (!user) {
-      return next(
-        new ApiError("The user belonging to this token no longer exists.", 401),
-      );
+      throw new ApiError("User no longer exists", 401);
     }
 
+    /* -------------------- 5. Password changed check -------------------- */
     if (user.changedPasswordAfter(decoded.iat)) {
-      return next(
-        new ApiError(
-          "User recently changed password. Please log in again.",
-          401,
-        ),
-      );
+      throw new ApiError("Password changed, please login again", 401);
     }
 
-    req.user = user;
+    /* -------------------- 6. Attach user -------------------- */
+    (req as AuthenticatedRequest).user = user;
+
     next();
-  } catch (error: any) {
-    if (error.name === "JsonWebTokenError") {
-      return next(new ApiError("Invalid token. Please log in again!", 401));
-    }
-    if (error.name === "TokenExpiredError") {
-      return next(
-        new ApiError("Your token has expired. Please log in again!", 401),
-      );
-    }
-    next(error);
-  }
-};
+  },
+);
 
 export function restrictTo(...roles: Array<IUser["role"]>) {
   return (req: Request, _res: Response, next: NextFunction) => {

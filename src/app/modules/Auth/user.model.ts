@@ -8,13 +8,13 @@ const userSchema = new Schema<IUser, IUserModel, IUserMethods>(
   {
     firstName: {
       type: String,
-      required: [true, "First name is required"],
+      required: [false, "First name is required"],
       trim: true,
       maxlength: [50, "First name cannot exceed 50 characters"],
     },
     lastName: {
       type: String,
-      required: [true, "Last name is required"],
+      required: [false, "Last name is required"],
       trim: true,
       maxlength: [50, "Last name cannot exceed 50 characters"],
     },

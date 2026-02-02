@@ -7,9 +7,8 @@ import {
   deleteInventoryItemHandler,
   getAvailableInventoryHandler,
   getBookedInventoryHandler,
-  checkInventoryAvailabilityHandler,
   // releaseExpiredCartItemsHandler,
-  checkProductAvailabilityHandler,
+  checkInventoryAvailabilityHandler,
 } from "./inventory.controller";
 import { protectRoute } from "../../middlewares/auth.middleware";
 import { restrictTo } from "../../middlewares/authorization.middleware";
@@ -18,7 +17,7 @@ import { upload } from "../../utils/cloudinary.util";
 const router = express.Router();
 
 // Public routes
-router.post("/check-availability", checkProductAvailabilityHandler);
+router.post("/check-availability", checkInventoryAvailabilityHandler);
 
 // Protected routes
 router.use(protectRoute);

@@ -5,25 +5,25 @@ import {
   IDeliveryOptions,
 } from "./location.interface";
 
-// Sub-schema for delivery areas
+/* ---------------------------------- */
+/* DELIVERY AREA SUB-SCHEMA            */
+/* ---------------------------------- */
 const DeliveryAreaSchema = new Schema<IDeliveryArea>(
   {
     name: {
       type: String,
-      required: [true, "Delivery area name is required"],
+      required: true,
       trim: true,
-      maxlength: [100, "Area name cannot exceed 100 characters"],
     },
     postcode: {
       type: String,
-      required: [true, "Postcode is required"],
+      required: true,
       trim: true,
       uppercase: true,
     },
     deliveryFee: {
       type: Number,
-      required: [true, "Delivery fee is required"],
-      min: [0, "Delivery fee cannot be negative"],
+      min: 0,
       default: 0,
     },
     isFree: {
@@ -32,14 +32,12 @@ const DeliveryAreaSchema = new Schema<IDeliveryArea>(
     },
     minOrder: {
       type: Number,
-      required: [true, "Minimum order is required"],
-      min: [0, "Minimum order cannot be negative"],
+      min: 0,
       default: 0,
     },
     estimatedTime: {
       type: Number,
-      required: [true, "Estimated delivery time is required"],
-      min: [0, "Estimated time cannot be negative"],
+      min: 0,
       default: 60,
     },
     isActive: {
@@ -47,92 +45,67 @@ const DeliveryAreaSchema = new Schema<IDeliveryArea>(
       default: true,
     },
   },
-  { _id: true, timestamps: false }
+  { _id: true },
 );
 
-// Sub-schema for delivery options
+/* ---------------------------------- */
+/* DELIVERY OPTIONS SUB-SCHEMA         */
+/* ---------------------------------- */
 const DeliveryOptionsSchema = new Schema<IDeliveryOptions>(
   {
-    isAvailable: {
-      type: Boolean,
-      default: true,
-    },
-    isFree: {
-      type: Boolean,
-      default: false,
-    },
-    fee: {
-      type: Number,
-      min: [0, "Fee cannot be negative"],
-      default: 0,
-    },
-    minOrder: {
-      type: Number,
-      min: [0, "Minimum order cannot be negative"],
-      default: 0,
-    },
-    estimatedTime: {
-      type: Number,
-      min: [0, "Estimated time cannot be negative"],
-      default: 60,
-    },
-    radius: {
-      type: Number,
-      min: [0, "Radius cannot be negative"],
-      default: 5000,
-    },
+    isAvailable: { type: Boolean, default: true },
+    isFree: { type: Boolean, default: false },
+    fee: { type: Number, min: 0, default: 0 },
+    minOrder: { type: Number, min: 0, default: 0 },
+    estimatedTime: { type: Number, min: 0, default: 60 },
+    radius: { type: Number, min: 0, default: 5000 },
   },
-  { _id: false, timestamps: false }
+  { _id: false },
 );
 
+/* ---------------------------------- */
+/* LOCATION SCHEMA (SIMPLIFIED)       */
+/* ---------------------------------- */
 const LocationSchema = new Schema<ILocation>(
   {
     name: {
       type: String,
-      required: [true, "Location name is required"],
+      required: true,
       trim: true,
-      maxlength: [200, "Name cannot exceed 200 characters"],
+      index: true,
     },
-    type: {
+
+    postcode: {
       type: String,
-      required: [true, "Location type is required"],
-      enum: {
-        values: ["country", "state", "city", "area", "postcode"],
-        message: "Type must be one of: country, state, city, area, postcode",
-      },
+      required: true,
+      trim: true,
+      uppercase: true,
       index: true,
     },
-    parent: {
-      type: Schema.Types.ObjectId,
-      ref: "Location",
-      default: null,
-      index: true,
-    },
+
     country: {
       type: String,
+      required: true,
       trim: true,
     },
+
     state: {
       type: String,
+      required: true,
       trim: true,
     },
+
     city: {
       type: String,
       trim: true,
+      default: "",
     },
-    area: {
-      type: String,
-      trim: true,
-    },
-    postcode: {
-      type: String,
-      trim: true,
-      uppercase: true,
-    },
+
     deliveryAreas: {
       type: [DeliveryAreaSchema],
       default: [],
     },
+
     deliveryOptions: {
       type: DeliveryOptionsSchema,
       default: () => ({
@@ -144,62 +117,50 @@ const LocationSchema = new Schema<ILocation>(
         radius: 5000,
       }),
     },
+
     description: {
       type: String,
       trim: true,
-      maxlength: [1000, "Description cannot exceed 1000 characters"],
     },
+
     isActive: {
       type: Boolean,
       default: true,
       index: true,
     },
+
     metadata: {
       type: Schema.Types.Mixed,
       default: {},
     },
+    parent: {
+      type: Schema.Types.ObjectId,
+      ref: "Location",
+      default: null,
+    },
+    children: {
+      type: Schema.Types.ObjectId,
+      ref: "Location",
+      default: null,
+    },
   },
   {
     timestamps: true,
-    toJSON: { virtuals: true },
-    toObject: { virtuals: true },
-  }
+  },
 );
 
-// Indexes
-LocationSchema.index({ type: 1, isActive: 1 });
-LocationSchema.index({ state: 1, city: 1, area: 1 });
+/* ---------------------------------- */
+/* UNIQUE INDEX (name + postcode)     */
+/* ---------------------------------- */
+LocationSchema.index({ name: 1, postcode: 1 }, { unique: true });
+
+/* ---------------------------------- */
+/* DELIVERY AREA INDEXES              */
+/* ---------------------------------- */
 LocationSchema.index({ "deliveryAreas.postcode": 1 });
 LocationSchema.index({ "deliveryAreas.isActive": 1 });
 
-// Virtual for children locations
-LocationSchema.virtual("children", {
-  ref: "Location",
-  foreignField: "parent",
-  localField: "_id",
-});
-
-// Virtual for delivery summary
-LocationSchema.virtual("deliverySummary").get(function (this: ILocation) {
-  const activeAreas = this.deliveryAreas.filter((area) => area.isActive);
-  const deliveryFees = activeAreas.map((area) => area.deliveryFee);
-
-  return {
-    totalAreas: this.deliveryAreas.length,
-    activeAreas: activeAreas.length,
-    freeDeliveryAreas: activeAreas.filter((area) => area.isFree).length,
-    minDeliveryFee:
-      deliveryFees.length > 0
-        ? Math.min(...deliveryFees)
-        : this.deliveryOptions?.fee || 0,
-    maxDeliveryFee:
-      deliveryFees.length > 0
-        ? Math.max(...deliveryFees)
-        : this.deliveryOptions?.fee || 0,
-  };
-});
-
 export const LocationModel = mongoose.model<ILocation>(
   "Location",
-  LocationSchema
+  LocationSchema,
 );
