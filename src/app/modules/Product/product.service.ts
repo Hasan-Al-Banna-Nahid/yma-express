@@ -485,64 +485,79 @@ export const getAllProducts = async (
   page: number = 1,
   limit: number = 10,
   state?: string,
-  category?: string, // will be ObjectId string
+  city?: string, // 🔹 Added city parameter
+  category?: string,
   minPrice?: number,
   maxPrice?: number,
   search?: string,
   startDate?: string,
   endDate?: string,
   sortBy: "price" | "createdAt" | "name" = "createdAt",
-  sortOrder: "asc" | "desc" = "asc",
-): Promise<{ products: IProductModel[]; total: number; pages: number }> => {
+  sortOrder: "asc" | "desc" = "desc",
+): Promise<{ products: IProduct[]; total: number; pages: number }> => {
   const skip = (page - 1) * limit;
+
+  // 🔹 1. Build the Filter Object
   const filter: any = { active: true };
 
-  // 🔹 Name search
+  // Text Search
   if (search) filter.name = { $regex: search, $options: "i" };
 
-  // 🔹 State filter
+  // Location Filters
   if (state) filter["location.state"] = { $regex: state, $options: "i" };
 
-  // 🔹 Category filter (ObjectId)
+  // 🔹 New City Filter
+  if (city) filter["location.city"] = { $regex: city, $options: "i" };
+
+  // Category Filter
   if (category && Types.ObjectId.isValid(category)) {
     filter.categories = { $in: [new Types.ObjectId(category)] };
   }
 
-  // 🔹 Price filter
+  // Price Range
   if (minPrice !== undefined || maxPrice !== undefined) {
     filter.price = {};
     if (minPrice !== undefined) filter.price.$gte = minPrice;
     if (maxPrice !== undefined) filter.price.$lte = maxPrice;
   }
 
-  // 🔹 Availability dates filter (overlap)
+  // 🔹 2. Date Filter (Fixed for String ISO Dates)
   if (startDate || endDate) {
-    filter.$and = [];
-    if (startDate)
-      filter.$and.push({ availableUntil: { $gte: new Date(startDate) } });
-    if (endDate)
-      filter.$and.push({ availableFrom: { $lte: new Date(endDate) } });
+    filter.$expr = { $and: [] };
+
+    if (startDate) {
+      filter.$expr.$and.push({
+        $gte: [{ $toDate: "$availableUntil" }, new Date(startDate)],
+      });
+    }
+
+    if (endDate) {
+      filter.$expr.$and.push({
+        $lte: [{ $toDate: "$availableFrom" }, new Date(endDate)],
+      });
+    }
   }
 
-  // 🔹 Sorting
   const sortObj: Record<string, 1 | -1> = {
     [sortBy]: sortOrder === "asc" ? 1 : -1,
   };
 
-  // 🔹 Fetch products
-  const products = await Product.find(filter)
-    .select("-__v")
-    .populate("categories", "name description") // optional
-    .sort(sortObj)
-    .skip(skip)
-    .limit(limit)
-    .lean();
+  // 🔹 3. Database Execution
+  const [products, total] = await Promise.all([
+    Product.find(filter)
+      .select("-__v")
+      .populate("categories", "name description")
+      .sort(sortObj)
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    Product.countDocuments(filter),
+  ]);
 
-  const total = await Product.countDocuments(filter);
-
-  // 🔹 Add bookedDates + availability info
-  const productsWithBookedDates = await Promise.all(
+  // 🔹 4. Attach Extra Info (Booked Dates & Availability)
+  const productsWithExtras = await Promise.all(
     products.map(async (product: any) => {
+      // These helper functions should be defined in your service layer
       const bookedDates = await getBookedDatesForProduct(
         product._id.toString(),
       );
@@ -551,9 +566,12 @@ export const getAllProducts = async (
         30,
       );
 
+      const price = product.price || 0;
+      const discount = product.discount || 0;
+
       return {
         ...product,
-        bookedDates: bookedDates.map((bd) => ({
+        bookedDates: bookedDates.map((bd: any) => ({
           startDate: bd.startDate,
           endDate: bd.endDate,
           bookingId: bd.bookingId,
@@ -562,17 +580,15 @@ export const getAllProducts = async (
         availability: {
           bookedCount: bookedDates.length,
           next30Days: availability,
-          isAvailable: bookedDates.length === 0 && product.stock > 0,
+          isAvailable: bookedDates.length === 0 && (product.stock || 0) > 0,
         },
-        discountPrice: product.discount
-          ? product.price - (product.price * product.discount) / 100
-          : product.price,
+        discountPrice: discount > 0 ? price - (price * discount) / 100 : price,
       };
     }),
   );
 
   return {
-    products: productsWithBookedDates as IProductModel[],
+    products: productsWithExtras as unknown as IProduct[],
     total,
     pages: Math.ceil(total / limit),
   };
