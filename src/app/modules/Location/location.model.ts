@@ -17,7 +17,7 @@ const DeliveryAreaSchema = new Schema<IDeliveryArea>(
     },
     postcode: {
       type: String,
-      required: true,
+      required: false,
       trim: true,
       uppercase: true,
     },
@@ -77,7 +77,7 @@ const LocationSchema = new Schema<ILocation>(
 
     postcode: {
       type: String,
-      required: true,
+      required: false,
       trim: true,
       uppercase: true,
       index: true,
@@ -85,13 +85,13 @@ const LocationSchema = new Schema<ILocation>(
 
     country: {
       type: String,
-      required: true,
+      required: false,
       trim: true,
     },
 
     state: {
       type: String,
-      required: true,
+      required: false,
       trim: true,
     },
 

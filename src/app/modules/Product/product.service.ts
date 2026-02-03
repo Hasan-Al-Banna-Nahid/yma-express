@@ -527,12 +527,14 @@ export const getAllProducts = async (
 
     if (startDate) {
       filter.$expr.$and.push({
+        // Product must be available AFTER the user's chosen start
         $gte: [{ $toDate: "$availableUntil" }, new Date(startDate)],
       });
     }
 
     if (endDate) {
       filter.$expr.$and.push({
+        // Product must have started BEFORE the user's chosen end
         $lte: [{ $toDate: "$availableFrom" }, new Date(endDate)],
       });
     }
