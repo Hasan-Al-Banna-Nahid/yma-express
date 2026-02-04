@@ -21,7 +21,6 @@ const AVAILABLE_PRODUCT_FILTER = {
 // =========================
 
 export const createProduct = async (productData: any) => {
-  // If categories are provided, validate them, otherwise default to empty
   let categoryIds = [];
   if (productData.categories) {
     categoryIds = Array.isArray(productData.categories)
@@ -32,7 +31,8 @@ export const createProduct = async (productData: any) => {
   const product = await Product.create({
     ...productData,
     categories: categoryIds,
-    // Ensure nested objects exist even if partially sent
+    // Explicitly handle isActive or let schema default to true
+    isActive: productData.isActive !== undefined ? productData.isActive : true,
     dimensions: {
       length:
         productData["dimensions.length"] || productData.dimensions?.length || 1,
@@ -489,28 +489,24 @@ export const getAllProducts = async (
   page: number = 1,
   limit: number = 10,
   state?: string,
-  city?: string, // 🔹 Added city parameter
-  category?: string,
-  minPrice?: number,
-  maxPrice?: number,
-  search?: string,
-  startDate?: string,
-  endDate?: string,
-  sortBy: "price" | "createdAt" | "name" = "createdAt",
-  sortOrder: "asc" | "desc" = "desc",
-): Promise<{ products: IProduct[]; total: number; pages: number }> => {
+  city?: string, // 4th
+  category?: string, // 5th
+  minPrice?: number, // 6th
+  maxPrice?: number, // 7th
+  search?: string, // 8th
+  startDate?: string, // 9th
+  endDate?: string, // 10th
+  sortBy: "price" | "createdAt" | "name" = "createdAt", // 11th
+  sortOrder: "asc" | "desc" = "desc", // 12th
+): Promise<{ products: any[]; total: number; pages: number }> => {
   const skip = (page - 1) * limit;
 
-  // 🔹 1. Build the Filter Object
-  const filter: any = { active: true };
+  // 🔹 CORE FILTER: Only show products that are active
+  const filter: any = { isActive: true };
 
-  // Text Search
+  // Text & Location Filters
   if (search) filter.name = { $regex: search, $options: "i" };
-
-  // Location Filters
   if (state) filter["location.state"] = { $regex: state, $options: "i" };
-
-  // 🔹 New City Filter
   if (city) filter["location.city"] = { $regex: city, $options: "i" };
 
   // Category Filter
@@ -525,20 +521,16 @@ export const getAllProducts = async (
     if (maxPrice !== undefined) filter.price.$lte = maxPrice;
   }
 
-  // 🔹 2. Date Filter (Fixed for String ISO Dates)
+  // Date Logic
   if (startDate || endDate) {
     filter.$expr = { $and: [] };
-
     if (startDate) {
       filter.$expr.$and.push({
-        // Product must be available AFTER the user's chosen start
         $gte: [{ $toDate: "$availableUntil" }, new Date(startDate)],
       });
     }
-
     if (endDate) {
       filter.$expr.$and.push({
-        // Product must have started BEFORE the user's chosen end
         $lte: [{ $toDate: "$availableFrom" }, new Date(endDate)],
       });
     }
@@ -548,7 +540,7 @@ export const getAllProducts = async (
     [sortBy]: sortOrder === "asc" ? 1 : -1,
   };
 
-  // 🔹 3. Database Execution
+  // Execution
   const [products, total] = await Promise.all([
     Product.find(filter)
       .select("-__v")
@@ -560,41 +552,8 @@ export const getAllProducts = async (
     Product.countDocuments(filter),
   ]);
 
-  // 🔹 4. Attach Extra Info (Booked Dates & Availability)
-  const productsWithExtras = await Promise.all(
-    products.map(async (product: any) => {
-      // These helper functions should be defined in your service layer
-      const bookedDates = await getBookedDatesForProduct(
-        product._id.toString(),
-      );
-      const availability = await getProductAvailability(
-        product._id.toString(),
-        30,
-      );
-
-      const price = product.price || 0;
-      const discount = product.discount || 0;
-
-      return {
-        ...product,
-        bookedDates: bookedDates.map((bd: any) => ({
-          startDate: bd.startDate,
-          endDate: bd.endDate,
-          bookingId: bd.bookingId,
-          status: bd.status,
-        })),
-        availability: {
-          bookedCount: bookedDates.length,
-          next30Days: availability,
-          isAvailable: bookedDates.length === 0 && (product.stock || 0) > 0,
-        },
-        discountPrice: discount > 0 ? price - (price * discount) / 100 : price,
-      };
-    }),
-  );
-
   return {
-    products: productsWithExtras as unknown as IProduct[],
+    products,
     total,
     pages: Math.ceil(total / limit),
   };

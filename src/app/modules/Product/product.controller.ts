@@ -252,38 +252,34 @@ const validateRequiredFields = (
 };
 
 /* ---------------- CREATE PRODUCT ---------------- */
+/* ---------------- CREATE PRODUCT ---------------- */
 export const createProduct = asyncHandler(
-  async (req: Request, res: Response, next: NextFunction) => {
+  async (req: Request, res: Response) => {
     try {
-      // 1. Cast req.files to the correct Multer dictionary type
       const files = req.files as
         | { [fieldname: string]: Express.Multer.File[] }
         | undefined;
-
       let imageCoverUrl = "";
       const imageUrls: string[] = [];
 
       if (files) {
-        // 2. Extract the single cover image
-        if (files["imageCover"] && files["imageCover"][0]) {
-          imageCoverUrl = files["imageCover"][0].path; // Cloudinary URL
-        }
-
-        // 3. Extract the array of gallery images
-        if (files["images"]) {
-          files["images"].forEach((file) => {
-            imageUrls.push(file.path); // Cloudinary URLs
-          });
-        }
+        if (files["imageCover"]?.[0])
+          imageCoverUrl = files["imageCover"][0].path;
+        if (files["images"])
+          files["images"].forEach((file) => imageUrls.push(file.path));
       }
+
+      // Convert string "true"/"false" from form-data to actual boolean
+      const isActive = req.body.isActive === "false" ? false : true;
 
       const productData = {
         ...req.body,
-        imageCover: imageCoverUrl, // Assign the single cover
-        images: imageUrls, // Assign the array
+        isActive,
+        imageCover: imageCoverUrl,
+        images: imageUrls,
       };
 
-      const product = await Product.create(productData);
+      const product = await productService.createProduct(productData);
       res.status(201).json({ status: "success", product });
     } catch (err: any) {
       res.status(400).json({ status: "error", message: err.message });
@@ -293,37 +289,32 @@ export const createProduct = asyncHandler(
 
 /* ---------------- UPDATE PRODUCT ---------------- */
 export const updateProduct = asyncHandler(
-  async (req: Request, res: Response, next: NextFunction) => {
+  async (req: Request, res: Response) => {
     try {
       const productId = req.params.id;
-      // Handle Multi-field files (imageCover vs images)
       const files = req.files as
         | { [fieldname: string]: Express.Multer.File[] }
         | undefined;
 
       const updateData = { ...req.body };
 
-      if (files) {
-        // Handle imageCover
-        if (files["imageCover"] && files["imageCover"][0]) {
-          updateData.imageCover = files["imageCover"][0].path;
-        }
-
-        // Handle images array (New images)
-        if (files["images"]) {
-          const newImages = files["images"].map((file) => file.path);
-          // Decide: Replace all images OR append?
-          // Usually, for a PUT/PATCH from form-data, we replace or handle specifically.
-          updateData.images = newImages;
-        }
+      // Handle boolean conversion for updates
+      if (updateData.isActive !== undefined) {
+        updateData.isActive =
+          updateData.isActive === "true" || updateData.isActive === true;
       }
 
-      // Call the service
+      if (files) {
+        if (files["imageCover"]?.[0])
+          updateData.imageCover = files["imageCover"][0].path;
+        if (files["images"])
+          updateData.images = files["images"].map((file) => file.path);
+      }
+
       const updatedProduct = await productService.updateProductService(
         productId,
         updateData,
       );
-
       res.status(200).json({ status: "success", product: updatedProduct });
     } catch (err: any) {
       res

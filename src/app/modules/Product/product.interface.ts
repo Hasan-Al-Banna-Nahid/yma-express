@@ -70,6 +70,7 @@ export interface IProduct {
     bookingId?: Types.ObjectId;
     status?: "confirmed" | "pending" | "cancelled";
   }>;
+  isActive: boolean;
 }
 
 export interface CreateProductData {
@@ -122,6 +123,7 @@ export interface CreateProductData {
   defaultCollectionTime?: string;
   deliveryTimeFee?: number;
   collectionTimeFee?: number;
+  isActive: boolean;
 }
 // Add to your existing interfaces
 export interface PurchaseHistoryItem {
@@ -228,4 +230,5 @@ export type UpdateProductData = DeepPartial<{
     bookingId?: Types.ObjectId;
     status?: "confirmed" | "pending" | "cancelled";
   }>;
+  isActive: boolean;
 }>;
