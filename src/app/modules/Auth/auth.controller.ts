@@ -28,6 +28,7 @@ import asyncHandler from "../../utils/asyncHandler";
 import { hashToken, issueTokens, sanitizeUser } from "../../utils/auth.util";
 import { uploadToCloudinary } from "../../utils/cloudinary.util";
 import { AuthenticatedRequest } from "../../middlewares/auth.middleware"; // Import AuthenticatedRequest
+import { config } from "../../config/config";
 
 // ---------------- cookies helpers ----------------
 export const setAuthCookies = (
@@ -97,6 +98,20 @@ export const loginUser = asyncHandler(async (req: Request, res: Response) => {
     tokens: { accessToken, refreshToken },
   });
 });
+
+// ---------------- public: google oauth callback ----------------
+export const googleOAuthCallback = asyncHandler(
+  async (req: Request, res: Response) => {
+    const user = req.user as IUser | undefined;
+    if (!user) throw new ApiError("Google authentication failed", 401);
+
+    const { accessToken, refreshToken } = await issueTokens(user as any);
+    setAuthCookies(res, accessToken, refreshToken);
+
+    const redirectUrl = `${config.frontendUrl}/login?oauth=success`;
+    return res.redirect(redirectUrl);
+  },
+);
 
 // ---------------- public: refresh ----------------
 

@@ -2,6 +2,7 @@ import express from "express";
 import {
   register,
   loginUser,
+  googleOAuthCallback,
   refreshTokenHandler,
   logout,
   forgotPasswordHandler,
@@ -16,6 +17,7 @@ import {
   resendVerification,
   checkVerificationStatus,
 } from "./auth.controller";
+import passport from "../../config/passport";
 import { upload } from "../../utils/cloudinary.util";
 import { protectRoute } from "../../middlewares/auth.middleware";
 const router = express.Router();
@@ -39,6 +41,38 @@ router.post("/resend-verification", resendVerification);
 router.post("/check-verification", checkVerificationStatus);
 
 // Other auth routes
+router.get(
+  "/google",
+  passport.authenticate("google", {
+    scope: ["profile", "email"],
+    session: false,
+  }),
+);
+router.get(
+  "/google/callback",
+  (req, res, next) => {
+    passport.authenticate(
+      "google",
+      { session: false },
+      (err: any, user: any) => {
+        if (err || !user) {
+          const message = err?.message || "Google sign-in failed";
+          const code =
+            message === "This email is registered with a password. Use email login."
+              ? "oauth_password_user"
+              : "oauth_error";
+          const redirectUrl = `${
+            process.env.FRONTEND_URL || "http://localhost:3000"
+          }/login?oauth=error&code=${code}`;
+          return res.redirect(redirectUrl);
+        }
+        req.user = user;
+        return next();
+      },
+    )(req, res, next);
+  },
+  googleOAuthCallback,
+);
 router.post("/login", loginUser);
 router.post("/refresh", refreshTokenHandler);
 router.post("/logout", logout);
