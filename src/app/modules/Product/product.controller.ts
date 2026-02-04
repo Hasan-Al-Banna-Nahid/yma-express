@@ -337,8 +337,14 @@ export const getAllProducts = asyncHandler(
   async (req: Request, res: Response, next: NextFunction) => {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
+
+    // Extract Filters
     const state = req.query.state as string;
+    const city = req.query.city as string; // 🔹 Added
     const category = req.query.category as string;
+    const search = req.query.search as string;
+    const startDate = req.query.startDate as string;
+    const endDate = req.query.endDate as string;
 
     const minPrice = req.query.minPrice
       ? parseFloat(req.query.minPrice as string)
@@ -346,10 +352,6 @@ export const getAllProducts = asyncHandler(
     const maxPrice = req.query.maxPrice
       ? parseFloat(req.query.maxPrice as string)
       : undefined;
-
-    const search = req.query.search as string;
-    const startDate = req.query.startDate as string;
-    const endDate = req.query.endDate as string;
 
     const sortBy =
       (req.query.sortBy as "price" | "createdAt" | "name") || "createdAt";
@@ -359,6 +361,7 @@ export const getAllProducts = asyncHandler(
       page,
       limit,
       state,
+      city, // 🔹 Passed to service
       category,
       minPrice,
       maxPrice,

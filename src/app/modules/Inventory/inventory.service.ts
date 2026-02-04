@@ -188,51 +188,64 @@ export const getAvailableInventory = async (
 /* ---------------------------------- */
 /* CHECK INVENTORY AVAILABILITY        */
 /* ---------------------------------- */
+
 export const checkInventoryAvailability = async (
   productName: string,
   startDate: Date,
   endDate: Date,
   requestedQuantity: number,
   warehouse?: string,
+  page: number = 1,
+  limit: number = 10,
 ) => {
   const start = new Date(startDate);
   const end = new Date(endDate);
 
-  // 1. Fetch items and ensure we populate the references
-  // Note: Adjust the 'getAvailableInventory' internal logic to allow population
-  // or populate them here if it returns a Mongoose Query.
-  const availableItems = await getAvailableInventory(
+  // 1. Fetch all items (to calculate total global availability)
+  const allItems = await getAvailableInventory(
     productName,
     start,
     end,
     warehouse,
   );
 
-  const totalAvailable = availableItems.reduce(
+  // 2. Calculate totals and pagination logic
+  const totalAvailableQuantity = allItems.reduce(
     (acc, item) => acc + (item.quantity || 0),
     0,
   );
 
+  const totalItemsCount = allItems.length;
+  const skip = (page - 1) * limit;
+
+  // 3. Slice the array for the current page
+  const paginatedItems = allItems.slice(skip, skip + limit);
+
   return {
-    isAvailable: totalAvailable >= requestedQuantity,
-    availableQuantity: totalAvailable,
+    isAvailable: totalAvailableQuantity >= requestedQuantity,
+    availableQuantity: totalAvailableQuantity,
     requestedQuantity,
     period: { start, end },
-    message:
-      totalAvailable >= requestedQuantity
-        ? `Success: ${totalAvailable} items available.`
-        : `Shortage: Only ${totalAvailable} available.`,
 
-    // 2. Return expanded data with Vendor, Category, and Product details
-    availableItems: availableItems.map((item: any) => ({
+    // The Pagination Object
+    pagination: {
+      totalItems: totalItemsCount,
+      totalPages: Math.ceil(totalItemsCount / limit),
+      currentPage: page,
+      limit: limit,
+    },
+
+    message:
+      totalAvailableQuantity >= requestedQuantity
+        ? `Success: ${totalAvailableQuantity} items available.`
+        : `Shortage: Only ${totalAvailableQuantity} available.`,
+
+    availableItems: paginatedItems.map((item: any) => ({
       inventoryId: item._id,
       productName: item.productName,
       warehouse: item.warehouse,
       currentQuantity: item.quantity,
       rentalPrice: item.rentalPrice,
-
-      // --- NEW FIELDS & REFERENCES ---
-      // Returns the ID and the full object if populated
       vendor: item.vendor
         ? {
             _id: item.vendor._id || item.vendor,
@@ -240,7 +253,6 @@ export const checkInventoryAvailability = async (
             contact: item.vendor.contact,
           }
         : null,
-
       category: item.category
         ? {
             _id: item.category._id || item.category,
@@ -248,7 +260,6 @@ export const checkInventoryAvailability = async (
             slug: item.category.slug,
           }
         : null,
-
       product: item.product
         ? {
             _id: item.product._id || item.product,
@@ -257,7 +268,6 @@ export const checkInventoryAvailability = async (
             images: item.product.images,
           }
         : null,
-      // -------------------------------
     })),
   };
 };

@@ -55,7 +55,7 @@ export const checkDuplicateLocationOnUpdate = async (
     postcode?: string;
     state?: string;
     city?: string;
-  }
+  },
 ): Promise<ILocation | null> => {
   const query: any = {
     _id: { $ne: new mongoose.Types.ObjectId(locationId) },
@@ -90,7 +90,7 @@ export const checkDuplicateLocationOnUpdate = async (
 // Helper to check duplicate delivery area
 export const checkDuplicateDeliveryArea = async (
   locationId: string,
-  postcode: string
+  postcode: string,
 ): Promise<IDeliveryArea | null> => {
   const location = await Location.findById(locationId);
 
@@ -100,7 +100,7 @@ export const checkDuplicateDeliveryArea = async (
 
   return (
     location.deliveryAreas.find(
-      (area) => area.postcode === normalizedPostcode && area.isActive
+      (area) => area.postcode === normalizedPostcode && area.isActive,
     ) || null
   );
 };
@@ -109,7 +109,7 @@ export const checkDuplicateDeliveryArea = async (
 export const checkDuplicateDeliveryAreaOnUpdate = async (
   locationId: string,
   areaId: string,
-  postcode: string
+  postcode: string,
 ): Promise<IDeliveryArea | null> => {
   const location = await Location.findById(locationId);
 
@@ -122,7 +122,7 @@ export const checkDuplicateDeliveryAreaOnUpdate = async (
       (area) =>
         area.postcode === normalizedPostcode &&
         area.isActive &&
-        area._id?.toString() !== areaId
+        area._id?.toString() !== areaId,
     ) || null
   );
 };
@@ -130,64 +130,51 @@ export const checkDuplicateDeliveryAreaOnUpdate = async (
 // Create location
 // Create location
 export const createLocation = async (
-  data: ICreateLocationData
+  data: Partial<ICreateLocationData>, // Made Partial to allow optional fields
 ): Promise<ILocation> => {
-  // Validate required fields
-  if (!data.name || !data.type || !data.country || !data.state) {
+  // name and type are usually still needed for a valid DB record
+  if (!data.name || !data.type) {
     throw new ApiError(
-      "Missing required fields: name, type, country, state are required",
-      400
+      "Missing required fields: name and type are required",
+      400,
     );
   }
 
-  // Check for duplicate
+  // Check for duplicate - including city now
   const duplicate = await checkDuplicateLocation({
     name: data.name,
     postcode: data.postcode,
     state: data.state,
-    city: data.city,
+    city: data.city, // Now checking city
   });
 
   if (duplicate) {
     throw new ApiError(
-      `Location with name "${data.name}" or postcode "${
-        data.postcode
-      }" already exists in ${data.city || data.state}`,
-      400
+      `Location with name "${data.name}" or city/postcode "${
+        data.city || data.postcode
+      }" already exists`,
+      400,
     );
   }
 
-  // Process delivery areas with comma-separated postcodes
+  // Process delivery areas
   let validatedDeliveryAreas: IDeliveryArea[] = [];
   if (data.deliveryAreas && Array.isArray(data.deliveryAreas)) {
     const allPostcodes = new Set();
 
     for (const area of data.deliveryAreas) {
-      if (!area.postcode) {
-        throw new ApiError(
-          "All delivery areas must have a postcode field",
-          400
-        );
-      }
+      if (!area.postcode) continue; // Skip if no postcode provided in area
 
-      // Split comma-separated postcodes
       const postcodes = area.postcode
         .split(",")
         .map((p) => p.trim().toUpperCase());
 
-      // Check for duplicates
       for (const postcode of postcodes) {
         if (allPostcodes.has(postcode)) {
-          throw new ApiError(
-            `Duplicate postcode "${postcode}" found in delivery areas`,
-            400
-          );
+          throw new ApiError(`Duplicate postcode "${postcode}" found`, 400);
         }
         allPostcodes.add(postcode);
-      }
 
-      // Create individual delivery area entries for each postcode
-      for (const postcode of postcodes) {
         validatedDeliveryAreas.push({
           name: area.name || `Delivery Area - ${postcode}`,
           postcode: postcode,
@@ -205,9 +192,9 @@ export const createLocation = async (
     name: data.name,
     type: data.type,
     parent: data.parent ? new mongoose.Types.ObjectId(data.parent) : null,
-    country: data.country,
-    state: data.state,
-    city: data.city || "",
+    country: data.country || "United Kingdom", // Defaulting if optional
+    state: data.state || "",
+    city: data.city || "", // Added city field
     area: data.area || "",
     postcode: data.postcode?.toUpperCase() || "",
     deliveryAreas: validatedDeliveryAreas,
@@ -229,7 +216,7 @@ export const createLocation = async (
 
 // Get location by ID
 export const getLocationById = async (
-  id: string
+  id: string,
 ): Promise<ILocation | null> => {
   return Location.findById(id).populate("children").populate("parent");
 };
@@ -237,7 +224,7 @@ export const getLocationById = async (
 // Update location
 export const updateLocation = async (
   id: string,
-  data: IUpdateLocationData
+  data: IUpdateLocationData,
 ): Promise<ILocation | null> => {
   const updateData: any = {};
 
@@ -277,7 +264,7 @@ export const deleteLocation = async (id: string): Promise<ILocation | null> => {
   const deletedLocation = await Location.findByIdAndUpdate(
     id,
     { isActive: false },
-    { new: true }
+    { new: true },
   );
 
   return deletedLocation;
@@ -285,7 +272,7 @@ export const deleteLocation = async (id: string): Promise<ILocation | null> => {
 
 // Get all locations
 export const getLocations = async (
-  filters: ILocationFilters
+  filters: ILocationFilters,
 ): Promise<ILocation[]> => {
   const query: any = {};
 
@@ -329,7 +316,7 @@ export const getLocations = async (
 // Check delivery availability
 export const checkDeliveryAvailability = async (
   postcode: string,
-  orderAmount: number = 0
+  orderAmount: number = 0,
 ): Promise<IDeliveryCheckResult> => {
   const normalizedPostcode = postcode.toUpperCase();
 
@@ -378,7 +365,7 @@ export const checkDeliveryAvailability = async (
   }
 
   const deliveryArea = locationWithArea.deliveryAreas.find(
-    (area) => area.postcode === normalizedPostcode && area.isActive
+    (area) => area.postcode === normalizedPostcode && area.isActive,
   );
 
   if (!deliveryArea) {
@@ -412,7 +399,7 @@ export const checkDeliveryAvailability = async (
 // Add delivery area
 export const addDeliveryArea = async (
   locationId: string,
-  data: ICreateDeliveryAreaData
+  data: ICreateDeliveryAreaData,
 ): Promise<ILocation | null> => {
   const location = await Location.findById(locationId);
   if (!location) return null;
@@ -421,13 +408,13 @@ export const addDeliveryArea = async (
 
   // Check for duplicate delivery area postcode
   const duplicateArea = location.deliveryAreas.find(
-    (area) => area.postcode === normalizedPostcode && area.isActive
+    (area) => area.postcode === normalizedPostcode && area.isActive,
   );
 
   if (duplicateArea) {
     throw new ApiError(
       `Delivery area with postcode "${data.postcode}" already exists for this location`,
-      400
+      400,
     );
   }
 
@@ -451,13 +438,13 @@ export const addDeliveryArea = async (
 export const updateDeliveryArea = async (
   locationId: string,
   areaId: string,
-  data: IUpdateDeliveryAreaData
+  data: IUpdateDeliveryAreaData,
 ): Promise<ILocation | null> => {
   const location = await Location.findById(locationId);
   if (!location) return null;
 
   const areaIndex = location.deliveryAreas.findIndex(
-    (area) => area._id?.toString() === areaId
+    (area) => area._id?.toString() === areaId,
   );
 
   if (areaIndex === -1) return null;
@@ -469,13 +456,13 @@ export const updateDeliveryArea = async (
       (area, index) =>
         area.postcode === normalizedPostcode &&
         area.isActive &&
-        index !== areaIndex
+        index !== areaIndex,
     );
 
     if (duplicateArea) {
       throw new ApiError(
         `Delivery area with postcode "${data.postcode}" already exists for this location`,
-        400
+        400,
       );
     }
   }
@@ -502,13 +489,13 @@ export const updateDeliveryArea = async (
 // Delete delivery area
 export const deleteDeliveryArea = async (
   locationId: string,
-  areaId: string
+  areaId: string,
 ): Promise<ILocation | null> => {
   const location = await Location.findById(locationId);
   if (!location) return null;
 
   location.deliveryAreas = location.deliveryAreas.filter(
-    (area) => area._id?.toString() !== areaId
+    (area) => area._id?.toString() !== areaId,
   );
 
   await location.save();
@@ -518,7 +505,7 @@ export const deleteDeliveryArea = async (
 // Get delivery area
 export const getDeliveryAreaById = async (
   locationId: string,
-  areaId: string
+  areaId: string,
 ): Promise<IDeliveryArea | null> => {
   const location = await Location.findById(locationId);
   if (!location) return null;
@@ -531,7 +518,7 @@ export const getDeliveryAreaById = async (
 
 // Get hierarchy
 export const getDeliveryHierarchy = async (
-  parentId?: string
+  parentId?: string,
 ): Promise<ILocation[]> => {
   const query: any = { isActive: true };
 
@@ -547,11 +534,11 @@ export const getDeliveryHierarchy = async (
 // Update delivery options
 export const updateDeliveryOptions = async (
   locationId: string,
-  options: Partial<IDeliveryOptions>
+  options: Partial<IDeliveryOptions>,
 ): Promise<ILocation | null> => {
   return Location.findByIdAndUpdate(
     locationId,
     { deliveryOptions: options },
-    { new: true }
+    { new: true },
   );
 };

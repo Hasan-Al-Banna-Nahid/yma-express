@@ -178,8 +178,14 @@ export const getBookedInventoryHandler = asyncHandler(
 /* ---------------------------------- */
 export const checkInventoryAvailabilityHandler = asyncHandler(
   async (req: Request, res: Response) => {
-    const { productName, startDate, endDate, quantity } = req.body;
+    // 1. Extract body data
+    const { productName, startDate, endDate, quantity, warehouse } = req.body;
 
+    // 2. Extract pagination from URL Query (?page=1&limit=10)
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+
+    // 3. Validation
     if (!productName || !startDate || !endDate || !quantity) {
       throw new ApiError(
         "Please provide productName, startDate, endDate, and quantity",
@@ -187,15 +193,21 @@ export const checkInventoryAvailabilityHandler = asyncHandler(
       );
     }
 
+    // 4. Call Service
+    // IMPORTANT: We pass 'warehouse' (even if undefined) to keep the argument order correct
     const availability = await checkInventoryAvailability(
       productName as string,
       new Date(startDate as string),
       new Date(endDate as string),
       parseInt(quantity as string),
+      warehouse as string,
+      page,
+      limit,
     );
 
+    // 5. Final Response
     ApiResponse(res, 200, "Inventory availability checked successfully", {
-      availability,
+      ...availability, // Spreading ensures 'pagination' and 'availableItems' are top-level in the data object
     });
   },
 );
