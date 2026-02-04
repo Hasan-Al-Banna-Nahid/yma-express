@@ -27,7 +27,7 @@ export interface IUser extends Document {
   lastOrderDate?: Date;
   isFavorite: boolean;
   tags: string[];
-
+  customerName?: string;
   // Timestamps
   createdAt: Date;
   updatedAt: Date;
@@ -63,6 +63,7 @@ export interface ICustomer extends Document {
   fullAddress?: string;
   createdAt: Date;
   updatedAt: Date;
+  customerName?: string;
 }
 
 // ───────────────────────────────────────────────
@@ -79,6 +80,7 @@ export interface IOrderItem {
   hireOccasion?: string;
   keepOvernight?: boolean;
   promoId?: Types.ObjectId;
+  customerName?: string;
   imageCover: string; // Add this line to match checkout.interface
 }
 
@@ -139,6 +141,7 @@ export interface IOrder {
   bankDetails?: string;
   promoCode?: string;
   promoDiscount?: number;
+  customerName?: string;
 
   // Timestamps & tracking
   createdAt: Date;
@@ -184,6 +187,7 @@ export interface CreateOrderInput {
   estimatedDeliveryDate?: Date;
   promoCode?: string;
   promoDiscount?: number;
+  customerName?: string;
 }
 
 export interface UpdateOrderInput {
@@ -202,6 +206,7 @@ export interface UpdateOrderInput {
   shippingAddress?: Partial<IShippingAddress>;
   bankDetails?: string;
   invoiceType?: "regular" | "corporate";
+  customerName?: string;
 }
 
 // ───────────────────────────────────────────────

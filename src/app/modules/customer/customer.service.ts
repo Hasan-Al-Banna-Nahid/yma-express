@@ -1,6 +1,8 @@
 import Customer from "./customer.model";
 import Product from "../../modules/Product/product.model";
 import { sendCustomerOrderEmail } from "./email.service";
+import Order from "../../modules/Order/order.model";
+import { IOrderDocument } from "../../modules/Checkout/checkout.interface";
 
 export class CustomerService {
   /**
@@ -103,49 +105,82 @@ export class CustomerService {
    * Prepare Reorder and send Email
    */
   static async prepareReorder(body: any) {
-    const { customerId, itemsToReorder } = body;
-    const customer = await Customer.findOne({ customerId }).lean();
-    if (!customer) throw new Error("Customer not found");
+    const { itemsToReorder } = body;
+
+    // 1. Normalize the input email: trim and treat as lowercase
+    const emailInput = body.email ? body.email.trim().toLowerCase() : "";
+
+    // 2. Search shippingAddress.email using a case-insensitive regex
+    // ^ and $ ensure we match the full string, 'i' makes it treat all as lowercase
+    const previousOrder = (await Order.findOne({
+      "shippingAddress.email": { $regex: new RegExp(`^${emailInput}$`, "i") },
+    })
+      .sort({ createdAt: -1 }) // Get the most recent one
+      .lean()) as IOrderDocument | null;
+
+    if (!previousOrder) {
+      throw new Error(`No previous orders found for email: ${emailInput}`);
+    }
+
+    // 3. Generate the Dynamic Name Key
+    const firstName = previousOrder.shippingAddress?.firstName || "Guest";
+    const lastName = previousOrder.shippingAddress?.lastName || "User";
+    const dynamicCustomerKey = `YMA-Cus-${firstName} ${lastName}`;
+    const userId = previousOrder.user;
 
     const preparedItems = [];
     const emailItems = [];
 
+    // 4. Process products (Pulling availability dates from Product DB)
     for (const item of itemsToReorder) {
       const product = await Product.findById(item.productId).lean();
-      if (!product) continue;
+
+      if (!product) {
+        console.log(`Product ${item.productId} not found - skipping`);
+        continue;
+      }
+
+      const qty = item.quantity || 1;
 
       preparedItems.push({
         product: product._id,
         name: product.name,
-        image: product?.imageCover,
-        quantity: 1,
+        imageCover: product.imageCover,
+        quantity: qty,
         price: product.price,
-        startDate: item.startDate,
-        endDate: item.endDate,
+        startDate: product.availableFrom, // From Product DB
+        endDate: product.availableUntil, // From Product DB
       });
 
       emailItems.push({
         name: product.name,
-        quantity: 1,
+        quantity: qty,
         price: product.price,
-        subtotal: product.price * 1,
+        subtotal: product.price * qty,
       });
     }
 
     const totalAmount = emailItems.reduce((sum, i) => sum + i.subtotal, 0);
 
-    // Send the detailed email
-    await sendCustomerOrderEmail("order-received", {
-      to: customer.email,
-      customerName: customer.name,
-      orderId: `RE-${Math.random().toString(36).toUpperCase().substring(2, 10)}`,
-      eventDate: new Date(itemsToReorder[0].startDate).toLocaleDateString(),
-      deliveryTime: "09:00 AM",
-      deliveryAddress: `${customer.address}, ${customer.city}, ${customer.postcode}`,
-      totalAmount,
-      orderItems: emailItems,
-    });
+    // 5. Send Email (to the email address found in the DB)
+    if (preparedItems.length > 0) {
+      await sendCustomerOrderEmail("order-received", {
+        to: previousOrder.shippingAddress.email.toLowerCase(),
+        customerName: dynamicCustomerKey,
+        orderId: `RE-${Math.random().toString(36).toUpperCase().substring(2, 10)}`,
+        eventDate: new Date().toLocaleDateString(),
+        totalAmount,
+        orderItems: emailItems,
+        deliveryTime: previousOrder.shippingAddress?.deliveryTime || "09:00 AM",
+        deliveryAddress: `${previousOrder.shippingAddress?.street}, ${previousOrder.shippingAddress?.city}`,
+      });
+    }
 
-    return { items: preparedItems, totalAmount };
+    return {
+      items: preparedItems,
+      totalAmount,
+      customerName: dynamicCustomerKey,
+      user: userId,
+    };
   }
 }

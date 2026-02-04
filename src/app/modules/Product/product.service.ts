@@ -52,6 +52,32 @@ export const createProduct = async (productData: any) => {
   return product.populate("categories");
 };
 
+/**
+ * Utility to convert nested objects into dot-notation keys
+ * Example: { dimensions: { length: 10 } } -> { "dimensions.length": 10 }
+ */
+const flatten = (obj: any, prefix = ""): any => {
+  const flat: any = {};
+  Object.keys(obj || {}).forEach((key) => {
+    const value = obj[key];
+    const path = prefix ? `${prefix}.${key}` : key;
+
+    // DO NOT flatten Arrays, Dates, or ObjectIds
+    if (
+      value &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      !(value instanceof Date) &&
+      !Types.ObjectId.isValid(value)
+    ) {
+      Object.assign(flat, flatten(value, path));
+    } else if (value !== undefined) {
+      flat[path] = value;
+    }
+  });
+  return flat;
+};
+
 export const updateProductService = async (
   productId: string,
   updateData: any,
@@ -59,44 +85,22 @@ export const updateProductService = async (
   if (!Types.ObjectId.isValid(productId))
     throw new ApiError("Invalid product ID", 400);
 
-  // 1. Check if product exists
   const existingProduct = await Product.findById(productId);
   if (!existingProduct) throw new ApiError("Product not found", 404);
 
-  // 2. Remove forbidden fields
-  const forbiddenFields = ["_id", "createdAt", "updatedAt"];
+  // 1. Remove forbidden fields
+  const forbiddenFields = ["_id", "createdAt", "updatedAt", "__v"];
   forbiddenFields.forEach((field) => delete updateData[field]);
 
-  // 3. Flattening logic (Improved)
-  const flatten = (obj: any, prefix = ""): any => {
-    const flat: any = {};
-    Object.keys(obj || {}).forEach((key) => {
-      const value = obj[key];
-      const path = prefix ? `${prefix}.${key}` : key;
-
-      // DO NOT flatten Arrays (like images or safetyFeatures) or Dates
-      if (
-        value &&
-        typeof value === "object" &&
-        !Array.isArray(value) &&
-        !(value instanceof Date)
-      ) {
-        Object.assign(flat, flatten(value, path));
-      } else if (value !== undefined) {
-        flat[path] = value;
-      }
-    });
-    return flat;
-  };
-
+  // 2. Apply the flatten utility
   const updateFields = flatten(updateData);
 
-  // 4. Perform Update
+  // 3. Perform Update using $set
   const updatedProduct = await Product.findByIdAndUpdate(
     productId,
     { $set: updateFields },
     { new: true, runValidators: true },
-  ).populate("categories", "name slug description image");
+  ).populate("categories", "name slug");
 
   if (!updatedProduct) throw new ApiError("Failed to update product", 500);
   return updatedProduct;

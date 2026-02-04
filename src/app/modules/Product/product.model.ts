@@ -236,7 +236,19 @@ const productSchema: Schema = new Schema(
         required: [false, "Maximum age is required"],
         validate: {
           validator: function (this: any, value: number): boolean {
-            return value >= this.ageRange.min;
+            // During updates, 'this' might be a Query or a partial doc
+            // We check if it's a document and if min exists
+            const min = this.ageRange
+              ? this.ageRange.min
+              : this.getUpdate
+                ? this.getUpdate().$set["ageRange.min"]
+                : undefined;
+
+            // If min isn't being updated and we can't find it, we skip validation
+            // or assume it's valid to avoid the 'undefined' crash
+            if (min === undefined) return true;
+
+            return value >= min;
           },
           message: "Maximum age must be greater than or equal to minimum age",
         },

@@ -18,10 +18,6 @@ router.get("/:customerId", CustomerController.getCustomerDetail);
 
 // POST /api/customers/orders/:orderId/reorder
 // Prepare reorder (auth required)
-router.post(
-  "/orders/reorder/:orderId",
-  protectRoute,
-  CustomerController.prepareReorder,
-);
+router.post("/orders/reorder", protectRoute, CustomerController.prepareReorder);
 
 export default router;
