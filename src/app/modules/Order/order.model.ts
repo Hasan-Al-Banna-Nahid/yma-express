@@ -101,6 +101,11 @@ const shippingAddressSchema = new Schema<IShippingAddress>(
 // Main Order Schema
 const orderSchema = new Schema<IOrderDocument>(
   {
+    customerName: {
+      type: String,
+      required: [false, "Customer name is required for the order record"],
+      trim: true,
+    },
     user: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",

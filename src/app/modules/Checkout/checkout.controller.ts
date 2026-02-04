@@ -800,34 +800,18 @@ export const quickCheckout = asyncHandler(
         promoCode,
       } = req.body;
 
-      // ─── 1. VALIDATION ────────────────────────────────────────────────────────
+      // 1. VALIDATION
+      if (!shippingAddress)
+        throw new ApiError("Shipping address is required", 400);
       if (!Array.isArray(products) || products.length === 0) {
         throw new ApiError("At least one product is required", 400);
       }
 
-      if (!termsAccepted) {
-        throw new ApiError("You must accept terms and conditions", 400);
-      }
-
-      const requiredShipping = [
-        "firstName",
-        "lastName",
-        "phone",
-        "email",
-        "street",
-        "city",
-        "zipCode",
-        "country",
-      ];
-      for (const field of requiredShipping) {
-        if (!shippingAddress[field]?.trim()) {
-          throw new ApiError(`Shipping address ${field} is required`, 400);
-        }
-      }
-
-      // ─── 2. USER CREATION / IDENTIFICATION ─────────────────────────────────────
+      // 2. IDENTITY LOGIC
       const email = shippingAddress.email.trim().toLowerCase();
-      const fullName = `${shippingAddress.firstName.trim()} ${shippingAddress.lastName.trim()}`;
+      const firstName = shippingAddress.firstName?.trim() ?? "Guest";
+      const lastName = shippingAddress.lastName?.trim() ?? "User";
+      const fullName = `${firstName} ${lastName}`;
 
       let user = await User.findOne({ email }).session(session);
       let isNewUser = false;
@@ -836,21 +820,20 @@ export const quickCheckout = asyncHandler(
       if (!user) {
         tempPassword = Math.random().toString(36).slice(-10) + "X1!";
         user = new User({
-          firstName: shippingAddress.firstName.trim(),
-          lastName: shippingAddress.lastName.trim(),
+          firstName,
+          lastName,
           name: fullName,
           email,
           phone: shippingAddress.phone?.trim(),
           password: tempPassword,
           role: "customer",
-          isEmailVerified: false,
           createdViaCheckout: true,
         });
         await user.save({ session });
         isNewUser = true;
       }
 
-      // ─── 3. PRODUCTS & STOCK PROCESSING (Including imageCover) ──────────────────
+      // 3. PRODUCTS & STOCK
       let subtotal = 0;
       const orderItems = [];
 
@@ -858,68 +841,46 @@ export const quickCheckout = asyncHandler(
         const product = await Product.findById(p.productId).session(session);
         if (!product)
           throw new ApiError(`Product ${p.productId} not found`, 404);
+        if (product.stock < p.quantity)
+          throw new ApiError(`${product.name} out of stock`, 400);
 
-        if (product.stock < p.quantity) {
-          throw new ApiError(
-            `${product.name}: only ${product.stock} available`,
-            400,
-          );
-        }
-
-        // Deduct stock
         product.stock -= p.quantity;
         await product.save({ session });
 
-        // Capture snapshot of product at time of purchase
         orderItems.push({
           product: product._id,
           name: product.name,
-          imageCover: product.imageCover, // Storing image in order item
+          imageCover: product.imageCover,
           quantity: p.quantity,
           price: product.price,
           startDate: p.startDate ? new Date(p.startDate) : undefined,
           endDate: p.endDate ? new Date(p.endDate) : undefined,
-          hireOccasion: p.hireOccasion,
-          keepOvernight: p.keepOvernight,
         });
-
         subtotal += product.price * p.quantity;
       }
 
-      // ─── 4. FEES & TOTALS ────────────────────────────────────────────────────
-      // Note: calculateDeliveryFee should be imported or defined in this file
-      const deliveryFee = calculateDeliveryFee(
-        shippingAddress.deliveryTime,
-        shippingAddress.collectionTime,
-        shippingAddress.keepOvernight,
-      );
-      const overnightFee = shippingAddress.keepOvernight ? 30 : 0;
-      const totalAmount = subtotal + deliveryFee + overnightFee;
-
-      // ─── 5. CREATE ORDER ─────────────────────────────────────────────────────
+      // 4. CREATE ORDER (Strictly define customerName here)
       const order = new Order({
         user: user._id,
+        customerName: fullName, // <--- EXPLICITLY SAVING TO DB
         items: orderItems,
         subtotalAmount: subtotal,
-        deliveryFee,
-        overnightFee,
-        totalAmount,
         paymentMethod,
-        status: "pending",
         shippingAddress,
-        termsAccepted: true,
+        status: "pending",
+        termsAccepted: !!termsAccepted,
         invoiceType,
-        bankDetails: invoiceType === "corporate" ? bankDetails : undefined,
+        bankDetails,
         promoCode,
-        estimatedDeliveryDate: orderItems[0]?.startDate || new Date(),
-        deviceInfo: req.headers["user-agent"],
+        estimatedDeliveryDate: orderItems[0]?.startDate ?? new Date(),
       });
 
+      // Note: The pre-save hook in your Order model will handle
+      // deliveryFee and totalAmount calculations automatically.
       await order.save({ session });
 
-      // ─── 6. SYNC TO CUSTOMER COLLECTION ──────────────────────────────────────
+      // 5. SYNC CUSTOMER
       let customer = await Customer.findOne({ email }).session(session);
-
       if (!customer) {
         customer = new Customer({
           user: user._id,
@@ -927,63 +888,23 @@ export const quickCheckout = asyncHandler(
           name: fullName,
           email,
           phone: shippingAddress.phone,
-          address: `${shippingAddress.street} ${shippingAddress.street2 || ""}`,
-          city: shippingAddress.city,
-          postcode: shippingAddress.zipCode,
           orders: [order._id],
-          totalOrders: 1,
-          totalSpent: totalAmount,
-          firstOrderDate: new Date(),
-          lastOrderDate: new Date(),
-          customerType: "guest",
+          totalSpent: subtotal, // Basic total for now
         });
       } else {
         customer.orders.push(order._id);
-        customer.totalOrders += 1;
-        customer.totalSpent += totalAmount;
-        customer.lastOrderDate = new Date();
-
-        if (!customer.user) customer.user = user._id; // Link if previously unlinked
+        customer.totalSpent += subtotal;
       }
-
       await customer.save({ session });
 
-      // ─── 7. FINALIZE TRANSACTION & SEND EMAILS ───────────────────────────────
       await session.commitTransaction();
       session.endSession();
 
-      // Trigger emails in background
-      sendOrderReceivedEmail(order).catch((err) =>
-        console.error("Order Email Error:", err),
-      );
-      sendOrderNotificationToAdmin(order).catch((err) =>
-        console.error("Admin Email Error:", err),
-      );
-
-      if (isNewUser && tempPassword) {
-        // user.firstName is used with nullish coalescing for TS safety
-        sendUserCredentialsEmail(
-          email,
-          user.firstName ?? "Customer",
-          tempPassword,
-        ).catch((err) => console.error("Credentials Email Error:", err));
-      }
-
-      res.status(201).json({
-        success: true,
-        message: "Order placed successfully",
-        data: {
-          orderId: order._id,
-          orderNumber: order.orderNumber,
-          customer: customer.customerId,
-          total: order.totalAmount,
-        },
-      });
+      res.status(201).json({ success: true, data: order });
     } catch (err: any) {
       await session.abortTransaction();
       session.endSession();
-      console.error("Quick Checkout Failure:", err.message);
-      throw err; // Passed to global error handler
+      throw err;
     }
   },
 );

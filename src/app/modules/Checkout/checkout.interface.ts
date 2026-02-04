@@ -76,6 +76,7 @@ export interface IOrder {
   updatedAt?: Date;
   orderNumber?: string;
   estimatedDeliveryDate?: Date;
+  customerName?: string;
 }
 export interface StockCheckItem {
   productId: Types.ObjectId;
