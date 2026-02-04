@@ -17,6 +17,7 @@ export interface IUser extends mongoose.Document {
   email: string;
   photo?: string;
   role: UserRole;
+  googleId?: string;
   password?: string;
   passwordChangedAt?: Date;
   passwordResetToken?: string;

@@ -7,6 +7,7 @@ import dotenv from "dotenv";
 // import compression from "compression";
 import cluster from "cluster";
 import os from "os";
+import passport from "./app/config/passport";
 dotenv.config();
 // Import routes
 import authRouter from "./app/modules/Auth/auth.route";
@@ -67,6 +68,7 @@ app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.text());
 app.use(cookieParser());
+app.use(passport.initialize());
 
 app.set("view engine", "ejs");
 app.set("views", path.join(process.cwd(), "src", "app", "views"));

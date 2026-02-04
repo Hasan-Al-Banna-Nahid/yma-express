@@ -35,6 +35,7 @@ const userSchema = new Schema<IUser, IUserModel, IUserMethods>(
       },
     },
     photo: { type: String, default: null },
+    googleId: { type: String, index: true, sparse: true },
     role: {
       type: String,
       enum: ["user", "admin", "superadmin", "editor", "delivery", "customer"],
