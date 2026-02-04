@@ -203,17 +203,22 @@ export const getAllOrdersHandler = asyncHandler(
   async (req: Request, res: Response) => {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
+
+    // Map the query params to the keys expected by the Service
     const filters: any = {
-      status: req.query.status as string,
-      paymentMethod: req.query.paymentMethod as string,
-      userId: req.query.userId as string,
-      search: req.query.search as string,
-      startDate: req.query.startDate
-        ? new Date(req.query.startDate as string)
-        : undefined,
-      endDate: req.query.endDate
-        ? new Date(req.query.endDate as string)
-        : undefined,
+      status: req.query.status,
+      paymentMethod: req.query.paymentMethod,
+      userId: req.query.userId,
+      search: req.query.search,
+
+      // Fix: Map these to match the Service logic
+      createdFrom: req.query.startDate, // Map startDate to createdFrom
+      createdTo: req.query.endDate, // Map endDate to createdTo
+
+      // If you want to filter by the rental period (hire dates):
+      rentalFrom: req.query.rentalFrom,
+      rentalTo: req.query.rentalTo,
+
       minAmount: req.query.minAmount
         ? parseFloat(req.query.minAmount as string)
         : undefined,
@@ -223,7 +228,6 @@ export const getAllOrdersHandler = asyncHandler(
     };
 
     const result = await orderService.getAllOrders(page, limit, filters);
-
     ApiResponse(res, 200, "Orders retrieved successfully", result);
   },
 );
