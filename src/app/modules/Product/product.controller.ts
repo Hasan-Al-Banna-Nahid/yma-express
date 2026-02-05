@@ -324,35 +324,13 @@ export const updateProduct = asyncHandler(
   },
 );
 
-export const getAllProducts = asyncHandler(
-  async (req: Request, res: Response, next: NextFunction) => {
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
-
-    // Extract Filters
-    const state = req.query.state as string;
-    const city = req.query.city as string; // 🔹 Added
-    const category = req.query.category as string;
-    const search = req.query.search as string;
-    const startDate = req.query.startDate as string;
-    const endDate = req.query.endDate as string;
-
-    const minPrice = req.query.minPrice
-      ? parseFloat(req.query.minPrice as string)
-      : undefined;
-    const maxPrice = req.query.maxPrice
-      ? parseFloat(req.query.maxPrice as string)
-      : undefined;
-
-    const sortBy =
-      (req.query.sortBy as "price" | "createdAt" | "name") || "createdAt";
-    const sortOrder = (req.query.sortOrder as "asc" | "desc") || "desc";
-
-    const result = await productService.getAllProducts(
+export const getAllProducts = async (req: Request, res: Response) => {
+  try {
+    const {
       page,
       limit,
       state,
-      city, // 🔹 Passed to service
+      city,
       category,
       minPrice,
       maxPrice,
@@ -361,23 +339,47 @@ export const getAllProducts = asyncHandler(
       endDate,
       sortBy,
       sortOrder,
+      showAll,
+      productId,
+    } = req.query;
+
+    const result = await productService.getAllProducts(
+      Number(page) || 1,
+      Number(limit) || 10,
+      state as string,
+      city as string,
+      category as string,
+      minPrice ? Number(minPrice) : undefined,
+      maxPrice ? Number(maxPrice) : undefined,
+      search as string,
+      startDate as string,
+      endDate as string,
+      (sortBy as any) || "createdAt",
+      (sortOrder as any) || "desc",
+      showAll === "true",
+      productId as string,
     );
 
-    res.status(200).json({
-      status: "success",
-      results: result.products.length,
-      data: {
-        products: result.products,
-        pagination: {
-          page,
-          limit,
-          total: result.total,
-          pages: result.pages,
-        },
+    return res.status(200).json({
+      success: true,
+      message: "Products fetched successfully",
+      data: result.products,
+      meta: {
+        total: result.total,
+        pages: result.pages,
+        currentPage: Number(page) || 1,
+        limit: Number(limit) || 10,
       },
     });
-  },
-);
+  } catch (error: any) {
+    console.error("Error in getProducts Controller:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+      error: error.message,
+    });
+  }
+};
 
 export const getProduct = asyncHandler(
   async (req: Request, res: Response, next: NextFunction) => {

@@ -486,70 +486,80 @@ const getProductAvailability = async (
 ========================= */
 
 export const getAllProducts = async (
-  page: number = 1,
-  limit: number = 10,
+  page: number,
+  limit: number,
   state?: string,
-  city?: string, // 4th
-  category?: string, // 5th
-  minPrice?: number, // 6th
-  maxPrice?: number, // 7th
-  search?: string, // 8th
-  startDate?: string, // 9th
-  endDate?: string, // 10th
-  sortBy: "price" | "createdAt" | "name" = "createdAt", // 11th
-  sortOrder: "asc" | "desc" = "desc", // 12th
-): Promise<{ products: any[]; total: number; pages: number }> => {
-  const skip = (page - 1) * limit;
+  city?: string,
+  category?: string,
+  minPrice?: number,
+  maxPrice?: number,
+  search?: string,
+  startDate?: string,
+  endDate?: string,
+  sortBy: string = "createdAt",
+  sortOrder: "asc" | "desc" = "desc",
+  showAll: boolean = false,
+  productId?: string,
+) => {
+  const query: any = {};
 
-  // 🔹 CORE FILTER: Only show products that are active
-  const filter: any = { isActive: true };
-
-  // Text & Location Filters
-  if (search) filter.name = { $regex: search, $options: "i" };
-  if (state) filter["location.state"] = { $regex: state, $options: "i" };
-  if (city) filter["location.city"] = { $regex: city, $options: "i" };
-
-  // Category Filter
-  if (category && Types.ObjectId.isValid(category)) {
-    filter.categories = { $in: [new Types.ObjectId(category)] };
+  // 1. Specific Product ID Filter (highest priority)
+  if (productId) {
+    if (Types.ObjectId.isValid(productId)) {
+      query._id = new Types.ObjectId(productId);
+    } else {
+      return { products: [], total: 0, pages: 0 };
+    }
   }
 
-  // Price Range
+  // 2. Search Logic (Name + ID partial/exact)
+  if (search) {
+    const searchConditions: any[] = [
+      { name: { $regex: search, $options: "i" } },
+    ];
+
+    // Check if searching for a specific ID directly in the search bar
+    if (Types.ObjectId.isValid(search)) {
+      searchConditions.push({ _id: new Types.ObjectId(search) });
+    }
+
+    query.$or = searchConditions;
+  }
+
+  // 3. Status Filter
+  if (!showAll) {
+    query.isActive = true;
+  }
+
+  // 4. Location & Category Filters
+  if (state) query["location.state"] = state;
+  if (city) query["location.city"] = city;
+  if (category) query["categories._id"] = category;
+
+  // 5. Price & Date Range
   if (minPrice !== undefined || maxPrice !== undefined) {
-    filter.price = {};
-    if (minPrice !== undefined) filter.price.$gte = minPrice;
-    if (maxPrice !== undefined) filter.price.$lte = maxPrice;
+    query.price = {};
+    if (minPrice !== undefined) query.price.$gte = minPrice;
+    if (maxPrice !== undefined) query.price.$lte = maxPrice;
   }
 
-  // Date Logic
   if (startDate || endDate) {
-    filter.$expr = { $and: [] };
-    if (startDate) {
-      filter.$expr.$and.push({
-        $gte: [{ $toDate: "$availableUntil" }, new Date(startDate)],
-      });
-    }
-    if (endDate) {
-      filter.$expr.$and.push({
-        $lte: [{ $toDate: "$availableFrom" }, new Date(endDate)],
-      });
-    }
+    query.availableFrom = {};
+    if (startDate) query.availableFrom.$gte = new Date(startDate);
+    if (endDate) query.availableFrom.$lte = new Date(endDate);
   }
 
-  const sortObj: Record<string, 1 | -1> = {
-    [sortBy]: sortOrder === "asc" ? 1 : -1,
-  };
+  // 6. Execution
+  const skip = (page - 1) * limit;
+  const sortOptions = { [sortBy]: sortOrder === "desc" ? -1 : 1 };
 
-  // Execution
   const [products, total] = await Promise.all([
-    Product.find(filter)
-      .select("-__v")
-      .populate("categories", "name description")
-      .sort(sortObj)
+    Product.find(query)
+      .sort(sortOptions as any)
       .skip(skip)
       .limit(limit)
       .lean(),
-    Product.countDocuments(filter),
+    Product.countDocuments(query),
   ]);
 
   return {

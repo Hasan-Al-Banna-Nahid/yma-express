@@ -1,6 +1,8 @@
 import Inventory from "../../modules/Inventory/inventory.model";
 import ApiError from "../../utils/apiError";
 import { Types } from "mongoose";
+import Order from "../../modules/Order/order.model"; // Import your Order model
+import Product from "../Product/product.model"; // Import your Product model
 
 /* ---------------------------------- */
 /* CREATE INVENTORY ITEM               */
@@ -189,88 +191,142 @@ export const getAvailableInventory = async (
 /* CHECK INVENTORY AVAILABILITY        */
 /* ---------------------------------- */
 
-export const checkInventoryAvailability = async (
-  productName: string,
-  startDate: Date,
-  endDate: Date,
-  requestedQuantity: number,
-  warehouse?: string,
-  page: number = 1,
-  limit: number = 10,
-) => {
+interface CheckAvailabilityParams {
+  productName: string;
+  startDate: Date;
+  endDate: Date;
+  requestedQuantity: number;
+  warehouse?: string;
+  page: number;
+  limit: number;
+}
+
+export const checkInventoryAvailability = async ({
+  productName,
+  startDate,
+  endDate,
+  requestedQuantity,
+  warehouse,
+  page,
+  limit,
+}: CheckAvailabilityParams) => {
   const start = new Date(startDate);
   const end = new Date(endDate);
 
-  // 1. Fetch all items (to calculate total global availability)
-  const allItems = await getAvailableInventory(
-    productName,
-    start,
-    end,
-    warehouse,
-  );
+  // 1. Fetch the Master Product details first (for seasonal range)
+  const masterProduct = await Product.findOne({
+    name: { $regex: productName, $options: "i" },
+  }).lean();
 
-  // 2. Calculate totals and pagination logic
-  const totalAvailableQuantity = allItems.reduce(
-    (acc, item) => acc + (item.quantity || 0),
-    0,
-  );
+  // 2. Fetch Inventory Items (Physical Stock)
+  const inventoryQuery: any = {
+    productName: { $regex: productName, $options: "i" },
+    status: "available", // Only count available stock
+  };
+  if (warehouse) inventoryQuery.warehouse = warehouse;
 
-  const totalItemsCount = allItems.length;
+  const inventoryItems = await Inventory.find(inventoryQuery).lean();
+
+  if (!inventoryItems.length) {
+    throw new ApiError("No inventory found for this product name.", 404);
+  }
+
+  // 3. Fetch Blocking Orders (Confirmed/Delivered)
+  const blockingOrders = await Order.find({
+    productName: { $regex: productName, $options: "i" },
+    status: { $in: ["confirmed", "delivered"] },
+    startDate: { $lte: end },
+    endDate: { $gte: start },
+  }).lean();
+
+  // 4. Generate Daily Timeline
+  const availabilityTimeline = [];
+  let currentDate = new Date(start);
+
+  while (currentDate <= end) {
+    const dateStr = currentDate.toISOString().split("T")[0];
+    const checkTime = new Date(dateStr).getTime();
+
+    // STEP A: Check Seasonal Range (Only if Product exists in DB)
+    let isWithinSeason = true;
+    let seasonalReason = "Clear";
+
+    if (
+      masterProduct &&
+      masterProduct.availableFrom &&
+      masterProduct.availableUntil
+    ) {
+      const pStart = new Date(masterProduct.availableFrom).getTime();
+      const pEnd = new Date(masterProduct.availableUntil).getTime();
+
+      if (checkTime < pStart || checkTime > pEnd) {
+        isWithinSeason = false;
+        seasonalReason = "Outside Seasonal Range";
+      }
+    }
+
+    // STEP B: Calculate Stock minus Confirmed Orders
+    const totalPhysicalStock = inventoryItems.reduce(
+      (sum, item) => sum + (item.quantity || 0),
+      0,
+    );
+
+    const quantityBookedToday = blockingOrders
+      .filter((order) => {
+        const oStart = new Date(order.startDate).setUTCHours(0, 0, 0, 0);
+        const oEnd = new Date(order.endDate).setUTCHours(0, 0, 0, 0);
+        return checkTime >= oStart && checkTime <= oEnd;
+      })
+      .reduce((sum, order) => sum + (order.quantity || 0), 0);
+
+    const availableQuantityToday = isWithinSeason
+      ? Math.max(0, totalPhysicalStock - quantityBookedToday)
+      : 0;
+
+    availabilityTimeline.push({
+      date: dateStr,
+      availableQuantity: availableQuantityToday,
+      isAvailable:
+        isWithinSeason && availableQuantityToday >= requestedQuantity,
+      status: !isWithinSeason
+        ? "Seasonal Block"
+        : availableQuantityToday >= requestedQuantity
+          ? "Available"
+          : "Fully Booked",
+      reason:
+        seasonalReason === "Clear" && availableQuantityToday < requestedQuantity
+          ? "Confirmed Bookings"
+          : seasonalReason,
+    });
+
+    currentDate.setDate(currentDate.getDate() + 1);
+  }
+
+  // 5. Pagination & Final Response
+  const isFullyAvailable = availabilityTimeline.every((day) => day.isAvailable);
   const skip = (page - 1) * limit;
 
-  // 3. Slice the array for the current page
-  const paginatedItems = allItems.slice(skip, skip + limit);
-
   return {
-    isAvailable: totalAvailableQuantity >= requestedQuantity,
-    availableQuantity: totalAvailableQuantity,
+    isAvailable: isFullyAvailable,
+    productFoundInDb: !!masterProduct,
     requestedQuantity,
-    period: { start, end },
-
-    // The Pagination Object
-    pagination: {
-      totalItems: totalItemsCount,
-      totalPages: Math.ceil(totalItemsCount / limit),
-      currentPage: page,
-      limit: limit,
+    period: {
+      start: start.toISOString().split("T")[0],
+      end: end.toISOString().split("T")[0],
     },
-
-    message:
-      totalAvailableQuantity >= requestedQuantity
-        ? `Success: ${totalAvailableQuantity} items available.`
-        : `Shortage: Only ${totalAvailableQuantity} available.`,
-
-    availableItems: paginatedItems.map((item: any) => ({
-      inventoryId: item._id,
-      productName: item.productName,
-      warehouse: item.warehouse,
-      currentQuantity: item.quantity,
-      rentalPrice: item.rentalPrice,
-      vendor: item.vendor
-        ? {
-            _id: item.vendor._id || item.vendor,
-            name: item.vendor.name,
-            contact: item.vendor.contact,
-          }
-        : null,
-      category: item.category
-        ? {
-            _id: item.category._id || item.category,
-            name: item.category.name,
-            slug: item.category.slug,
-          }
-        : null,
-      product: item.product
-        ? {
-            _id: item.product._id || item.product,
-            name: item.product.name,
-            basePrice: item.product.price,
-            images: item.product.images,
-          }
-        : null,
-    })),
+    timeline: availabilityTimeline,
+    pagination: {
+      totalItems: inventoryItems.length,
+      totalPages: Math.ceil(inventoryItems.length / limit),
+      currentPage: page,
+      limit,
+    },
+    availableItems: inventoryItems.slice(skip, skip + limit),
   };
 };
+
+// Helper to clean date strings
+const dateStr = (date: Date) => date.toISOString().split("T")[0];
 
 /* ---------------------------------- */
 /* DELETE INVENTORY ITEM               */

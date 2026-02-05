@@ -1,4 +1,6 @@
 // src/app/middlewares/auth.middleware.ts
+import dotenv from "dotenv";
+dotenv.config();
 import { Request, Response, NextFunction } from "express";
 import asyncHandler from "../utils/asyncHandler";
 import ApiError from "../utils/apiError";
