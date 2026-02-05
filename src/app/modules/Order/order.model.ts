@@ -29,6 +29,7 @@ const orderItemSchema = new Schema<IOrderItem>(
     },
     keepOvernight: { type: Boolean, default: false },
   },
+
   { _id: false },
 );
 
@@ -112,11 +113,11 @@ const orderSchema = new Schema<IOrderDocument>(
       required: true,
     },
     items: { type: [orderItemSchema], required: true },
-    subtotalAmount: { type: Number, required: true, default: 0 },
+    subtotalAmount: { type: Number, required: false, default: 0 },
     deliveryFee: { type: Number, required: true, default: 0 },
     overnightFee: { type: Number, required: true, default: 0 },
     discountAmount: { type: Number, default: 0 },
-    totalAmount: { type: Number, required: true },
+    totalAmount: { type: Number, required: false },
     paymentMethod: {
       type: String,
       enum: Object.values(PAYMENT_METHODS),
