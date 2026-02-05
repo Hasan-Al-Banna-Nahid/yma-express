@@ -118,6 +118,7 @@ export const googleOAuthCallback = asyncHandler(
 // ---------------- public: refresh token ----------------
 export const refreshTokenHandler = asyncHandler(
   async (req: Request, res: Response) => {
+    const isProd = process.env.NODE_ENV === "production";
     // Get refresh token from cookie or body
     const token =
       (req.cookies?.refreshToken as string | undefined) ||
@@ -153,15 +154,15 @@ export const refreshTokenHandler = asyncHandler(
     // Set cookies
     res.cookie("accessToken", rotated.accessToken, {
       httpOnly: true,
-      secure: true,
-      sameSite: "none",
+      secure: isProd,
+      sameSite: isProd ? "none" : "lax",
       path: "/",
       maxAge: 60 * 60 * 1000, // 1h
     });
     res.cookie("refreshToken", rotated.refreshToken, {
       httpOnly: true,
-      secure: true,
-      sameSite: "none",
+      secure: isProd,
+      sameSite: isProd ? "none" : "lax",
       path: "/",
       maxAge: 30 * 24 * 60 * 60 * 1000, // 30d
     });

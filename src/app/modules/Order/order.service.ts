@@ -424,6 +424,13 @@ export const getAllOrders = async (
     // Text search
     if (filters.search && filters.search.trim()) {
       const searchRegex = new RegExp(filters.search.trim(), "i");
+      const matchingUsers = await User.find({
+        $or: [{ name: searchRegex }, { email: searchRegex }],
+      })
+        .select("_id")
+        .lean();
+      const userIds = matchingUsers.map((u: any) => u._id);
+
       query.$or = [
         { orderNumber: searchRegex },
         { "shippingAddress.firstName": searchRegex },
@@ -433,8 +440,7 @@ export const getAllOrders = async (
         { "shippingAddress.city": searchRegex },
         { "shippingAddress.zipCode": searchRegex },
         { "shippingAddress.companyName": searchRegex },
-        { "user.name": searchRegex },
-        { "user.email": searchRegex },
+        ...(userIds.length > 0 ? [{ user: { $in: userIds } }] : []),
       ];
       console.log("Applied search filter:", filters.search);
     }
@@ -537,11 +543,49 @@ export const getAllOrders = async (
       .limit(limit)
       .lean();
 
+    // Ensure items.product has fallback data when populate returns null
+    const hydratedOrders = (orders || []).map((order: any) => {
+      if (!Array.isArray(order.items)) return order;
+      order.items = order.items.map((item: any) => {
+        const productImage =
+          (Array.isArray(item?.product?.imageCover)
+            ? item.product.imageCover[0]
+            : item?.product?.imageCover) || item?.imageCover || null;
+        const productName = item?.product?.name || item?.name || "Unknown Item";
+        const productPrice = item?.product?.price || item?.price || 0;
+
+        if (!item?.product) {
+          return {
+            ...item,
+            imageCover: productImage,
+            product: {
+              name: productName,
+              imageCover: productImage,
+              price: productPrice,
+            },
+          };
+        }
+
+        return {
+          ...item,
+          name: item?.name || productName,
+          imageCover: productImage,
+          product: {
+            ...item.product,
+            name: productName,
+            imageCover: productImage,
+            price: productPrice,
+          },
+        };
+      });
+      return order;
+    });
+
     console.log(`Retrieved ${orders.length} orders for page ${page}`);
     console.log("=== END ORDER FILTER DEBUG ===\n");
 
     return {
-      orders: orders as unknown as IOrderDocument[],
+      orders: hydratedOrders as unknown as IOrderDocument[],
       total,
       pages,
       currentPage: page,
@@ -609,6 +653,31 @@ export const updateOrder = async (
       ...existingAddr,
       ...newAddr,
     } as any; // Type cast to satisfy strict partial matches
+  }
+
+  // 2.1 Handle keepOvernight toggle even when items are not re-sent
+  if (
+    typeof updateData.shippingAddress?.keepOvernight === "boolean" &&
+    (!updateData.items || updateData.items.length === 0)
+  ) {
+    const shouldKeepOvernight = updateData.shippingAddress.keepOvernight;
+    order.items = (order.items || []).map((item: any) => ({
+      ...item,
+      keepOvernight: shouldKeepOvernight,
+    })) as any;
+
+    // Recalculate overnight fee based on current items
+    const overnightCount = (order.items || []).filter(
+      (item: any) => item.keepOvernight,
+    ).length;
+    order.overnightFee = overnightCount * 50;
+
+    // Recalculate total (subtotal + delivery + overnight - discount)
+    order.totalAmount =
+      (order.subtotalAmount || 0) +
+      (order.deliveryFee || 0) +
+      (order.overnightFee || 0) -
+      (order.discountAmount || 0);
   }
 
   // 3. Handle ITEMS & PRICE Recalculation
@@ -1310,11 +1379,53 @@ export const searchOrders = async (
       .populate("items.product", "name imageCover price")
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(limit),
+      .limit(limit)
+      .lean(),
     Order.countDocuments(query),
   ]);
 
-  return { orders, total, pages: Math.ceil(total / limit) };
+  const hydratedOrders = (orders || []).map((order: any) => {
+    if (!Array.isArray(order.items)) return order;
+    order.items = order.items.map((item: any) => {
+      const productImage =
+        (Array.isArray(item?.product?.imageCover)
+          ? item.product.imageCover[0]
+          : item?.product?.imageCover) || item?.imageCover || null;
+      const productName = item?.product?.name || item?.name || "Unknown Item";
+      const productPrice = item?.product?.price || item?.price || 0;
+
+      if (!item?.product) {
+        return {
+          ...item,
+          imageCover: productImage,
+          product: {
+            name: productName,
+            imageCover: productImage,
+            price: productPrice,
+          },
+        };
+      }
+
+      return {
+        ...item,
+        name: item?.name || productName,
+        imageCover: productImage,
+        product: {
+          ...item.product,
+          name: productName,
+          imageCover: productImage,
+          price: productPrice,
+        },
+      };
+    });
+    return order;
+  });
+
+  return {
+    orders: hydratedOrders as unknown as IOrderDocument[],
+    total,
+    pages: Math.ceil(total / limit),
+  };
 };
 
 export const getTodayOrders = async (): Promise<IOrderDocument[]> => {
