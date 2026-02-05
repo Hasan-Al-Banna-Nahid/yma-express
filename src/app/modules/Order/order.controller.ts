@@ -209,7 +209,7 @@ export const getAllOrdersHandler = asyncHandler(
       status: req.query.status,
       paymentMethod: req.query.paymentMethod,
       userId: req.query.userId,
-      search: req.query.search,
+      search: (req.query.search || req.query.q) as any,
 
       // Fix: Map these to match the Service logic
       createdFrom: req.query.startDate, // Map startDate to createdFrom
