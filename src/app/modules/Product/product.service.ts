@@ -503,7 +503,7 @@ export const getAllProducts = async (
 ) => {
   const query: any = {};
 
-  // 1. Specific Product ID Filter (highest priority)
+  // 1. Specific Product ID
   if (productId) {
     if (Types.ObjectId.isValid(productId)) {
       query._id = new Types.ObjectId(productId);
@@ -512,17 +512,14 @@ export const getAllProducts = async (
     }
   }
 
-  // 2. Search Logic (Name + ID partial/exact)
+  // 2. Search Logic
   if (search) {
     const searchConditions: any[] = [
       { name: { $regex: search, $options: "i" } },
     ];
-
-    // Check if searching for a specific ID directly in the search bar
     if (Types.ObjectId.isValid(search)) {
       searchConditions.push({ _id: new Types.ObjectId(search) });
     }
-
     query.$or = searchConditions;
   }
 
@@ -531,10 +528,14 @@ export const getAllProducts = async (
     query.isActive = true;
   }
 
-  // 4. Location & Category Filters
+  // 4. Location & FIXED Category Filter
   if (state) query["location.state"] = state;
   if (city) query["location.city"] = city;
-  if (category) query["categories._id"] = category;
+
+  // FIX: Query the array directly since categories are stored as ObjectIds
+  if (category && Types.ObjectId.isValid(category)) {
+    query.categories = new Types.ObjectId(category);
+  }
 
   // 5. Price & Date Range
   if (minPrice !== undefined || maxPrice !== undefined) {
