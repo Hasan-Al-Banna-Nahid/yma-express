@@ -1,4 +1,4 @@
-import nodemailer from "nodemailer";
+import { sendEmail } from "../../utils/resendEmail.service";
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -10,25 +10,6 @@ export interface ContactEmailData {
   message: string;
 }
 
-// Create transporter
-const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST || "smtp.gmail.com",
-  port: parseInt(process.env.EMAIL_PORT || "587"),
-  secure: false, // Changed from true to false for port 587
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
-
-// Test transporter connection
-transporter.verify((error) => {
-  if (error) {
-    console.error("❌ Email transporter error:", error);
-  } else {
-    console.log("✅ Email transporter is ready");
-  }
-});
 
 export const sendContactEmail = async (
   contactData: ContactEmailData
@@ -190,7 +171,7 @@ export const sendContactEmail = async (
 
     const mailOptions = {
       from: `"${process.env.EMAIL_FROM_NAME || "YMA Contact System"}" <${
-        process.env.EMAIL_FROM || process.env.EMAIL_USER
+        process.env.SENDER_EMAIL || process.env.EMAIL_FROM || process.env.EMAIL_USER
       }>`,
       to: process.env.EMAIL_USER, // Send to your own email
       replyTo: contactData.email, // So you can reply directly to the customer
@@ -213,8 +194,8 @@ Please respond to this inquiry promptly.
       `.trim(),
     };
 
-    const info = await transporter.sendMail(mailOptions);
-    console.log(`✅ Email sent: ${info.messageId}`);
+    const info = await sendEmail(mailOptions);
+    console.log(`✅ Email sent: ${info.id}`);
   } catch (error) {
     console.error("❌ Error sending email:", error);
     throw new Error(

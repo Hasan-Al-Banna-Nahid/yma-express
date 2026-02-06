@@ -1,4 +1,4 @@
-import nodemailer from "nodemailer";
+import { sendEmail } from "../../utils/resendEmail.service";
 import ApiError from "../../utils/apiError";
 import dotenv from "dotenv";
 dotenv.config();
@@ -18,15 +18,6 @@ interface OrderEmailData {
   }>;
 }
 
-const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST,
-  port: parseInt(process.env.EMAIL_PORT || "587"),
-  secure: process.env.EMAIL_SECURE === "true",
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
 
 const getEmailTemplate = (template: string, data: OrderEmailData): string => {
   const logoUrl =
@@ -84,8 +75,8 @@ export const sendCustomerOrderEmail = async (
   data: OrderEmailData,
 ) => {
   const html = getEmailTemplate(template, data);
-  await transporter.sendMail({
-    from: `"YMA Bouncy Castle" <${process.env.EMAIL_FROM}>`,
+  await sendEmail({
+    from: `"YMA Bouncy Castle" <>`,
     to: data.to,
     subject: `Reorder Details for ${data.customerName} - YMA Bouncy Castle`,
     html,

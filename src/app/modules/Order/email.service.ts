@@ -1,47 +1,21 @@
 // src/modules/order/email.service.ts
-import nodemailer from "nodemailer";
+import { sendEmail } from "../../utils/resendEmail.service";
 import { IOrderDocument } from "./order.interface";
 import dotenv from "dotenv";
 dotenv.config();
 
 // Email configuration
 interface EmailConfig {
-  host: string;
-  port: number;
-  secure: boolean;
-  auth: {
-    user: string;
-    pass: string;
-  };
   from: string;
   fromName: string;
   adminEmail: string;
 }
 
 const emailConfig: EmailConfig = {
-  host: process.env.EMAIL_HOST || "smtp.gmail.com",
-  port: parseInt(process.env.EMAIL_PORT || "587"),
-  secure: process.env.EMAIL_SECURE === "true",
-  auth: {
-    user: process.env.EMAIL_USER || "",
-    pass: process.env.EMAIL_PASS || "",
-  },
-  from: process.env.EMAIL_FROM || "noreply@ymabouncycastle.co.uk",
+  from: process.env.SENDER_EMAIL || process.env.EMAIL_FROM || "noreply@ymabouncycastle.co.uk",
   fromName: process.env.EMAIL_FROM_NAME || "YMA Bouncy Castle",
   adminEmail: process.env.ADMIN_EMAIL || "admin@ymabouncycastle.co.uk",
 };
-
-// Create transporter
-const transporter = nodemailer.createTransport(emailConfig);
-
-// Verify transporter connection
-transporter.verify((error) => {
-  if (error) {
-    console.error("Email transporter error:", error);
-  } else {
-    console.log("✅ Email server is ready to send messages");
-  }
-});
 
 // Generate product table HTML
 const generateProductTable = (order: IOrderDocument): string => {
@@ -1147,7 +1121,7 @@ export const sendOrderReceivedEmail = async (
   try {
     const html = emailTemplates.orderReceived(order);
 
-    await transporter.sendMail({
+    await sendEmail({
       from: `"${emailConfig.fromName}" <${emailConfig.from}>`,
       to: order.shippingAddress.email,
       bcc: emailConfig.adminEmail,
@@ -1170,7 +1144,7 @@ export const sendOrderConfirmedEmail = async (
   try {
     const html = emailTemplates.orderConfirmed(order);
 
-    await transporter.sendMail({
+    await sendEmail({
       from: `"${emailConfig.fromName}" <${emailConfig.from}>`,
       to: order.shippingAddress.email,
       bcc: emailConfig.adminEmail,
@@ -1193,7 +1167,7 @@ export const sendDeliveryReminderEmail = async (
   try {
     const html = emailTemplates.deliveryReminder(order);
 
-    await transporter.sendMail({
+    await sendEmail({
       from: `"${emailConfig.fromName}" <${emailConfig.from}>`,
       to: order.shippingAddress.email,
       bcc: emailConfig.adminEmail,
@@ -1216,7 +1190,7 @@ export const sendOrderCancelledEmail = async (
   try {
     const html = emailTemplates.orderCancelled(order);
 
-    await transporter.sendMail({
+    await sendEmail({
       from: `"${emailConfig.fromName}" <${emailConfig.from}>`,
       to: order.shippingAddress.email,
       bcc: emailConfig.adminEmail,
@@ -1239,7 +1213,7 @@ export const sendDeliveryCompleteEmail = async (
   try {
     const html = emailTemplates.deliveryComplete(order);
 
-    await transporter.sendMail({
+    await sendEmail({
       from: `"${emailConfig.fromName}" <${emailConfig.from}>`,
       to: order.shippingAddress.email,
       bcc: emailConfig.adminEmail,
@@ -1263,7 +1237,7 @@ export const sendInvoiceEmail = async (
   try {
     const html = emailTemplates.invoice(order);
 
-    await transporter.sendMail({
+    await sendEmail({
       from: `"${emailConfig.fromName}" <${emailConfig.from}>`,
       to: order.shippingAddress.email,
       bcc: emailConfig.adminEmail,
@@ -1300,7 +1274,7 @@ ACTION REQUIRED: Review and confirm order
 ================================
       `;
 
-    await transporter.sendMail({
+    await sendEmail({
       from: `"${emailConfig.fromName}" <${emailConfig.from}>`,
       to: emailConfig.adminEmail,
       subject: `🚨 NEW ORDER: ${order.orderNumber} - £${order.totalAmount} - ${order.shippingAddress.firstName} ${order.shippingAddress.lastName}`,

@@ -19,7 +19,6 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "@sendgrid/mail": "^8.1.5",
     "@types/bcryptjs": "^2.4.6",
     "@types/cors": "^2.8.19",
     "@types/dotenv": "^6.1.1",
