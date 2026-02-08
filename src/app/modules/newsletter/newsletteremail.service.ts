@@ -1,4 +1,4 @@
-import nodemailer from "nodemailer";
+import { sendEmail } from "../../utils/resendEmail.service";
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -9,16 +9,6 @@ export interface NewsletterEmailData {
   previewText?: string;
 }
 
-// Create transporter (reuse from contact service or create new)
-const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST || "smtp.gmail.com",
-  port: parseInt(process.env.EMAIL_PORT || "587"),
-  secure: false,
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
 
 // Welcome email for new subscribers
 export const sendWelcomeEmail = async (
@@ -179,9 +169,6 @@ export const sendWelcomeEmail = async (
   `;
 
   const mailOptions = {
-    from: `"${process.env.EMAIL_FROM_NAME || "YMA Newsletter"}" <${
-      process.env.EMAIL_FROM || process.env.EMAIL_USER
-    }>`,
     to: email,
     subject: "🎈 Welcome to YMA Newsletter!",
     html: emailHtml,
@@ -212,7 +199,7 @@ London, United Kingdom
     `.trim(),
   };
 
-  await transporter.sendMail(mailOptions);
+  await sendEmail(mailOptions);
 };
 
 // Send newsletter email
@@ -385,9 +372,6 @@ export const sendNewsletterEmail = async (
   `;
 
   const mailOptions = {
-    from: `"${process.env.EMAIL_FROM_NAME || "YMA Newsletter"}" <${
-      process.env.EMAIL_FROM || process.env.EMAIL_USER
-    }>`,
     to: email,
     subject: newsletterData.subject,
     html: emailHtml,
@@ -422,5 +406,5 @@ To unsubscribe, visit: ${unsubscribeUrl}
     `.trim(),
   };
 
-  await transporter.sendMail(mailOptions);
+  await sendEmail(mailOptions);
 };

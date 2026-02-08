@@ -117,7 +117,11 @@ const orderSchema = new Schema<IOrderDocument>(
     deliveryFee: { type: Number, required: true, default: 0 },
     overnightFee: { type: Number, required: true, default: 0 },
     discountAmount: { type: Number, default: 0 },
+<<<<<<< HEAD
     totalAmount: { type: Number, required: false },
+=======
+    totalAmount: { type: Number },
+>>>>>>> 1f01eef9ca51ffbbebaeb470988a2372fe8e53bb
     paymentMethod: {
       type: String,
       enum: Object.values(PAYMENT_METHODS),
