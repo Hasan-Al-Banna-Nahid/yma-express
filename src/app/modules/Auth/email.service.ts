@@ -424,9 +424,6 @@ export const sendWelcomeVerificationEmail = async (
   `;
 
   const mailOptions = {
-    from: `"YMA Bouncy Castle" <${
-      process.env.SENDER_EMAIL || process.env.EMAIL_FROM || process.env.EMAIL_USER
-    }>`,
     to: email,
     subject: "Welcome to YMA Bouncy Castle - Verify Your Email",
     html: html,
@@ -685,9 +682,6 @@ export const sendVerificationSuccessEmail = async (
   `;
 
   const mailOptions = {
-    from: `"YMA Bouncy Castle" <${
-      process.env.SENDER_EMAIL || process.env.EMAIL_FROM || process.env.EMAIL_USER
-    }>`,
     to: email,
     subject: "Email Verified Successfully - YMA Bouncy Castle",
     html: html,
@@ -1077,9 +1071,6 @@ export const sendPasswordResetEmail = async (
   `;
 
   const mailOptions = {
-    from: `"YMA Bouncy Castle" <${
-      process.env.SENDER_EMAIL || process.env.EMAIL_FROM || process.env.EMAIL_USER
-    }>`,
     to: email,
     subject: "Reset Your Password - YMA Bouncy Castle",
     html: html,
@@ -1507,9 +1498,6 @@ export const sendResetSuccessEmail = async (
   `;
 
   const mailOptions = {
-    from: `"YMA Bouncy Castle" <${
-      process.env.SENDER_EMAIL || process.env.EMAIL_FROM || process.env.EMAIL_USER
-    }>`,
     to: email,
     subject: "Password Reset Successful - YMA Bouncy Castle",
     html: html,

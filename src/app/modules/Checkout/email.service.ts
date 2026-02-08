@@ -514,11 +514,6 @@ YMA Bouncy Castle Team
 `;
 
     const mailOptions = {
-      from: `"YMA Bouncy Castle" <${
-        process.env.SENDER_EMAIL ||
-        process.env.EMAIL_FROM ||
-        "noreply@ymabouncycastle.co.uk"
-      }>`,
       to: customerEmail,
       subject: `We've Received Your Order – YMA Bouncy Castle 🎉`,
       html: html,
@@ -732,11 +727,6 @@ YMA Bouncy Castle Team
 `;
 
     const mailOptions = {
-      from: `"YMA Bouncy Castle" <${
-        process.env.SENDER_EMAIL ||
-        process.env.EMAIL_FROM ||
-        "noreply@ymabouncycastle.co.uk"
-      }>`,
       to: email,
       subject: `Welcome to YMA Bouncy Castle - Your Account Details 🎉`,
       html: html,
@@ -911,11 +901,6 @@ export const sendOrderNotificationToAdmin = async (
     `;
 
     const mailOptions = {
-      from: `"YMA Bouncy Castle System" <${
-        process.env.SENDER_EMAIL ||
-        process.env.EMAIL_FROM ||
-        "noreply@ymabouncycastle.co.uk"
-      }>`,
       to: adminEmail,
       subject: `🚨 NEW ORDER #${orderId} - ${customerName} - ${totalAmount}`,
       html: html,
@@ -1135,11 +1120,6 @@ YMA Bouncy Castle Team
 `;
 
     const mailOptions = {
-      from: `"YMA Bouncy Castle" <${
-        process.env.SENDER_EMAIL ||
-        process.env.EMAIL_FROM ||
-        "noreply@ymabouncycastle.co.uk"
-      }>`,
       to: customerEmail,
       subject: `Your YMA Bouncy Castle Booking Is Fully Confirmed ✅`,
       html: html,
@@ -1338,11 +1318,6 @@ YMA Bouncy Castle Team
 `;
 
     const mailOptions = {
-      from: `"YMA Bouncy Castle" <${
-        process.env.SENDER_EMAIL ||
-        process.env.EMAIL_FROM ||
-        "noreply@ymabouncycastle.co.uk"
-      }>`,
       to: customerEmail,
       subject: `Your YMA Bouncy Castle Order Has Been Cancelled`,
       html: html,
@@ -1567,11 +1542,6 @@ YMA Bouncy Castle Team
 `;
 
     const mailOptions = {
-      from: `"YMA Bouncy Castle" <${
-        process.env.SENDER_EMAIL ||
-        process.env.EMAIL_FROM ||
-        "noreply@ymabouncycastle.co.uk"
-      }>`,
       to: customerEmail,
       subject: `We're Preparing Your Bouncy Castle – Delivery Reminder 🎈`,
       html: html,

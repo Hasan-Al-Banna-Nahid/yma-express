@@ -1,5 +1,5 @@
-import { sendEmail } from "../../utils/resendEmail.service";
 import dotenv from "dotenv";
+import { sendEmail } from "../../utils/resendEmail.service";
 dotenv.config();
 
 export interface ContactEmailData {
@@ -10,9 +10,8 @@ export interface ContactEmailData {
   message: string;
 }
 
-
 export const sendContactEmail = async (
-  contactData: ContactEmailData
+  contactData: ContactEmailData,
 ): Promise<void> => {
   try {
     const logoUrl =
@@ -122,8 +121,8 @@ export const sendContactEmail = async (
             <div class="info-item">
                 <div class="label">Full Name</div>
                 <div class="value">${contactData.firstName} ${
-      contactData.lastName
-    }</div>
+                  contactData.lastName
+                }</div>
             </div>
             <div class="info-item">
                 <div class="label">Email Address</div>
@@ -170,10 +169,7 @@ export const sendContactEmail = async (
   `;
 
     const mailOptions = {
-      from: `"${process.env.EMAIL_FROM_NAME || "YMA Contact System"}" <${
-        process.env.SENDER_EMAIL || process.env.EMAIL_FROM || process.env.EMAIL_USER
-      }>`,
-      to: process.env.EMAIL_USER, // Send to your own email
+      to: process.env.ADMIN_EMAIL || process.env.EMAIL_USER,
       replyTo: contactData.email, // So you can reply directly to the customer
       subject: `📧 New Contact Message from ${contactData.firstName} ${contactData.lastName}`,
       html: emailHtml,
@@ -201,7 +197,7 @@ Please respond to this inquiry promptly.
     throw new Error(
       `Failed to send email: ${
         error instanceof Error ? error.message : "Unknown error"
-      }`
+      }`,
     );
   }
 };

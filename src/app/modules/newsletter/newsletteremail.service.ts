@@ -169,9 +169,6 @@ export const sendWelcomeEmail = async (
   `;
 
   const mailOptions = {
-    from: `"${process.env.EMAIL_FROM_NAME || "YMA Newsletter"}" <${
-      process.env.SENDER_EMAIL || process.env.EMAIL_FROM || process.env.EMAIL_USER
-    }>`,
     to: email,
     subject: "🎈 Welcome to YMA Newsletter!",
     html: emailHtml,
@@ -375,9 +372,6 @@ export const sendNewsletterEmail = async (
   `;
 
   const mailOptions = {
-    from: `"${process.env.EMAIL_FROM_NAME || "YMA Newsletter"}" <${
-      process.env.SENDER_EMAIL || process.env.EMAIL_FROM || process.env.EMAIL_USER
-    }>`,
     to: email,
     subject: newsletterData.subject,
     html: emailHtml,

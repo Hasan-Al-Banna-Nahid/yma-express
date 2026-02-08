@@ -76,7 +76,6 @@ export const sendCustomerOrderEmail = async (
 ) => {
   const html = getEmailTemplate(template, data);
   await sendEmail({
-    from: `"YMA Bouncy Castle" <>`,
     to: data.to,
     subject: `Reorder Details for ${data.customerName} - YMA Bouncy Castle`,
     html,

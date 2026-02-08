@@ -17,7 +17,6 @@ export class EmailService {
   static async sendEmail(to: string, subject: string, html: string) {
     try {
       await sendEmail({
-        from: `"YMA Bouncy Castle" <>`,
         to,
         subject,
         html,

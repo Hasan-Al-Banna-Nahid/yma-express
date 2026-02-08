@@ -6,14 +6,10 @@ dotenv.config();
 
 // Email configuration
 interface EmailConfig {
-  from: string;
-  fromName: string;
   adminEmail: string;
 }
 
 const emailConfig: EmailConfig = {
-  from: process.env.SENDER_EMAIL || process.env.EMAIL_FROM || "noreply@ymabouncycastle.co.uk",
-  fromName: process.env.EMAIL_FROM_NAME || "YMA Bouncy Castle",
   adminEmail: process.env.ADMIN_EMAIL || "admin@ymabouncycastle.co.uk",
 };
 
@@ -1122,7 +1118,6 @@ export const sendOrderReceivedEmail = async (
     const html = emailTemplates.orderReceived(order);
 
     await sendEmail({
-      from: `"${emailConfig.fromName}" <${emailConfig.from}>`,
       to: order.shippingAddress.email,
       bcc: emailConfig.adminEmail,
       subject: `🎉 Order Confirmation #${order.orderNumber} - YMA Bouncy Castle`,
@@ -1145,7 +1140,6 @@ export const sendOrderConfirmedEmail = async (
     const html = emailTemplates.orderConfirmed(order);
 
     await sendEmail({
-      from: `"${emailConfig.fromName}" <${emailConfig.from}>`,
       to: order.shippingAddress.email,
       bcc: emailConfig.adminEmail,
       subject: `✅ Booking Confirmed #${order.orderNumber} - YMA Bouncy Castle`,
@@ -1168,7 +1162,6 @@ export const sendDeliveryReminderEmail = async (
     const html = emailTemplates.deliveryReminder(order);
 
     await sendEmail({
-      from: `"${emailConfig.fromName}" <${emailConfig.from}>`,
       to: order.shippingAddress.email,
       bcc: emailConfig.adminEmail,
       subject: `⏰ Delivery Reminder #${order.orderNumber} - YMA Bouncy Castle`,
@@ -1191,7 +1184,6 @@ export const sendOrderCancelledEmail = async (
     const html = emailTemplates.orderCancelled(order);
 
     await sendEmail({
-      from: `"${emailConfig.fromName}" <${emailConfig.from}>`,
       to: order.shippingAddress.email,
       bcc: emailConfig.adminEmail,
       subject: `❌ Order Cancelled #${order.orderNumber} - YMA Bouncy Castle`,
@@ -1214,7 +1206,6 @@ export const sendDeliveryCompleteEmail = async (
     const html = emailTemplates.deliveryComplete(order);
 
     await sendEmail({
-      from: `"${emailConfig.fromName}" <${emailConfig.from}>`,
       to: order.shippingAddress.email,
       bcc: emailConfig.adminEmail,
       subject: `✅ Delivery Complete #${order.orderNumber} - YMA Bouncy Castle`,
@@ -1238,7 +1229,6 @@ export const sendInvoiceEmail = async (
     const html = emailTemplates.invoice(order);
 
     await sendEmail({
-      from: `"${emailConfig.fromName}" <${emailConfig.from}>`,
       to: order.shippingAddress.email,
       bcc: emailConfig.adminEmail,
       subject: `🧾 Invoice #INV-${order.orderNumber} - YMA Bouncy Castle`,
@@ -1275,7 +1265,6 @@ ACTION REQUIRED: Review and confirm order
       `;
 
     await sendEmail({
-      from: `"${emailConfig.fromName}" <${emailConfig.from}>`,
       to: emailConfig.adminEmail,
       subject: `🚨 NEW ORDER: ${order.orderNumber} - £${order.totalAmount} - ${order.shippingAddress.firstName} ${order.shippingAddress.lastName}`,
       text: orderDetails,
