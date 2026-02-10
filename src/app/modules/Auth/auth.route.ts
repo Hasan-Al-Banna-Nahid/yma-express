@@ -41,19 +41,25 @@ router.post("/resend-verification", resendVerification);
 router.post("/check-verification", checkVerificationStatus);
 
 // Other auth routes
-router.get(
-  "/google",
+router.get("/google", (req, res, next) => {
+  const frontendBase = (process.env.FRONTEND_URL || "http://localhost:3000").replace(/\/$/, "");
+  const callbackURL = `${frontendBase}/api/v1/auth/google/callback`;
+
   passport.authenticate("google", {
     scope: ["profile", "email"],
     session: false,
-  }),
-);
+    callbackURL,
+  } as any)(req, res, next);
+});
 router.get(
   "/google/callback",
   (req, res, next) => {
+    const frontendBase = (process.env.FRONTEND_URL || "http://localhost:3000").replace(/\/$/, "");
+    const callbackURL = `${frontendBase}/api/v1/auth/google/callback`;
+
     passport.authenticate(
       "google",
-      { session: false },
+      { session: false, callbackURL } as any,
       (err: any, user: any) => {
         if (err || !user) {
           const message = err?.message || "Google sign-in failed";
