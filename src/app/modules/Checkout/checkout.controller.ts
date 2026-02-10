@@ -875,7 +875,6 @@ export const quickCheckout = asyncHandler(
       await session.commitTransaction();
       session.endSession();
 
-<<<<<<< HEAD
       // 5. ASYNCHRONOUS EMAILS (Don't 'await' these before sending response to user)
       // Sending after commit ensures user only gets email if DB update succeeded
       if (isNewUser) {
@@ -890,32 +889,30 @@ export const quickCheckout = asyncHandler(
         console.error("Order Receipt Email Failed", err),
       );
 
-=======
-      // Send emails (non-critical, won't fail the response)
-      try {
-        console.log("📧 [Checkout] Triggering quickCheckout emails", {
-          orderId: order._id,
-          orderNumber: order.orderNumber,
-          customerEmail: shippingAddress.email,
-          isNewUser,
-        });
+      //       // Send emails (non-critical, won't fail the response)
+      //       try {
+      //         console.log("📧 [Checkout] Triggering quickCheckout emails", {
+      //           orderId: order._id,
+      //           orderNumber: order.orderNumber,
+      //           customerEmail: shippingAddress.email,
+      //           isNewUser,
+      //         });
+      //
+      //         await sendOrderReceivedEmail(order);
+      //         await sendOrderNotificationToAdmin(order);
+      //
+      //         if (isNewUser && tempPassword) {
+      //           await sendUserCredentialsEmail(email, firstName, tempPassword);
+      //         }
+      //
+      //         console.log("📧 [Checkout] quickCheckout emails completed");
+      //       } catch (emailError) {
+      //         console.error(
+      //           "⚠️ [Checkout] quickCheckout email sending failed (non-critical):",
+      //           emailError,
+      //         );
+      //       }
 
-        await sendOrderReceivedEmail(order);
-        await sendOrderNotificationToAdmin(order);
-
-        if (isNewUser && tempPassword) {
-          await sendUserCredentialsEmail(email, firstName, tempPassword);
-        }
-
-        console.log("📧 [Checkout] quickCheckout emails completed");
-      } catch (emailError) {
-        console.error(
-          "⚠️ [Checkout] quickCheckout email sending failed (non-critical):",
-          emailError,
-        );
-      }
-
->>>>>>> 1f01eef9ca51ffbbebaeb470988a2372fe8e53bb
       res.status(201).json({ success: true, data: order });
     } catch (err) {
       await session.abortTransaction();
