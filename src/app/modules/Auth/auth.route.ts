@@ -22,6 +22,12 @@ import { upload } from "../../utils/cloudinary.util";
 import { protectRoute } from "../../middlewares/auth.middleware";
 const router = express.Router();
 
+const resolveFrontendBase = (req: express.Request) => {
+  const fromHeader = (req.headers["x-frontend-origin"] as string | undefined)?.trim();
+  if (fromHeader) return fromHeader.replace(/\/$/, "");
+  return (process.env.FRONTEND_URL || "http://localhost:3000").replace(/\/$/, "");
+};
+
 // ==================== PUBLIC ROUTES ====================
 
 // Original registration (kept for backward compatibility)
@@ -42,7 +48,7 @@ router.post("/check-verification", checkVerificationStatus);
 
 // Other auth routes
 router.get("/google", (req, res, next) => {
-  const frontendBase = (process.env.FRONTEND_URL || "http://localhost:3000").replace(/\/$/, "");
+  const frontendBase = resolveFrontendBase(req);
   const callbackURL = `${frontendBase}/api/v1/auth/google/callback`;
 
   passport.authenticate("google", {
@@ -54,7 +60,7 @@ router.get("/google", (req, res, next) => {
 router.get(
   "/google/callback",
   (req, res, next) => {
-    const frontendBase = (process.env.FRONTEND_URL || "http://localhost:3000").replace(/\/$/, "");
+    const frontendBase = resolveFrontendBase(req);
     const callbackURL = `${frontendBase}/api/v1/auth/google/callback`;
 
     passport.authenticate(
@@ -67,9 +73,7 @@ router.get(
             message === "This email is registered with a password. Use email login."
               ? "oauth_password_user"
               : "oauth_error";
-          const redirectUrl = `${
-            process.env.FRONTEND_URL || "http://localhost:3000"
-          }/login?oauth=error&code=${code}`;
+          const redirectUrl = `${frontendBase}/login?oauth=error&code=${code}`;
           return res.redirect(redirectUrl);
         }
         req.user = user;
