@@ -12,13 +12,13 @@ export const protectRoute = asyncHandler(
   async (req: Request, _res: Response, next: NextFunction) => {
     let token: string | undefined;
 
-    // 1. EXTRACT: Check Bearer Header
-    if (req.headers.authorization?.startsWith("Bearer")) {
-      token = req.headers.authorization.split(" ")[1];
-    }
-    // 2. EXTRACT: Check Cookies
-    else if (req.cookies?.accessToken) {
+    // 1. EXTRACT: Prefer cookie token for browser auth flows (e.g. OAuth redirect)
+    if (req.cookies?.accessToken) {
       token = req.cookies.accessToken;
+    }
+    // 2. EXTRACT: Fallback to Bearer header for API clients
+    else if (req.headers.authorization?.startsWith("Bearer")) {
+      token = req.headers.authorization.split(" ")[1];
     }
 
     // 3. SANITIZE: Remove quotes or "undefined"/"null" strings often sent by frontends

@@ -37,35 +37,41 @@ export const setAuthCookies = (
   refreshToken: string,
 ) => {
   const isProd = process.env.NODE_ENV === "production";
+  const cookieSecure = isProd;
+  const cookieSameSite: "none" | "lax" = isProd ? "none" : "lax";
 
   res.cookie("accessToken", accessToken, {
     httpOnly: true,
-    secure: isProd, // ❗ important
-    sameSite: isProd ? "none" : "lax",
+    secure: cookieSecure,
+    sameSite: cookieSameSite,
     path: "/",
     maxAge: 60 * 60 * 1000,
   });
 
   res.cookie("refreshToken", refreshToken, {
     httpOnly: true,
-    secure: true,
-    sameSite: "none",
+    secure: cookieSecure,
+    sameSite: cookieSameSite,
     path: "/",
     maxAge: 30 * 24 * 60 * 60 * 1000, // 30d
   });
 };
 
 export const clearAuthCookies = (res: Response) => {
+  const isProd = process.env.NODE_ENV === "production";
+  const cookieSecure = isProd;
+  const cookieSameSite: "none" | "lax" = isProd ? "none" : "lax";
+
   res.clearCookie("accessToken", {
     httpOnly: true,
-    secure: true,
-    sameSite: "none",
+    secure: cookieSecure,
+    sameSite: cookieSameSite,
     path: "/",
   });
   res.clearCookie("refreshToken", {
     httpOnly: true,
-    secure: true,
-    sameSite: "none",
+    secure: cookieSecure,
+    sameSite: cookieSameSite,
     path: "/",
   });
 };
@@ -1349,20 +1355,8 @@ export const logout = asyncHandler(async (req: Request, res: Response) => {
     });
   }
 
-  // Clear cookies
-  res.clearCookie("accessToken", {
-    httpOnly: true,
-    secure: true,
-    sameSite: "none",
-    path: "/",
-  });
-
-  res.clearCookie("refreshToken", {
-    httpOnly: true,
-    secure: true,
-    sameSite: "none",
-    path: "/",
-  });
+  // Clear cookies using matching env-aware attributes
+  clearAuthCookies(res);
 
   // Also clear any other auth cookies you might have
   res.clearCookie("userId");
