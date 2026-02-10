@@ -1,17 +1,9 @@
-import nodemailer from "nodemailer";
+import { sendEmail } from "../../utils/resendEmail.service";
 import { IBookingDocument } from "./booking.model";
 import dotenv from "dotenv";
 
 dotenv.config();
 
-const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST,
-  port: Number(process.env.EMAIL_PORT),
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
 
 const YMA_LOGO =
   "https://res.cloudinary.com/dj785gqtu/image/upload/v1767711924/logo2_xos8xa.png";
@@ -24,8 +16,7 @@ const DANGER_COLOR = "#E74C3C";
 export class EmailService {
   static async sendEmail(to: string, subject: string, html: string) {
     try {
-      await transporter.sendMail({
-        from: `"YMA Bouncy Castle" <${process.env.EMAIL_FROM}>`,
+      await sendEmail({
         to,
         subject,
         html,
@@ -520,7 +511,7 @@ export class EmailService {
     booking: IBookingDocument,
     action: string
   ) {
-    const adminEmail = process.env.ADMIN_EMAIL || process.env.EMAIL_FROM;
+    const adminEmail = process.env.ADMIN_EMAIL || process.env.SENDER_EMAIL || process.env.EMAIL_FROM;
     if (!adminEmail) return;
 
     const actionIcons = {

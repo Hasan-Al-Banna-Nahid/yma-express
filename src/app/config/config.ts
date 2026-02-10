@@ -22,10 +22,10 @@ export const config = {
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
     callbackUrl: process.env.GOOGLE_CALLBACK_URL,
   },
-  sendgrid: {
-    apiKey: process.env.SENDGRID_API_KEY,
-    fromEmail: process.env.SENDGRID_FROM_EMAIL,
-    fromName: process.env.SENDGRID_FROM_NAME,
+  resend: {
+    apiKey: process.env.RESEND_API_KEY,
+    fromEmail: process.env.SENDER_EMAIL || process.env.EMAIL_FROM,
+    fromName: process.env.EMAIL_FROM_NAME,
   },
   frontendUrl: process.env.FRONTEND_URL || "http://localhost:3000",
 };

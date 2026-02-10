@@ -900,6 +900,30 @@ export const quickCheckout = asyncHandler(
       await session.commitTransaction();
       session.endSession();
 
+      // Send emails (non-critical, won't fail the response)
+      try {
+        console.log("📧 [Checkout] Triggering quickCheckout emails", {
+          orderId: order._id,
+          orderNumber: order.orderNumber,
+          customerEmail: shippingAddress.email,
+          isNewUser,
+        });
+
+        await sendOrderReceivedEmail(order);
+        await sendOrderNotificationToAdmin(order);
+
+        if (isNewUser && tempPassword) {
+          await sendUserCredentialsEmail(email, firstName, tempPassword);
+        }
+
+        console.log("📧 [Checkout] quickCheckout emails completed");
+      } catch (emailError) {
+        console.error(
+          "⚠️ [Checkout] quickCheckout email sending failed (non-critical):",
+          emailError,
+        );
+      }
+
       res.status(201).json({ success: true, data: order });
     } catch (err: any) {
       await session.abortTransaction();

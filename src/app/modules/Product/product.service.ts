@@ -502,7 +502,7 @@ export const getAllProducts = async (
   const skip = (page - 1) * limit;
 
   // 🔹 1. Build the Filter Object
-  const filter: any = { active: true };
+  const filter: any = { ...AVAILABLE_PRODUCT_FILTER };
 
   // Text Search
   if (search) filter.name = { $regex: search, $options: "i" };

@@ -1,25 +1,7 @@
-import nodemailer from "nodemailer";
+import { sendEmail } from "../../utils/resendEmail.service";
 import dotenv from "dotenv";
 dotenv.config();
 
-// Email configuration
-const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST || "smtp.gmail.com",
-  port: parseInt(process.env.EMAIL_PORT || "587"),
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
-
-// Verify connection
-transporter.verify((error, success) => {
-  if (error) {
-    console.error("Email transporter error:", error);
-  } else {
-    console.log("Email server is ready to send messages");
-  }
-});
 
 // Generate a random password
 export const generateRandomPassword = (): string => {
@@ -442,9 +424,6 @@ export const sendWelcomeVerificationEmail = async (
   `;
 
   const mailOptions = {
-    from: `"YMA Bouncy Castle" <${
-      process.env.EMAIL_FROM || process.env.EMAIL_USER
-    }>`,
     to: email,
     subject: "Welcome to YMA Bouncy Castle - Verify Your Email",
     html: html,
@@ -474,7 +453,7 @@ ${supportEmail}
   };
 
   try {
-    await transporter.sendMail(mailOptions);
+    await sendEmail(mailOptions);
     console.log(`Welcome verification email sent to: ${email}`);
   } catch (error: any) {
     console.error(`Failed to send welcome email to ${email}:`, error);
@@ -703,16 +682,13 @@ export const sendVerificationSuccessEmail = async (
   `;
 
   const mailOptions = {
-    from: `"YMA Bouncy Castle" <${
-      process.env.EMAIL_FROM || process.env.EMAIL_USER
-    }>`,
     to: email,
     subject: "Email Verified Successfully - YMA Bouncy Castle",
     html: html,
   };
 
   try {
-    await transporter.sendMail(mailOptions);
+    await sendEmail(mailOptions);
     console.log(`Verification success email sent to: ${email}`);
   } catch (error: any) {
     console.error(`Failed to send verification success email:`, error);
@@ -1095,9 +1071,6 @@ export const sendPasswordResetEmail = async (
   `;
 
   const mailOptions = {
-    from: `"YMA Bouncy Castle" <${
-      process.env.EMAIL_FROM || process.env.EMAIL_USER
-    }>`,
     to: email,
     subject: "Reset Your Password - YMA Bouncy Castle",
     html: html,
@@ -1124,7 +1097,7 @@ YMA Bouncy Castle Team
   };
 
   try {
-    await transporter.sendMail(mailOptions);
+    await sendEmail(mailOptions);
     console.log(`Password reset email sent to: ${email}`);
   } catch (error: any) {
     console.error(`Failed to send password reset email to ${email}:`, error);
@@ -1525,9 +1498,6 @@ export const sendResetSuccessEmail = async (
   `;
 
   const mailOptions = {
-    from: `"YMA Bouncy Castle" <${
-      process.env.EMAIL_FROM || process.env.EMAIL_USER
-    }>`,
     to: email,
     subject: "Password Reset Successful - YMA Bouncy Castle",
     html: html,
@@ -1556,7 +1526,7 @@ YMA Bouncy Castle Team
   };
 
   try {
-    await transporter.sendMail(mailOptions);
+    await sendEmail(mailOptions);
     console.log(`Password reset success email sent to: ${email}`);
   } catch (error: any) {
     console.error(`Failed to send reset success email to ${email}:`, error);

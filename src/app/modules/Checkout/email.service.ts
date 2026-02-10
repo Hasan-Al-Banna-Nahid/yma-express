@@ -1,30 +1,8 @@
 // src/services/checkout/email.service.ts
-import nodemailer from "nodemailer";
-import { IOrderDocument } from "../../modules/Order/order.interface";
 import dotenv from "dotenv";
+import { IOrderDocument } from "../../modules/Order/order.interface";
+import { sendEmail } from "../../utils/resendEmail.service";
 dotenv.config();
-
-// Email configuration
-const createTransporter = () => {
-  return nodemailer.createTransport({
-    host: process.env.EMAIL_HOST || "smtp.gmail.com",
-    port: parseInt(process.env.EMAIL_PORT || "587"),
-    secure: false,
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
-    },
-  });
-};
-
-// Verify connection
-createTransporter().verify((error) => {
-  if (error) {
-    console.error("❌ Email connection failed:", error);
-  } else {
-    console.log("✅ Email server is ready");
-  }
-});
 
 // Helper functions
 const formatCurrency = (amount: number): string => {
@@ -258,7 +236,6 @@ export const sendOrderReceivedEmail = async (
   order: IOrderDocument,
 ): Promise<boolean> => {
   try {
-    const transporter = createTransporter();
     const customerEmail = order.shippingAddress.email;
     const customerName = `${order.shippingAddress.firstName} ${order.shippingAddress.lastName}`;
     const orderId =
@@ -537,16 +514,13 @@ YMA Bouncy Castle Team
 `;
 
     const mailOptions = {
-      from: `"YMA Bouncy Castle" <${
-        process.env.EMAIL_FROM || "noreply@ymabouncycastle.co.uk"
-      }>`,
       to: customerEmail,
       subject: `We've Received Your Order – YMA Bouncy Castle 🎉`,
       html: html,
       text: text,
     };
 
-    await transporter.sendMail(mailOptions);
+    await sendEmail(mailOptions);
     console.log(`✅ Order received email sent to ${customerEmail}`);
     return true;
   } catch (error) {
@@ -562,8 +536,6 @@ export const sendUserCredentialsEmail = async (
   password: string,
 ): Promise<boolean> => {
   try {
-    const transporter = createTransporter();
-
     const html = `
 <!DOCTYPE html>
 <html>
@@ -755,16 +727,13 @@ YMA Bouncy Castle Team
 `;
 
     const mailOptions = {
-      from: `"YMA Bouncy Castle" <${
-        process.env.EMAIL_FROM || "noreply@ymabouncycastle.co.uk"
-      }>`,
       to: email,
       subject: `Welcome to YMA Bouncy Castle - Your Account Details 🎉`,
       html: html,
       text: text,
     };
 
-    await transporter.sendMail(mailOptions);
+    await sendEmail(mailOptions);
     console.log(`✅ User credentials email sent to ${email}`);
     return true;
   } catch (error) {
@@ -778,7 +747,6 @@ export const sendOrderNotificationToAdmin = async (
   order: IOrderDocument,
 ): Promise<boolean> => {
   try {
-    const transporter = createTransporter();
     const adminEmail = process.env.ADMIN_EMAIL || "admin@ymabouncycastle.co.uk";
     const orderId =
       order.orderNumber || `ORD-${(order._id as string).toString().slice(-8)}`;
@@ -933,15 +901,12 @@ export const sendOrderNotificationToAdmin = async (
     `;
 
     const mailOptions = {
-      from: `"YMA Bouncy Castle System" <${
-        process.env.EMAIL_FROM || "noreply@ymabouncycastle.co.uk"
-      }>`,
       to: adminEmail,
       subject: `🚨 NEW ORDER #${orderId} - ${customerName} - ${totalAmount}`,
       html: html,
     };
 
-    await transporter.sendMail(mailOptions);
+    await sendEmail(mailOptions);
     console.log(`✅ Admin notification sent for order #${orderId}`);
     return true;
   } catch (error) {
@@ -955,7 +920,6 @@ export const sendOrderConfirmedEmail = async (
   order: IOrderDocument,
 ): Promise<boolean> => {
   try {
-    const transporter = createTransporter();
     const customerEmail = order.shippingAddress.email;
     const customerName = `${order.shippingAddress.firstName} ${order.shippingAddress.lastName}`;
     const orderId =
@@ -1156,16 +1120,13 @@ YMA Bouncy Castle Team
 `;
 
     const mailOptions = {
-      from: `"YMA Bouncy Castle" <${
-        process.env.EMAIL_FROM || "noreply@ymabouncycastle.co.uk"
-      }>`,
       to: customerEmail,
       subject: `Your YMA Bouncy Castle Booking Is Fully Confirmed ✅`,
       html: html,
       text: text,
     };
 
-    await transporter.sendMail(mailOptions);
+    await sendEmail(mailOptions);
     console.log(`✅ Order confirmed email sent to ${customerEmail}`);
     return true;
   } catch (error) {
@@ -1180,7 +1141,6 @@ export const sendOrderCancellationEmail = async (
   reason?: string,
 ): Promise<boolean> => {
   try {
-    const transporter = createTransporter();
     const customerEmail = order.shippingAddress.email;
     const customerName = `${order.shippingAddress.firstName} ${order.shippingAddress.lastName}`;
     const orderId =
@@ -1358,16 +1318,13 @@ YMA Bouncy Castle Team
 `;
 
     const mailOptions = {
-      from: `"YMA Bouncy Castle" <${
-        process.env.EMAIL_FROM || "noreply@ymabouncycastle.co.uk"
-      }>`,
       to: customerEmail,
       subject: `Your YMA Bouncy Castle Order Has Been Cancelled`,
       html: html,
       text: text,
     };
 
-    await transporter.sendMail(mailOptions);
+    await sendEmail(mailOptions);
     console.log(`✅ Order cancellation email sent to ${customerEmail}`);
     return true;
   } catch (error) {
@@ -1381,7 +1338,6 @@ export const sendDeliveryReminderEmail = async (
   order: IOrderDocument,
 ): Promise<boolean> => {
   try {
-    const transporter = createTransporter();
     const customerEmail = order.shippingAddress.email;
     const customerName = `${order.shippingAddress.firstName} ${order.shippingAddress.lastName}`;
     const productName = order.items.map((item) => item.name).join(", ");
@@ -1586,16 +1542,13 @@ YMA Bouncy Castle Team
 `;
 
     const mailOptions = {
-      from: `"YMA Bouncy Castle" <${
-        process.env.EMAIL_FROM || "noreply@ymabouncycastle.co.uk"
-      }>`,
       to: customerEmail,
       subject: `We're Preparing Your Bouncy Castle – Delivery Reminder 🎈`,
       html: html,
       text: text,
     };
 
-    await transporter.sendMail(mailOptions);
+    await sendEmail(mailOptions);
     console.log(`✅ Delivery reminder email sent to ${customerEmail}`);
     return true;
   } catch (error) {
