@@ -114,7 +114,7 @@ export const googleOAuthCallback = asyncHandler(
     const { accessToken, refreshToken } = await issueTokens(user as any);
     setAuthCookies(res, accessToken, refreshToken);
 
-    const redirectUrl = `${config.frontendUrl}/login?oauth=success`;
+    const redirectUrl = `${config.frontendUrl}/login?oauth=success&provider=google&accessToken=${encodeURIComponent(accessToken)}`;
     return res.redirect(redirectUrl);
   },
 );
