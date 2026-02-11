@@ -30,6 +30,12 @@ import { uploadToCloudinary } from "../../utils/cloudinary.util";
 import { AuthenticatedRequest } from "../../middlewares/auth.middleware"; // Import AuthenticatedRequest
 import { config } from "../../config/config";
 
+const resolveFrontendBase = (req: Request) => {
+  const fromHeader = (req.headers["x-frontend-origin"] as string | undefined)?.trim();
+  if (fromHeader) return fromHeader.replace(/\/$/, "");
+  return (config.frontendUrl || "http://localhost:3000").replace(/\/$/, "");
+};
+
 // ---------------- cookies helpers ----------------
 export const setAuthCookies = (
   res: Response,
@@ -114,7 +120,8 @@ export const googleOAuthCallback = asyncHandler(
     const { accessToken, refreshToken } = await issueTokens(user as any);
     setAuthCookies(res, accessToken, refreshToken);
 
-    const redirectUrl = `${config.frontendUrl}/login?oauth=success`;
+    const frontendBase = resolveFrontendBase(req);
+    const redirectUrl = `${frontendBase}/login?oauth=success&provider=google&accessToken=${encodeURIComponent(accessToken)}`;
     return res.redirect(redirectUrl);
   },
 );
