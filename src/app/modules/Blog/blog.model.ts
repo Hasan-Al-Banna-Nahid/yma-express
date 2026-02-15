@@ -119,13 +119,44 @@ const blogSchema = new Schema(
   }
 );
 
+function toSlug(value?: string | null) {
+  if (!value) return "";
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+async function createUniqueSlug(
+  baseTitle: string,
+  model: Model<IBlogModel>,
+  excludeId?: string,
+) {
+  const root = toSlug(baseTitle);
+  if (!root) return "";
+
+  let attempt = root;
+  let suffix = 2;
+
+  while (true) {
+    const query: Record<string, any> = { slug: attempt };
+    if (excludeId) query._id = { $ne: excludeId };
+    const exists = await model.exists(query);
+    if (!exists) return attempt;
+    attempt = `${root}-${suffix++}`;
+  }
+}
+
 // Generate slug from title before saving
-blogSchema.pre("save", function (next) {
-  if (this.isModified("title")) {
-    this.slug = this.title
-      .toLowerCase()
-      .replace(/[^\w\s]/gi, "")
-      .replace(/\s+/g, "-");
+blogSchema.pre("save", async function (next) {
+  const hasSlug = typeof this.slug === "string" && this.slug.trim().length > 0;
+  if (this.isModified("title") || !hasSlug) {
+    this.slug = await createUniqueSlug(
+      String(this.title || ""),
+      this.constructor as Model<IBlogModel>,
+      this._id?.toString(),
+    );
   }
 
   // Calculate read time (approx 200 words per minute)
@@ -143,7 +174,31 @@ blogSchema.pre("save", function (next) {
     this.publishedAt = new Date();
   }
 
-  next();
+  return next();
+});
+
+blogSchema.pre("findOneAndUpdate", async function (next) {
+  const update = this.getUpdate() as any;
+  const title = update?.title ?? update?.$set?.title;
+  const incomingSlug = update?.slug ?? update?.$set?.slug;
+  const candidate = String(title || incomingSlug || "").trim();
+  if (!candidate) return next();
+
+  const query = this.getQuery() as any;
+  const queryId =
+    typeof query?._id === "string"
+      ? query._id
+      : query?._id?.toString?.() || undefined;
+  const uniqueSlug = await createUniqueSlug(candidate, Blog, queryId);
+
+  if (update?.$set) {
+    update.$set.slug = uniqueSlug;
+  } else {
+    update.slug = uniqueSlug;
+  }
+
+  this.setUpdate(update);
+  return next();
 });
 
 // Virtual for isPublished

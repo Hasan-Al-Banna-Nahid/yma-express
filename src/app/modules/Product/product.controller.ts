@@ -402,6 +402,20 @@ export const getProduct = asyncHandler(
   },
 );
 
+export const getProductBySlug = asyncHandler(
+  async (req: Request, res: Response, next: NextFunction) => {
+    const slug = req.params.slug;
+    const product = await productService.getProductBySlug(slug);
+
+    res.status(200).json({
+      status: "success",
+      data: {
+        product,
+      },
+    });
+  },
+);
+
 export const deleteProduct = asyncHandler(
   async (req: Request, res: Response, next: NextFunction) => {
     const productId = req.params.id;

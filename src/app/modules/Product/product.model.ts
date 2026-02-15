@@ -5,6 +5,12 @@ export type IProductModel = IProduct & mongoose.Document;
 
 const productSchema: Schema = new Schema(
   {
+    slug: {
+      type: String,
+      trim: true,
+      lowercase: true,
+      index: true,
+    },
     vendor: {
       type: String,
       required: false,
@@ -441,6 +447,70 @@ productSchema.index({ "ageRange.min": 1, "ageRange.max": 1 });
 productSchema.index({ material: 1 });
 productSchema.index({ isSensitive: 1 });
 productSchema.index({ "qualityAssurance.isCertified": 1 });
+
+function toSlug(value: string) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+async function createUniqueSlug(
+  baseName: string,
+  model: Model<IProductModel>,
+  excludeId?: string,
+) {
+  const root = toSlug(baseName);
+  if (!root) return "";
+
+  let attempt = root;
+  let suffix = 2;
+
+  while (true) {
+    const query: Record<string, any> = { slug: attempt };
+    if (excludeId) query._id = { $ne: excludeId };
+    const exists = await model.exists(query);
+    if (!exists) return attempt;
+    attempt = `${root}-${suffix++}`;
+  }
+}
+
+productSchema.pre("save", async function (next) {
+  const doc = this as any;
+  const hasSlug = typeof doc.slug === "string" && doc.slug.trim().length > 0;
+  if (!doc.isModified("name") && hasSlug) return next();
+
+  doc.slug = await createUniqueSlug(
+    String(doc.name || ""),
+    doc.constructor as Model<IProductModel>,
+    doc._id?.toString(),
+  );
+  return next();
+});
+
+productSchema.pre("findOneAndUpdate", async function (next) {
+  const update = this.getUpdate() as any;
+  const name = update?.name ?? update?.$set?.name;
+  const incomingSlug = update?.slug ?? update?.$set?.slug;
+  const candidate = String(name || incomingSlug || "").trim();
+  if (!candidate) return next();
+
+  const query = this.getQuery() as any;
+  const queryId =
+    typeof query?._id === "string"
+      ? query._id
+      : query?._id?.toString?.() || undefined;
+  const uniqueSlug = await createUniqueSlug(candidate, Product, queryId);
+  if (update?.$set) {
+    update.$set.slug = uniqueSlug;
+  } else {
+    update.slug = uniqueSlug;
+  }
+
+  this.setUpdate(update);
+  return next();
+});
 
 const Product: Model<IProductModel> = mongoose.model<IProductModel>(
   "Product",
