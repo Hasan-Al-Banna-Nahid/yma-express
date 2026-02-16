@@ -6,6 +6,11 @@ export interface IProduct {
   name: string;
   description: string;
   summary?: string;
+  metaTitle?: string;
+  metaDescription?: string;
+  imageAltText?: string;
+  imageCoverAltText?: string;
+  imageAltTexts?: string[];
   price: number;
   perDayPrice?: number;
   perWeekPrice?: number;
@@ -77,6 +82,11 @@ export interface CreateProductData {
   name: string;
   description: string;
   summary?: string;
+  metaTitle?: string;
+  metaDescription?: string;
+  imageAltText?: string;
+  imageCoverAltText?: string;
+  imageAltTexts?: string[];
   price: number;
   perDayPrice?: number;
   perWeekPrice?: number;
@@ -154,6 +164,11 @@ export type UpdateProductData = DeepPartial<{
   name: string;
   description: string;
   summary?: string;
+  metaTitle?: string;
+  metaDescription?: string;
+  imageAltText?: string;
+  imageCoverAltText?: string;
+  imageAltTexts?: string[];
   price: number;
   perDayPrice?: number;
   perWeekPrice?: number;

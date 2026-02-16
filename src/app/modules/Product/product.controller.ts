@@ -251,6 +251,37 @@ const validateRequiredFields = (
   return missing;
 };
 
+const parseImageAltTexts = (body: Record<string, any>): string[] => {
+  if (Array.isArray(body.imageAltTexts)) {
+    return body.imageAltTexts.map((v) => String(v || "").trim());
+  }
+
+  if (typeof body.imageAltTexts === "string") {
+    const value = body.imageAltTexts.trim();
+    if (!value) return [];
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        return parsed.map((v) => String(v || "").trim());
+      }
+    } catch {
+      // Keep compatibility with repeated single string fallback
+      return [value];
+    }
+  }
+
+  const indexedEntries = Object.entries(body)
+    .map(([key, value]) => {
+      const match = key.match(/^imageAltTexts\[(\d+)\]$/);
+      if (!match) return null;
+      return { index: Number(match[1]), value: String(value || "").trim() };
+    })
+    .filter((entry): entry is { index: number; value: string } => entry !== null)
+    .sort((a, b) => a.index - b.index);
+
+  return indexedEntries.map((entry) => entry.value);
+};
+
 /* ---------------- CREATE PRODUCT ---------------- */
 export const createProduct = asyncHandler(
   async (req: Request, res: Response, next: NextFunction) => {
@@ -281,6 +312,8 @@ export const createProduct = asyncHandler(
         ...req.body,
         imageCover: imageCoverUrl, // Assign the single cover
         images: imageUrls, // Assign the array
+        imageCoverAltText: String(req.body.imageCoverAltText || "").trim(),
+        imageAltTexts: parseImageAltTexts(req.body),
       };
 
       const product = await Product.create(productData);
@@ -302,6 +335,17 @@ export const updateProduct = asyncHandler(
         | undefined;
 
       const updateData = { ...req.body };
+      if (Object.prototype.hasOwnProperty.call(req.body, "imageCoverAltText")) {
+        updateData.imageCoverAltText = String(
+          req.body.imageCoverAltText || "",
+        ).trim();
+      }
+      if (
+        Object.prototype.hasOwnProperty.call(req.body, "imageAltTexts") ||
+        Object.keys(req.body).some((key) => /^imageAltTexts\[\d+\]$/.test(key))
+      ) {
+        updateData.imageAltTexts = parseImageAltTexts(req.body);
+      }
 
       if (files) {
         // Handle imageCover

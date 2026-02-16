@@ -119,6 +119,36 @@ const productSchema: Schema = new Schema(
       type: String,
       maxlength: [500, "Summary cannot exceed 500 characters"],
     },
+    metaTitle: {
+      type: String,
+      trim: true,
+      maxlength: [255, "Meta title cannot exceed 255 characters"],
+    },
+    metaDescription: {
+      type: String,
+      trim: true,
+      maxlength: [320, "Meta description cannot exceed 320 characters"],
+    },
+    imageAltText: {
+      type: String,
+      trim: true,
+      maxlength: [255, "Image alt text cannot exceed 255 characters"],
+    },
+    imageCoverAltText: {
+      type: String,
+      trim: true,
+      maxlength: [255, "Cover image alt text cannot exceed 255 characters"],
+    },
+    imageAltTexts: {
+      type: [String],
+      default: [],
+      validate: {
+        validator: function (value: string[]): boolean {
+          return value.every((item) => !item || item.length <= 255);
+        },
+        message: "Each image alt text must be 255 characters or less",
+      },
+    },
     price: {
       type: Number,
       required: [false, "Product price is required"],
