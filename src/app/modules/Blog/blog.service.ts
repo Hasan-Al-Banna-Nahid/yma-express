@@ -3,6 +3,15 @@ import ApiError from "../../utils/apiError";
 import { Types } from "mongoose";
 import { CreateBlogData, UpdateBlogData, BlogFilter } from "./blog.interface";
 
+const toSlug = (value?: string | null) =>
+  String(value || "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+const escapeRegex = (value: string) =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 export const createBlog = async (blogData: any): Promise<any> => {
   console.log("Service creating blog with:", blogData); // Debug log
   const blog = await Blog.create(blogData);
@@ -265,16 +274,34 @@ export const getBlogById = async (blogId: string): Promise<IBlogModel> => {
 };
 
 export const getBlogBySlug = async (slug: string): Promise<IBlogModel> => {
-  const blog = await Blog.findOne({ slug })
+  const normalized = toSlug(slug);
+
+  let blog = await Blog.findOne({ slug: normalized })
     .populate("author", "name email avatar")
     .lean();
+
+  if (!blog && normalized) {
+    const normalizedName = normalized.replace(/-/g, " ");
+    const fallbackMatches = await Blog.find({
+      title: { $regex: new RegExp(`^${escapeRegex(normalizedName)}$`, "i") },
+    })
+      .populate("author", "name email avatar")
+      .lean();
+
+    blog =
+      fallbackMatches.find(
+        (item: any) => toSlug(String(item?.title || "")) === normalized,
+      ) ??
+      fallbackMatches[0] ??
+      null;
+  }
 
   if (!blog) {
     throw new ApiError("Blog not found", 404);
   }
 
   // Increment views
-  await Blog.findOneAndUpdate({ slug }, { $inc: { views: 1 } });
+  await Blog.findByIdAndUpdate((blog as any)._id, { $inc: { views: 1 } });
 
   return blog as IBlogModel;
 };

@@ -18,6 +18,7 @@ import {
   markAsTopSelling,
   markAsTopPick,
   getTopPicks,
+  getProductBySlug,
   // ADD THESE NEW IMPORTS:
   getFrequentlyBoughtTogether,
   getCartRecommendations,
@@ -42,13 +43,14 @@ router.get("/category/:categoryId", getProductsByCategory);
 router.get("/search/client", clientSearchProducts);
 router.get("/filters", getAvailableFilters);
 router.get("/top-selling", getTopSellingProducts);
+router.get("/slug/:slug", getProductBySlug);
 
 // NEW RECOMMENDATION ROUTES (PUBLIC):
 router.post("/recommendations/frequently-bought", getFrequentlyBoughtTogether);
 router.post("/recommendations/cart", getCartRecommendations);
 
-router.get("/:id", getProduct);
 router.get("/frequently-bought/all", getAllFrequentRelationships);
+router.get("/:id", getProduct);
 
 // GET frequently bought for specific product (PUBLIC)
 // ==================== PROTECTED ROUTES ====================
