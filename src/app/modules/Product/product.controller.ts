@@ -277,7 +277,9 @@ const parseImageAltTexts = (body: Record<string, any>): string[] => {
       if (!match) return null;
       return { index: Number(match[1]), value: String(value || "").trim() };
     })
-    .filter((entry): entry is { index: number; value: string } => entry !== null)
+    .filter(
+      (entry): entry is { index: number; value: string } => entry !== null,
+    )
     .sort((a, b) => a.index - b.index);
 
   return indexedEntries.map((entry) => entry.value);
@@ -290,43 +292,6 @@ const parseImageAltTexts = (body: Record<string, any>): string[] => {
 // CREATE PRODUCT
 // ==========================================
 export const createProduct = asyncHandler(
-  async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      // 1. Cast req.files to the correct Multer dictionary type
-      const files = req.files as
-        | { [fieldname: string]: Express.Multer.File[] }
-        | undefined;
-
-      let imageCoverUrl = "";
-      const imageUrls: string[] = [];
-
-      if (files) {
-        // 2. Extract the single cover image
-        if (files["imageCover"] && files["imageCover"][0]) {
-          imageCoverUrl = files["imageCover"][0].path; // Cloudinary URL
-        }
-
-        // 3. Extract the array of gallery images
-        if (files["images"]) {
-          files["images"].forEach((file) => {
-            imageUrls.push(file.path); // Cloudinary URLs
-          });
-        }
-      }
-
-      const productData = {
-        ...req.body,
-        imageCover: imageCoverUrl, // Assign the single cover
-        images: imageUrls, // Assign the array
-        imageCoverAltText: String(req.body.imageCoverAltText || "").trim(),
-        imageAltTexts: parseImageAltTexts(req.body),
-      };
-
-      const product = await Product.create(productData);
-      res.status(201).json({ status: "success", product });
-    } catch (err: any) {
-      res.status(400).json({ status: "error", message: err.message });
-    }
   async (req: Request, res: Response) => {
     const files = req.files as
       | { [fieldname: string]: Express.Multer.File[] }
@@ -381,15 +346,23 @@ export const createProduct = asyncHandler(
 // UPDATE PRODUCT
 // ==========================================
 export const updateProduct = asyncHandler(
-  async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const productId = req.params.id;
-      // Handle Multi-field files (imageCover vs images)
-      const files = req.files as
-        | { [fieldname: string]: Express.Multer.File[] }
-        | undefined;
-
-      const updateData = { ...req.body };
+  async (req: Request, res: Response) => {
+    const productId = req.params.id;
+    const files = req.files as
+      | { [fieldname: string]: Express.Multer.File[] }
+      | undefined;
+    const updateData = { ...req.body };
+    if (Object.prototype.hasOwnProperty.call(req.body, "imageCoverAltText")) {
+      updateData.imageCoverAltText = String(
+        req.body.imageCoverAltText || "",
+      ).trim();
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(req.body, "imageAltTexts") ||
+      Object.keys(req.body).some((key) => /^imageAltTexts\[\d+\]$/.test(key))
+    ) {
+      updateData.imageAltTexts = parseImageAltTexts(req.body);
+    }
 
     // ১. ইমেজ কভার আপডেট (Cloudinary)
     if (files?.["imageCover"]?.[0]) {

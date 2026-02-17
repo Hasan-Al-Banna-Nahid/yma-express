@@ -1639,3 +1639,6 @@ export const logout = asyncHandler(async (req: Request, res: Response) => {
     redirectTo: `${process.env.FRONTEND_URL || "http://localhost:3000"}/login`,
   });
 });
+
+//  imageCoverAltText: String(req.body.imageCoverAltText || "").trim(),
+//       imageAltTexts: parseImageAltTexts(req.body),
