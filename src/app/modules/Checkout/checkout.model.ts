@@ -27,7 +27,7 @@ const orderSchema = new Schema<IOrder>(
       sparse: true, // 🔥 IMPORTANT
     },
     items: { type: [orderItemSchema], required: true },
-    totalAmount: { type: Number, required: true },
+    totalAmount: { type: Number, required: false },
     paymentMethod: {
       type: String,
       enum: ["cash_on_delivery", "online"],

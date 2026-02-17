@@ -31,7 +31,9 @@ import { AuthenticatedRequest } from "../../middlewares/auth.middleware"; // Imp
 import { config } from "../../config/config";
 
 const resolveFrontendBase = (req: Request) => {
-  const fromHeader = (req.headers["x-frontend-origin"] as string | undefined)?.trim();
+  const fromHeader = (
+    req.headers["x-frontend-origin"] as string | undefined
+  )?.trim();
   if (fromHeader) return fromHeader.replace(/\/$/, "");
   return (config.frontendUrl || "http://localhost:3000").replace(/\/$/, "");
 };
@@ -733,7 +735,7 @@ export const updateMe = asyncHandler(async (req: Request, res: Response) => {
   const file = req.file;
   let photoUrl: string | undefined;
   if (file) {
-    photoUrl = await uploadToCloudinary(file);
+    photoUrl = await uploadToCloudinary(file.buffer);
     const ts = Date.now();
     photoUrl = `${photoUrl}${photoUrl?.includes("?") ? "&" : "?"}t=${ts}`;
   }
@@ -1637,3 +1639,6 @@ export const logout = asyncHandler(async (req: Request, res: Response) => {
     redirectTo: `${process.env.FRONTEND_URL || "http://localhost:3000"}/login`,
   });
 });
+
+//  imageCoverAltText: String(req.body.imageCoverAltText || "").trim(),
+//       imageAltTexts: parseImageAltTexts(req.body),
