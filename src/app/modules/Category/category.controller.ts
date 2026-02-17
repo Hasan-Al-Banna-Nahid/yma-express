@@ -12,7 +12,7 @@ export const createCategory = asyncHandler(
 
     let image;
     if (req.file) {
-      image = await uploadToCloudinary(req.file);
+      image = await uploadToCloudinary(req.file.buffer);
     }
 
     const category = await categoryService.createCategory({
@@ -64,7 +64,7 @@ export const updateCategory = asyncHandler(
   async (req: Request, res: Response) => {
     let image;
     if (req.file) {
-      image = await uploadToCloudinary(req.file);
+      image = await uploadToCloudinary(req.file.buffer);
     }
 
     const category = await categoryService.updateCategory(req.params.id, {

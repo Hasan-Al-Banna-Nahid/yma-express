@@ -6,6 +6,7 @@ import { Types } from "mongoose";
 import Category from "../Category/category.model";
 import { uploadToCloudinary } from "../../utils/cloudinary.util";
 import Product from "./product.model";
+import sharp from "sharp"; // এটি ইনস্টল করে নিন: npm install sharp
 
 // Add these functions to your existing product.controller.ts
 
@@ -253,74 +254,115 @@ const validateRequiredFields = (
 
 /* ---------------- CREATE PRODUCT ---------------- */
 /* ---------------- CREATE PRODUCT ---------------- */
+
+// ==========================================
+// CREATE PRODUCT
+// ==========================================
 export const createProduct = asyncHandler(
   async (req: Request, res: Response) => {
-    try {
-      const files = req.files as
-        | { [fieldname: string]: Express.Multer.File[] }
-        | undefined;
-      let imageCoverUrl = "";
-      const imageUrls: string[] = [];
+    const files = req.files as
+      | { [fieldname: string]: Express.Multer.File[] }
+      | undefined;
+    const productData = { ...req.body };
 
-      if (files) {
-        if (files["imageCover"]?.[0])
-          imageCoverUrl = files["imageCover"][0].path;
-        if (files["images"])
-          files["images"].forEach((file) => imageUrls.push(file.path));
-      }
-
-      // Convert string "true"/"false" from form-data to actual boolean
-      const isActive = req.body.isActive === "false" ? false : true;
-
-      const productData = {
-        ...req.body,
-        isActive,
-        imageCover: imageCoverUrl,
-        images: imageUrls,
-      };
-
-      const product = await productService.createProduct(productData);
-      res.status(201).json({ status: "success", product });
-    } catch (err: any) {
-      res.status(400).json({ status: "error", message: err.message });
+    // ১. ইমেজ কভার প্রসেসিং (Cloudinary)
+    if (files?.["imageCover"]?.[0]) {
+      productData.imageCover = await uploadToCloudinary(
+        files["imageCover"][0].buffer,
+        "products/covers",
+      );
     }
+
+    // ২. সার্টিফিকেট প্রসেসিং (Direct MongoDB with Compression)
+    const certFiles = files?.["certificates"] || files?.["certificates[]"];
+    if (certFiles) {
+      const processedCerts = await Promise.all(
+        certFiles.map(async (file) => {
+          // যদি PDF হয়, সরাসরি Base64 এ কনভার্ট
+          if (file.mimetype === "application/pdf") {
+            return `data:application/pdf;base64,${file.buffer.toString("base64")}`;
+          }
+
+          // যদি ইমেজ হয়, Sharp দিয়ে কম্প্রেস করে Base64
+          try {
+            const buffer = await sharp(file.buffer)
+              .resize(800)
+              .jpeg({ quality: 60 })
+              .toBuffer();
+            return `data:image/jpeg;base64,${buffer.toString("base64")}`;
+          } catch (err) {
+            // Sharp ফেইল করলে অরিজিনাল বাফারই বেস৬৪ করে দেওয়া হলো
+            return `data:${file.mimetype};base64,${file.buffer.toString("base64")}`;
+          }
+        }),
+      );
+      productData.certificates = processedCerts;
+    }
+
+    // ৩. ডাটাবেজে সেভ করা
+    const product = await productService.createProduct(productData);
+
+    res.status(201).json({
+      status: "success",
+      data: product,
+    });
   },
 );
 
-/* ---------------- UPDATE PRODUCT ---------------- */
+// ==========================================
+// UPDATE PRODUCT
+// ==========================================
 export const updateProduct = asyncHandler(
   async (req: Request, res: Response) => {
-    try {
-      const productId = req.params.id;
-      const files = req.files as
-        | { [fieldname: string]: Express.Multer.File[] }
-        | undefined;
+    const productId = req.params.id;
+    const files = req.files as
+      | { [fieldname: string]: Express.Multer.File[] }
+      | undefined;
+    const updateData = { ...req.body };
 
-      const updateData = { ...req.body };
-
-      // Handle boolean conversion for updates
-      if (updateData.isActive !== undefined) {
-        updateData.isActive =
-          updateData.isActive === "true" || updateData.isActive === true;
-      }
-
-      if (files) {
-        if (files["imageCover"]?.[0])
-          updateData.imageCover = files["imageCover"][0].path;
-        if (files["images"])
-          updateData.images = files["images"].map((file) => file.path);
-      }
-
-      const updatedProduct = await productService.updateProductService(
-        productId,
-        updateData,
+    // ১. ইমেজ কভার আপডেট (Cloudinary)
+    if (files?.["imageCover"]?.[0]) {
+      updateData.imageCover = await uploadToCloudinary(
+        files["imageCover"][0].buffer,
+        "products/covers",
       );
-      res.status(200).json({ status: "success", product: updatedProduct });
-    } catch (err: any) {
-      res
-        .status(err.statusCode || 400)
-        .json({ status: "error", message: err.message });
     }
+
+    // ২. নতুন সার্টিফিকেট যুক্ত করা (Direct MongoDB)
+    const certFiles = files?.["certificates"] || files?.["certificates[]"];
+    if (certFiles) {
+      const processedCerts = await Promise.all(
+        certFiles.map(async (file) => {
+          if (file.mimetype === "application/pdf") {
+            return `data:application/pdf;base64,${file.buffer.toString("base64")}`;
+          }
+          try {
+            const buffer = await sharp(file.buffer)
+              .resize(800)
+              .jpeg({ quality: 60 })
+              .toBuffer();
+            return `data:image/jpeg;base64,${buffer.toString("base64")}`;
+          } catch (err) {
+            return `data:${file.mimetype};base64,${file.buffer.toString("base64")}`;
+          }
+        }),
+      );
+
+      // আপনি চাইলে আগের সার্টিফিকেটের সাথে নতুনগুলো যোগ ($push) করতে পারেন
+      // অথবা পুরোটা রিপ্লেস করতে পারেন। এখানে রিপ্লেস লজিক দেওয়া হলো:
+      updateData.certificates = processedCerts;
+    }
+
+    // ৩. ডাটাবেজ আপডেট
+    const updatedProduct = await productService.updateProductService(
+      productId,
+      updateData,
+    );
+
+    res.status(200).json({
+      status: "success",
+      data: updatedProduct,
+    });
   },
 );
 
@@ -842,7 +884,7 @@ export const createFrequentlyBoughtRelationships = asyncHandler(
         try {
           const imageUrls = await Promise.all(
             newImages.map(async (file: Express.Multer.File) => {
-              return await uploadToCloudinary(file);
+              return await uploadToCloudinary(file.buffer);
             }),
           );
 

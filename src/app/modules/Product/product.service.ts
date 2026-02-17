@@ -31,8 +31,10 @@ export const createProduct = async (productData: any) => {
   const product = await Product.create({
     ...productData,
     categories: categoryIds,
-    // Explicitly handle isActive or let schema default to true
+
     isActive: productData.isActive !== undefined ? productData.isActive : true,
+    // সার্টিফিকেট ফিল্ড যোগ করা হলো
+    certificates: productData.certificates || [],
     dimensions: {
       length:
         productData["dimensions.length"] || productData.dimensions?.length || 1,
@@ -62,7 +64,6 @@ const flatten = (obj: any, prefix = ""): any => {
     const value = obj[key];
     const path = prefix ? `${prefix}.${key}` : key;
 
-    // DO NOT flatten Arrays, Dates, or ObjectIds
     if (
       value &&
       typeof value === "object" &&
@@ -88,14 +89,12 @@ export const updateProductService = async (
   const existingProduct = await Product.findById(productId);
   if (!existingProduct) throw new ApiError("Product not found", 404);
 
-  // 1. Remove forbidden fields
   const forbiddenFields = ["_id", "createdAt", "updatedAt", "__v"];
   forbiddenFields.forEach((field) => delete updateData[field]);
 
-  // 2. Apply the flatten utility
+  // সার্টিফিকেটসহ সব ডাটা এখানে অটোমেটিক হ্যান্ডেল হবে
   const updateFields = flatten(updateData);
 
-  // 3. Perform Update using $set
   const updatedProduct = await Product.findByIdAndUpdate(
     productId,
     { $set: updateFields },

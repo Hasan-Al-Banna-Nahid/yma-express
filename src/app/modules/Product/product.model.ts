@@ -5,6 +5,9 @@ export type IProductModel = IProduct & mongoose.Document;
 
 const productSchema: Schema = new Schema(
   {
+    certificates: {
+      type: [String],
+    },
     isActive: {
       type: Boolean,
       required: false,
