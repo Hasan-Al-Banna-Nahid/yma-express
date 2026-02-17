@@ -6,6 +6,7 @@ import { Types } from "mongoose";
 import Category from "../Category/category.model";
 import { uploadToCloudinary } from "../../utils/cloudinary.util";
 import Product from "./product.model";
+import sharp from "sharp"; // এটি ইনস্টল করে নিন: npm install sharp
 
 // Add these functions to your existing product.controller.ts
 
@@ -276,136 +277,146 @@ const parseImageAltTexts = (body: Record<string, any>): string[] => {
       if (!match) return null;
       return { index: Number(match[1]), value: String(value || "").trim() };
     })
-    .filter((entry): entry is { index: number; value: string } => entry !== null)
+    .filter(
+      (entry): entry is { index: number; value: string } => entry !== null,
+    )
     .sort((a, b) => a.index - b.index);
 
   return indexedEntries.map((entry) => entry.value);
 };
 
 /* ---------------- CREATE PRODUCT ---------------- */
+/* ---------------- CREATE PRODUCT ---------------- */
+
+// ==========================================
+// CREATE PRODUCT
+// ==========================================
 export const createProduct = asyncHandler(
-  async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      // 1. Cast req.files to the correct Multer dictionary type
-      const files = req.files as
-        | { [fieldname: string]: Express.Multer.File[] }
-        | undefined;
+  async (req: Request, res: Response) => {
+    const files = req.files as
+      | { [fieldname: string]: Express.Multer.File[] }
+      | undefined;
+    const productData = { ...req.body };
 
-      let imageCoverUrl = "";
-      const imageUrls: string[] = [];
-
-      if (files) {
-        // 2. Extract the single cover image
-        if (files["imageCover"] && files["imageCover"][0]) {
-          imageCoverUrl = files["imageCover"][0].path; // Cloudinary URL
-        }
-
-        // 3. Extract the array of gallery images
-        if (files["images"]) {
-          files["images"].forEach((file) => {
-            imageUrls.push(file.path); // Cloudinary URLs
-          });
-        }
-      }
-
-      const productData = {
-        ...req.body,
-        imageCover: imageCoverUrl, // Assign the single cover
-        images: imageUrls, // Assign the array
-        imageCoverAltText: String(req.body.imageCoverAltText || "").trim(),
-        imageAltTexts: parseImageAltTexts(req.body),
-      };
-
-      const product = await Product.create(productData);
-      res.status(201).json({ status: "success", product });
-    } catch (err: any) {
-      res.status(400).json({ status: "error", message: err.message });
+    // ১. ইমেজ কভার প্রসেসিং (Cloudinary)
+    if (files?.["imageCover"]?.[0]) {
+      productData.imageCover = await uploadToCloudinary(
+        files["imageCover"][0].buffer,
+        "products/covers",
+      );
     }
+
+    // ২. সার্টিফিকেট প্রসেসিং (Direct MongoDB with Compression)
+    const certFiles = files?.["certificates"] || files?.["certificates[]"];
+    if (certFiles) {
+      const processedCerts = await Promise.all(
+        certFiles.map(async (file) => {
+          // যদি PDF হয়, সরাসরি Base64 এ কনভার্ট
+          if (file.mimetype === "application/pdf") {
+            return `data:application/pdf;base64,${file.buffer.toString("base64")}`;
+          }
+
+          // যদি ইমেজ হয়, Sharp দিয়ে কম্প্রেস করে Base64
+          try {
+            const buffer = await sharp(file.buffer)
+              .resize(800)
+              .jpeg({ quality: 60 })
+              .toBuffer();
+            return `data:image/jpeg;base64,${buffer.toString("base64")}`;
+          } catch (err) {
+            // Sharp ফেইল করলে অরিজিনাল বাফারই বেস৬৪ করে দেওয়া হলো
+            return `data:${file.mimetype};base64,${file.buffer.toString("base64")}`;
+          }
+        }),
+      );
+      productData.certificates = processedCerts;
+    }
+
+    // ৩. ডাটাবেজে সেভ করা
+    const product = await productService.createProduct(productData);
+
+    res.status(201).json({
+      status: "success",
+      data: product,
+    });
   },
 );
 
-/* ---------------- UPDATE PRODUCT ---------------- */
+// ==========================================
+// UPDATE PRODUCT
+// ==========================================
 export const updateProduct = asyncHandler(
-  async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const productId = req.params.id;
-      // Handle Multi-field files (imageCover vs images)
-      const files = req.files as
-        | { [fieldname: string]: Express.Multer.File[] }
-        | undefined;
+  async (req: Request, res: Response) => {
+    const productId = req.params.id;
+    const files = req.files as
+      | { [fieldname: string]: Express.Multer.File[] }
+      | undefined;
+    const updateData = { ...req.body };
+    if (Object.prototype.hasOwnProperty.call(req.body, "imageCoverAltText")) {
+      updateData.imageCoverAltText = String(
+        req.body.imageCoverAltText || "",
+      ).trim();
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(req.body, "imageAltTexts") ||
+      Object.keys(req.body).some((key) => /^imageAltTexts\[\d+\]$/.test(key))
+    ) {
+      updateData.imageAltTexts = parseImageAltTexts(req.body);
+    }
 
-      const updateData = { ...req.body };
-      if (Object.prototype.hasOwnProperty.call(req.body, "imageCoverAltText")) {
-        updateData.imageCoverAltText = String(
-          req.body.imageCoverAltText || "",
-        ).trim();
-      }
-      if (
-        Object.prototype.hasOwnProperty.call(req.body, "imageAltTexts") ||
-        Object.keys(req.body).some((key) => /^imageAltTexts\[\d+\]$/.test(key))
-      ) {
-        updateData.imageAltTexts = parseImageAltTexts(req.body);
-      }
+    // ১. ইমেজ কভার আপডেট (Cloudinary)
+    if (files?.["imageCover"]?.[0]) {
+      updateData.imageCover = await uploadToCloudinary(
+        files["imageCover"][0].buffer,
+        "products/covers",
+      );
+    }
 
-      if (files) {
-        // Handle imageCover
-        if (files["imageCover"] && files["imageCover"][0]) {
-          updateData.imageCover = files["imageCover"][0].path;
-        }
-
-        // Handle images array (New images)
-        if (files["images"]) {
-          const newImages = files["images"].map((file) => file.path);
-          // Decide: Replace all images OR append?
-          // Usually, for a PUT/PATCH from form-data, we replace or handle specifically.
-          updateData.images = newImages;
-        }
-      }
-
-      // Call the service
-      const updatedProduct = await productService.updateProductService(
-        productId,
-        updateData,
+    // ২. নতুন সার্টিফিকেট যুক্ত করা (Direct MongoDB)
+    const certFiles = files?.["certificates"] || files?.["certificates[]"];
+    if (certFiles) {
+      const processedCerts = await Promise.all(
+        certFiles.map(async (file) => {
+          if (file.mimetype === "application/pdf") {
+            return `data:application/pdf;base64,${file.buffer.toString("base64")}`;
+          }
+          try {
+            const buffer = await sharp(file.buffer)
+              .resize(800)
+              .jpeg({ quality: 60 })
+              .toBuffer();
+            return `data:image/jpeg;base64,${buffer.toString("base64")}`;
+          } catch (err) {
+            return `data:${file.mimetype};base64,${file.buffer.toString("base64")}`;
+          }
+        }),
       );
 
-      res.status(200).json({ status: "success", product: updatedProduct });
-    } catch (err: any) {
-      res
-        .status(err.statusCode || 400)
-        .json({ status: "error", message: err.message });
+      // আপনি চাইলে আগের সার্টিফিকেটের সাথে নতুনগুলো যোগ ($push) করতে পারেন
+      // অথবা পুরোটা রিপ্লেস করতে পারেন। এখানে রিপ্লেস লজিক দেওয়া হলো:
+      updateData.certificates = processedCerts;
     }
+
+    // ৩. ডাটাবেজ আপডেট
+    const updatedProduct = await productService.updateProductService(
+      productId,
+      updateData,
+    );
+
+    res.status(200).json({
+      status: "success",
+      data: updatedProduct,
+    });
   },
 );
 
-export const getAllProducts = asyncHandler(
-  async (req: Request, res: Response, next: NextFunction) => {
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
-
-    // Extract Filters
-    const state = req.query.state as string;
-    const city = req.query.city as string; // 🔹 Added
-    const category = req.query.category as string;
-    const search = req.query.search as string;
-    const startDate = req.query.startDate as string;
-    const endDate = req.query.endDate as string;
-
-    const minPrice = req.query.minPrice
-      ? parseFloat(req.query.minPrice as string)
-      : undefined;
-    const maxPrice = req.query.maxPrice
-      ? parseFloat(req.query.maxPrice as string)
-      : undefined;
-
-    const sortBy =
-      (req.query.sortBy as "price" | "createdAt" | "name") || "createdAt";
-    const sortOrder = (req.query.sortOrder as "asc" | "desc") || "desc";
-
-    const result = await productService.getAllProducts(
+export const getAllProducts = async (req: Request, res: Response) => {
+  try {
+    const {
       page,
       limit,
       state,
-      city, // 🔹 Passed to service
+      city,
       category,
       minPrice,
       maxPrice,
@@ -414,23 +425,47 @@ export const getAllProducts = asyncHandler(
       endDate,
       sortBy,
       sortOrder,
+      showAll,
+      productId,
+    } = req.query;
+
+    const result = await productService.getAllProducts(
+      Number(page) || 1,
+      Number(limit) || 10,
+      state as string,
+      city as string,
+      category as string,
+      minPrice ? Number(minPrice) : undefined,
+      maxPrice ? Number(maxPrice) : undefined,
+      search as string,
+      startDate as string,
+      endDate as string,
+      (sortBy as any) || "createdAt",
+      (sortOrder as any) || "desc",
+      showAll === "true",
+      productId as string,
     );
 
-    res.status(200).json({
-      status: "success",
-      results: result.products.length,
-      data: {
-        products: result.products,
-        pagination: {
-          page,
-          limit,
-          total: result.total,
-          pages: result.pages,
-        },
+    return res.status(200).json({
+      success: true,
+      message: "Products fetched successfully",
+      data: result.products,
+      meta: {
+        total: result.total,
+        pages: result.pages,
+        currentPage: Number(page) || 1,
+        limit: Number(limit) || 10,
       },
     });
-  },
-);
+  } catch (error: any) {
+    console.error("Error in getProducts Controller:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+      error: error.message,
+    });
+  }
+};
 
 export const getProduct = asyncHandler(
   async (req: Request, res: Response, next: NextFunction) => {
@@ -907,7 +942,7 @@ export const createFrequentlyBoughtRelationships = asyncHandler(
         try {
           const imageUrls = await Promise.all(
             newImages.map(async (file: Express.Multer.File) => {
-              return await uploadToCloudinary(file);
+              return await uploadToCloudinary(file.buffer);
             }),
           );
 

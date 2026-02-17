@@ -58,13 +58,14 @@ router.use(protectRoute);
 
 router.post(
   "/",
-
   restrictTo("superadmin", "admin", "editor"),
   upload.fields([
-    { name: "imageCover", maxCount: 1 }, // cover image
-    { name: "imageCover[]", maxCount: 1 }, // just in case frontend sends array
-    { name: "images", maxCount: 5 }, // product images
-    { name: "images[]", maxCount: 5 }, // product images as array
+    { name: "imageCover", maxCount: 1 },
+    { name: "imageCover[]", maxCount: 1 },
+    { name: "images", maxCount: 5 },
+    { name: "images[]", maxCount: 5 },
+    // নতুন যুক্ত করা হলো: সার্টিফিকেট (PDF বা Image)
+    { name: "certificates", maxCount: 5 },
   ]),
   createProduct,
 );
@@ -76,6 +77,8 @@ router.patch(
     { name: "imageCover[]", maxCount: 1 },
     { name: "images", maxCount: 5 },
     { name: "images[]", maxCount: 5 },
+    // নতুন যুক্ত করা হলো: সার্টিফিকেট (PDF বা Image)
+    { name: "certificates", maxCount: 5 },
   ]),
   updateProduct,
 );

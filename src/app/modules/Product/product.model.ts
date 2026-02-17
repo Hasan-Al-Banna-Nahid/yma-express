@@ -11,6 +11,15 @@ const productSchema: Schema = new Schema(
       lowercase: true,
       index: true,
     },
+    certificates: {
+      type: [String],
+    },
+    isActive: {
+      type: Boolean,
+      required: false,
+      default: true,
+    },
+
     vendor: {
       type: String,
       required: false,
@@ -448,9 +457,9 @@ productSchema.virtual("formattedAgeRange").get(function (this: IProductModel) {
   return `${this.ageRange.min}-${this.ageRange.max} ${this.ageRange.unit}`;
 });
 
-productSchema.virtual("isActive").get(function (this: IProductModel) {
-  return this.active;
-});
+// productSchema.virtual("isActive").get(function (this: IProductModel) {
+//   return this.active;
+// });
 
 productSchema.virtual("isAvailable").get(function (this: IProductModel) {
   const now = new Date();

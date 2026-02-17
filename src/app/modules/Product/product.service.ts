@@ -31,7 +31,6 @@ const escapeRegex = (value: string) =>
 // =========================
 
 export const createProduct = async (productData: any) => {
-  // If categories are provided, validate them, otherwise default to empty
   let categoryIds = [];
   if (productData.categories) {
     categoryIds = Array.isArray(productData.categories)
@@ -42,7 +41,10 @@ export const createProduct = async (productData: any) => {
   const product = await Product.create({
     ...productData,
     categories: categoryIds,
-    // Ensure nested objects exist even if partially sent
+
+    isActive: productData.isActive !== undefined ? productData.isActive : true,
+    // সার্টিফিকেট ফিল্ড যোগ করা হলো
+    certificates: productData.certificates || [],
     dimensions: {
       length:
         productData["dimensions.length"] || productData.dimensions?.length || 1,
@@ -72,7 +74,6 @@ const flatten = (obj: any, prefix = ""): any => {
     const value = obj[key];
     const path = prefix ? `${prefix}.${key}` : key;
 
-    // DO NOT flatten Arrays, Dates, or ObjectIds
     if (
       value &&
       typeof value === "object" &&
@@ -98,14 +99,12 @@ export const updateProductService = async (
   const existingProduct = await Product.findById(productId);
   if (!existingProduct) throw new ApiError("Product not found", 404);
 
-  // 1. Remove forbidden fields
   const forbiddenFields = ["_id", "createdAt", "updatedAt", "__v"];
   forbiddenFields.forEach((field) => delete updateData[field]);
 
-  // 2. Apply the flatten utility
+  // সার্টিফিকেটসহ সব ডাটা এখানে অটোমেটিক হ্যান্ডেল হবে
   const updateFields = flatten(updateData);
 
-  // 3. Perform Update using $set
   const updatedProduct = await Product.findByIdAndUpdate(
     productId,
     { $set: updateFields },
@@ -496,115 +495,85 @@ const getProductAvailability = async (
 ========================= */
 
 export const getAllProducts = async (
-  page: number = 1,
-  limit: number = 10,
+  page: number,
+  limit: number,
   state?: string,
-  city?: string, // 🔹 Added city parameter
+  city?: string,
   category?: string,
   minPrice?: number,
   maxPrice?: number,
   search?: string,
   startDate?: string,
   endDate?: string,
-  sortBy: "price" | "createdAt" | "name" = "createdAt",
+  sortBy: string = "createdAt",
   sortOrder: "asc" | "desc" = "desc",
-): Promise<{ products: IProduct[]; total: number; pages: number }> => {
-  const skip = (page - 1) * limit;
+  showAll: boolean = false,
+  productId?: string,
+) => {
+  const query: any = {};
 
-  // 🔹 1. Build the Filter Object
-  const filter: any = { ...AVAILABLE_PRODUCT_FILTER };
+  // 1. Specific Product ID
+  if (productId) {
+    if (Types.ObjectId.isValid(productId)) {
+      query._id = new Types.ObjectId(productId);
+    } else {
+      return { products: [], total: 0, pages: 0 };
+    }
+  }
 
-  // Text Search
-  if (search) filter.name = { $regex: search, $options: "i" };
+  // 2. Search Logic
+  if (search) {
+    const searchConditions: any[] = [
+      { name: { $regex: search, $options: "i" } },
+    ];
+    if (Types.ObjectId.isValid(search)) {
+      searchConditions.push({ _id: new Types.ObjectId(search) });
+    }
+    query.$or = searchConditions;
+  }
 
-  // Location Filters
-  if (state) filter["location.state"] = { $regex: state, $options: "i" };
+  // 3. Status Filter
+  if (!showAll) {
+    query.isActive = true;
+  }
 
-  // 🔹 New City Filter
-  if (city) filter["location.city"] = { $regex: city, $options: "i" };
+  // 4. Location & FIXED Category Filter
+  if (state) query["location.state"] = state;
+  if (city) query["location.city"] = city;
 
-  // Category Filter
+  // FIX: Query the array directly since categories are stored as ObjectIds
   if (category && Types.ObjectId.isValid(category)) {
-    filter.categories = { $in: [new Types.ObjectId(category)] };
+    query.categories = new Types.ObjectId(category);
   }
 
-  // Price Range
+  // 5. Price & Date Range
   if (minPrice !== undefined || maxPrice !== undefined) {
-    filter.price = {};
-    if (minPrice !== undefined) filter.price.$gte = minPrice;
-    if (maxPrice !== undefined) filter.price.$lte = maxPrice;
+    query.price = {};
+    if (minPrice !== undefined) query.price.$gte = minPrice;
+    if (maxPrice !== undefined) query.price.$lte = maxPrice;
   }
 
-  // 🔹 2. Date Filter (Fixed for String ISO Dates)
   if (startDate || endDate) {
-    filter.$expr = { $and: [] };
-
-    if (startDate) {
-      filter.$expr.$and.push({
-        // Product must be available AFTER the user's chosen start
-        $gte: [{ $toDate: "$availableUntil" }, new Date(startDate)],
-      });
-    }
-
-    if (endDate) {
-      filter.$expr.$and.push({
-        // Product must have started BEFORE the user's chosen end
-        $lte: [{ $toDate: "$availableFrom" }, new Date(endDate)],
-      });
-    }
+    query.availableFrom = {};
+    if (startDate) query.availableFrom.$gte = new Date(startDate);
+    if (endDate) query.availableFrom.$lte = new Date(endDate);
   }
 
-  const sortObj: Record<string, 1 | -1> = {
-    [sortBy]: sortOrder === "asc" ? 1 : -1,
-  };
+  // 6. Execution
+  const skip = (page - 1) * limit;
+  const sortOptions = { [sortBy]: sortOrder === "desc" ? -1 : 1 };
 
-  // 🔹 3. Database Execution
   const [products, total] = await Promise.all([
-    Product.find(filter)
-      .select("-__v")
-      .populate("categories", "name description")
-      .sort(sortObj)
+    Product.find(query)
+      .sort(sortOptions as any)
       .skip(skip)
       .limit(limit)
       .lean(),
-    Product.countDocuments(filter),
+    Product.countDocuments(query),
   ]);
 
-  // 🔹 4. Attach Extra Info (Booked Dates & Availability)
-  const productsWithExtras = await Promise.all(
-    products.map(async (product: any) => {
-      // These helper functions should be defined in your service layer
-      const bookedDates = await getBookedDatesForProduct(
-        product._id.toString(),
-      );
-      const availability = await getProductAvailability(
-        product._id.toString(),
-        30,
-      );
-
-      const price = product.price || 0;
-      const discount = product.discount || 0;
-
-      return {
-        ...product,
-        bookedDates: bookedDates.map((bd: any) => ({
-          startDate: bd.startDate,
-          endDate: bd.endDate,
-          bookingId: bd.bookingId,
-          status: bd.status,
-        })),
-        availability: {
-          bookedCount: bookedDates.length,
-          next30Days: availability,
-          isAvailable: bookedDates.length === 0 && (product.stock || 0) > 0,
-        },
-        discountPrice: discount > 0 ? price - (price * discount) / 100 : price,
-      };
-    }),
-  );
-
   return {
-    products: productsWithExtras as unknown as IProduct[],
+    products,
     total,
     pages: Math.ceil(total / limit),
   };

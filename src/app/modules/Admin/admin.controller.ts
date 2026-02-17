@@ -436,7 +436,7 @@ export const createUser = asyncHandler(async (req: Request, res: Response) => {
   // Upload photo if exists
   let photoUrl = "";
   if (photo) {
-    photoUrl = await uploadToCloudinary(photo);
+    photoUrl = await uploadToCloudinary(photo.buffer);
   }
 
   // Create user
@@ -483,7 +483,7 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
 
   // Upload new photo if provided
   if (photo) {
-    const photoUrl = await uploadToCloudinary(photo);
+    const photoUrl = await uploadToCloudinary(photo.buffer);
     updateData.photo = photoUrl;
   }
 

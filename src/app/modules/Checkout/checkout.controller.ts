@@ -784,69 +784,36 @@ export const calculateDeliveryFeeAPI = asyncHandler(
 );
 
 // Quick / Direct Checkout – no cart needed
+
 export const quickCheckout = asyncHandler(
   async (req: Request, res: Response) => {
     const session = await mongoose.startSession();
     session.startTransaction();
 
     try {
-      const {
-        products,
-        shippingAddress,
-        paymentMethod = "cash_on_delivery",
-        termsAccepted,
-        invoiceType = "regular",
-        bankDetails,
-        promoCode,
-      } = req.body;
+      const { products, shippingAddress, ...rest } = req.body;
 
-      // 1. VALIDATION
       if (!shippingAddress)
-        throw new ApiError("Shipping address is required", 400);
-      if (!Array.isArray(products) || products.length === 0) {
-        throw new ApiError("At least one product is required", 400);
-      }
+        throw new ApiError("Shipping address required", 400);
 
-      // 2. IDENTITY LOGIC
-      const email = shippingAddress.email.trim().toLowerCase();
-      const firstName = shippingAddress.firstName?.trim() ?? "Guest";
-      const lastName = shippingAddress.lastName?.trim() ?? "User";
-      const fullName = `${firstName} ${lastName}`;
+      // 1. FETCH PRODUCTS IN PARALLEL
+      const productIds = products.map((p: any) => p.productId);
+      const dbProducts = await Product.find({
+        _id: { $in: productIds },
+      }).session(session);
+      const productMap = new Map(dbProducts.map((p) => [p._id.toString(), p]));
 
-      let user = await User.findOne({ email }).session(session);
-      let isNewUser = false;
-      let tempPassword: string | undefined;
-
-      if (!user) {
-        tempPassword = Math.random().toString(36).slice(-10) + "X1!";
-        user = new User({
-          firstName,
-          lastName,
-          name: fullName,
-          email,
-          phone: shippingAddress.phone?.trim(),
-          password: tempPassword,
-          role: "customer",
-          createdViaCheckout: true,
-        });
-        await user.save({ session });
-        isNewUser = true;
-      }
-
-      // 3. PRODUCTS & STOCK
       let subtotal = 0;
       const orderItems = [];
 
       for (const p of products) {
-        const product = await Product.findById(p.productId).session(session);
+        const product = productMap.get(p.productId);
         if (!product)
           throw new ApiError(`Product ${p.productId} not found`, 404);
         if (product.stock < p.quantity)
           throw new ApiError(`${product.name} out of stock`, 400);
 
         product.stock -= p.quantity;
-        await product.save({ session });
-
         orderItems.push({
           product: product._id,
           name: product.name,
@@ -854,78 +821,100 @@ export const quickCheckout = asyncHandler(
           quantity: p.quantity,
           price: product.price,
           startDate: p.startDate ? new Date(p.startDate) : undefined,
-          endDate: p.endDate ? new Date(p.endDate) : undefined,
         });
         subtotal += product.price * p.quantity;
       }
 
-      // 4. CREATE ORDER (Strictly define customerName here)
+      // 2. IDENTITY LOGIC (Detect if new user)
+      const email = shippingAddress.email.trim().toLowerCase();
+      const existingUser = await User.findOne({ email }).session(session);
+      const isNewUser = !existingUser;
+      const tempPassword = Math.random().toString(36).slice(-10) + "X1!";
+
+      const user = await User.findOneAndUpdate(
+        { email },
+        {
+          $setOnInsert: {
+            firstName: shippingAddress.firstName,
+            lastName: shippingAddress.lastName,
+            name: `${shippingAddress.firstName} ${shippingAddress.lastName}`,
+            password: tempPassword,
+            role: "customer",
+            createdViaCheckout: true,
+          },
+        },
+        { upsert: true, new: true, session },
+      );
+
+      // 3. SAVE UPDATES
+      await Promise.all(dbProducts.map((p) => p.save({ session })));
+
       const order = new Order({
         user: user._id,
-        customerName: fullName, // <--- EXPLICITLY SAVING TO DB
         items: orderItems,
         subtotalAmount: subtotal,
-        paymentMethod,
         shippingAddress,
-        status: "pending",
-        termsAccepted: !!termsAccepted,
-        invoiceType,
-        bankDetails,
-        promoCode,
-        estimatedDeliveryDate: orderItems[0]?.startDate ?? new Date(),
+        ...rest,
       });
-
-      // Note: The pre-save hook in your Order model will handle
-      // deliveryFee and totalAmount calculations automatically.
       await order.save({ session });
 
-      // 5. SYNC CUSTOMER
-      let customer = await Customer.findOne({ email }).session(session);
-      if (!customer) {
-        customer = new Customer({
-          user: user._id,
-          customerId: "CUST-" + Date.now().toString(36).toUpperCase(),
-          name: fullName,
-          email,
-          phone: shippingAddress.phone,
-          orders: [order._id],
-          totalSpent: subtotal, // Basic total for now
-        });
-      } else {
-        customer.orders.push(order._id);
-        customer.totalSpent += subtotal;
-      }
-      await customer.save({ session });
+      await Customer.findOneAndUpdate(
+        { email },
+        {
+          $push: { orders: order._id },
+          $inc: { totalSpent: subtotal },
+          $setOnInsert: {
+            user: user._id,
+            customerId: "CUST-" + Date.now().toString(36).toUpperCase(),
+          },
+        },
+        { upsert: true, session },
+      );
 
+      // 4. COMMIT TRANSACTION
       await session.commitTransaction();
       session.endSession();
 
-      // Send emails (non-critical, won't fail the response)
-      try {
-        console.log("📧 [Checkout] Triggering quickCheckout emails", {
-          orderId: order._id,
-          orderNumber: order.orderNumber,
-          customerEmail: shippingAddress.email,
-          isNewUser,
-        });
-
-        await sendOrderReceivedEmail(order);
-        await sendOrderNotificationToAdmin(order);
-
-        if (isNewUser && tempPassword) {
-          await sendUserCredentialsEmail(email, firstName, tempPassword);
-        }
-
-        console.log("📧 [Checkout] quickCheckout emails completed");
-      } catch (emailError) {
-        console.error(
-          "⚠️ [Checkout] quickCheckout email sending failed (non-critical):",
-          emailError,
-        );
+      // 5. ASYNCHRONOUS EMAILS (Don't 'await' these before sending response to user)
+      // Sending after commit ensures user only gets email if DB update succeeded
+      if (isNewUser) {
+        sendUserCredentialsEmail(
+          email,
+          shippingAddress.firstName,
+          tempPassword,
+        ).catch((err) => console.error("Credentials Email Failed", err));
       }
 
+      sendOrderReceivedEmail(order).catch((err) =>
+        console.error("Order Receipt Email Failed", err),
+      );
+
+      //       // Send emails (non-critical, won't fail the response)
+      //       try {
+      //         console.log("📧 [Checkout] Triggering quickCheckout emails", {
+      //           orderId: order._id,
+      //           orderNumber: order.orderNumber,
+      //           customerEmail: shippingAddress.email,
+      //           isNewUser,
+      //         });
+      //
+      //         await sendOrderReceivedEmail(order);
+      //         await sendOrderNotificationToAdmin(order);
+      //
+      //         if (isNewUser && tempPassword) {
+      //           await sendUserCredentialsEmail(email, firstName, tempPassword);
+      //         }
+      //
+      //         console.log("📧 [Checkout] quickCheckout emails completed");
+      //       } catch (emailError) {
+      //         console.error(
+      //           "⚠️ [Checkout] quickCheckout email sending failed (non-critical):",
+      //           emailError,
+      //         );
+      //       }
+
       res.status(201).json({ success: true, data: order });
-    } catch (err: any) {
+    } catch (err) {
       await session.abortTransaction();
       session.endSession();
       throw err;

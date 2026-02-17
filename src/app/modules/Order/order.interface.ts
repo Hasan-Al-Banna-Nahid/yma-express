@@ -205,6 +205,7 @@ export interface UpdateOrderInput {
   paymentMethod?: "cash_on_delivery" | "credit_card" | "online";
   shippingAddress?: Partial<IShippingAddress>;
   bankDetails?: string;
+  keepOvernight?: boolean;
   invoiceType?: "regular" | "corporate";
   customerName?: string;
 }

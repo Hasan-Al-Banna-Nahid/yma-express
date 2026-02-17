@@ -62,7 +62,7 @@ export const signup = async (
 
   let photoUrl: string | undefined;
   if (photo) {
-    photoUrl = await uploadToCloudinary(photo);
+    photoUrl = await uploadToCloudinary(photo.buffer);
   }
 
   const newUser = await User.create({
@@ -279,7 +279,7 @@ export const registerWithEmailVerification = async (
   // Create user
   let photoUrl: string | undefined;
   if (photo) {
-    photoUrl = await uploadToCloudinary(photo);
+    photoUrl = await uploadToCloudinary(photo.buffer);
   }
 
   const newUser = await User.create({
