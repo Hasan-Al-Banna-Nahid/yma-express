@@ -34,6 +34,9 @@ export interface IBlog {
   seoTitle?: string;
   seoDescription?: string;
   seoKeywords?: string[];
+  metaTitle?: string;
+  metaDescription?: string;
+  imageAltText?: string;
   views?: number;
   slug?: string;
   readTime?: number;
@@ -62,6 +65,9 @@ export interface CreateBlogData {
   seoTitle?: string;
   seoDescription?: string;
   seoKeywords?: string[];
+  metaTitle?: string;
+  metaDescription?: string;
+  imageAltText?: string;
 }
 
 export interface UpdateBlogData {
@@ -84,6 +90,9 @@ export interface UpdateBlogData {
   seoTitle?: string;
   seoDescription?: string;
   seoKeywords?: string[];
+  metaTitle?: string;
+  metaDescription?: string;
+  imageAltText?: string;
 }
 
 export interface BlogFilter {

@@ -19,6 +19,9 @@ export const createBlog = asyncHandler(async (req: Request, res: Response) => {
     customField6,
     customField7,
     customField8,
+    metaTitle,
+    metaDescription,
+    imageAltText,
   } = req.body;
 
   // Handle file uploads
@@ -55,6 +58,9 @@ export const createBlog = asyncHandler(async (req: Request, res: Response) => {
     customField6: customField6 || "",
     customField7: customField7 || "",
     customField8: customField8 || "",
+    metaTitle: metaTitle || "",
+    metaDescription: metaDescription || "",
+    imageAltText: imageAltText || "",
   };
 
   const blog = await blogService.createBlog(blogData);

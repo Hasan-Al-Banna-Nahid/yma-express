@@ -95,6 +95,21 @@ const blogSchema = new Schema(
       maxlength: [160, "SEO description cannot exceed 160 characters"],
     },
     seoKeywords: [String],
+    metaTitle: {
+      type: String,
+      trim: true,
+      maxlength: [255, "Meta title cannot exceed 255 characters"],
+    },
+    metaDescription: {
+      type: String,
+      trim: true,
+      maxlength: [320, "Meta description cannot exceed 320 characters"],
+    },
+    imageAltText: {
+      type: String,
+      trim: true,
+      maxlength: [255, "Image alt text cannot exceed 255 characters"],
+    },
     views: {
       type: Number,
       default: 0,
