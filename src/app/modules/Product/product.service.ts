@@ -16,6 +16,16 @@ const AVAILABLE_PRODUCT_FILTER = {
   stock: { $gt: 0 },
 };
 
+const toSlug = (value: string) =>
+  value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+const escapeRegex = (value: string) =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 // =========================
 // CREATE PRODUCT
 // =========================
@@ -572,29 +582,8 @@ export const getAllProducts = async (
 /* =========================
    GET PRODUCT BY ID WITH BOOKED DATES
 ========================= */
-export const getProductById = async (productId: string): Promise<any> => {
-  // Change return type to 'any' or create proper type
-  if (!Types.ObjectId.isValid(productId)) {
-    throw new ApiError("Invalid product ID", 400);
-  }
-
-  const product = await Product.findOne({
-    _id: productId,
-    ...AVAILABLE_PRODUCT_FILTER,
-  })
-    .populate("categories", "name description")
-    .populate({
-      path: "frequentlyBoughtTogether.productId",
-      select: "name price imageCover stock active discount dimensions",
-      match: { active: true, stock: { $gt: 0 } },
-    })
-    .select("-__v")
-    .lean();
-
-  if (!product) {
-    throw new ApiError("Product not found", 404);
-  }
-
+const toProductDetails = async (product: any): Promise<any> => {
+  const productId = String(product._id);
   const bookedDates = await getBookedDatesForProduct(productId);
   const availability = await getProductAvailability(productId, 30);
   const recentBookings = await Booking.find({
@@ -606,7 +595,6 @@ export const getProductById = async (productId: string): Promise<any> => {
     .limit(5)
     .lean();
 
-  // Calculate total booked quantity
   const totalBookedQuantity = bookedDates.reduce(
     (sum, bd) => sum + bd.quantity,
     0,
@@ -614,7 +602,6 @@ export const getProductById = async (productId: string): Promise<any> => {
   const totalStock = product.stock || 0;
   const availableStock = Math.max(0, totalStock - totalBookedQuantity);
 
-  // Return as plain object with proper types
   return {
     ...product,
     bookedDates: bookedDates.map((bd) => ({
@@ -651,6 +638,106 @@ export const getProductById = async (productId: string): Promise<any> => {
     _id: product._id,
     id: product._id.toString(),
   };
+};
+
+export const getProductById = async (productId: string): Promise<any> => {
+  if (!Types.ObjectId.isValid(productId)) {
+    throw new ApiError("Invalid product ID", 400);
+  }
+
+  const product = await Product.findOne({
+    _id: productId,
+    ...AVAILABLE_PRODUCT_FILTER,
+  })
+    .populate("categories", "name description")
+    .populate({
+      path: "frequentlyBoughtTogether.productId",
+      select: "name price imageCover stock active discount dimensions",
+      match: { active: true, stock: { $gt: 0 } },
+    })
+    .select("-__v")
+    .lean();
+
+  if (!product) {
+    throw new ApiError("Product not found", 404);
+  }
+
+  return toProductDetails(product);
+};
+
+export const getProductBySlug = async (slug: string): Promise<any> => {
+  const normalizedSlug = toSlug(slug);
+
+  let product = await Product.findOne({
+    slug: normalizedSlug,
+    ...AVAILABLE_PRODUCT_FILTER,
+  })
+    .populate("categories", "name description")
+    .populate({
+      path: "frequentlyBoughtTogether.productId",
+      select: "name price imageCover stock active discount dimensions",
+      match: { active: true, stock: { $gt: 0 } },
+    })
+    .select("-__v")
+    .lean();
+
+  if (!product && normalizedSlug) {
+    const normalizedName = normalizedSlug.replace(/-/g, " ");
+    const fallbackMatches = await Product.find({
+      ...AVAILABLE_PRODUCT_FILTER,
+      name: { $regex: new RegExp(`^${escapeRegex(normalizedName)}$`, "i") },
+    })
+      .populate("categories", "name description")
+      .populate({
+        path: "frequentlyBoughtTogether.productId",
+        select: "name price imageCover stock active discount dimensions",
+        match: { active: true, stock: { $gt: 0 } },
+      })
+      .select("-__v")
+      .lean();
+
+    product =
+      fallbackMatches.find((item: any) => toSlug(String(item?.name || "")) === normalizedSlug) ??
+      fallbackMatches[0] ??
+      null;
+  }
+
+  if (!product && normalizedSlug) {
+    // Last-resort fallback for legacy records where persisted slug can drift
+    // from title-derived slugs used by frontend cards.
+    const candidates = await Product.find({
+      ...AVAILABLE_PRODUCT_FILTER,
+    })
+      .select("_id name slug")
+      .lean();
+
+    const matched = candidates.find((item: any) => {
+      const fromSlug = toSlug(String(item?.slug || ""));
+      const fromName = toSlug(String(item?.name || ""));
+      return fromSlug === normalizedSlug || fromName === normalizedSlug;
+    });
+
+    if (matched?._id) {
+      product = await Product.findOne({
+        _id: matched._id,
+        ...AVAILABLE_PRODUCT_FILTER,
+      })
+        .populate("categories", "name description")
+        .populate({
+          path: "frequentlyBoughtTogether.productId",
+          select: "name price imageCover stock active discount dimensions",
+          match: { active: true, stock: { $gt: 0 } },
+        })
+        .select("-__v")
+        .lean();
+    }
+  }
+
+  if (!product) {
+    throw new ApiError("Product not found", 404);
+  }
+
+  return toProductDetails(product);
 };
 
 /* =========================
