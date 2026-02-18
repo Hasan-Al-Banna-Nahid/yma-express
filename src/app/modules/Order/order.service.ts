@@ -25,6 +25,31 @@ import {
   sendDeliveryCompleteEmail,
 } from "./email.service";
 
+const parseDateBoundary = (
+  raw: string,
+  boundary: "start" | "end" = "start",
+): Date => {
+  if (!raw) return new Date(NaN);
+  const dateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw.trim());
+  if (dateOnlyMatch) {
+    const year = Number(dateOnlyMatch[1]);
+    const month = Number(dateOnlyMatch[2]) - 1;
+    const day = Number(dateOnlyMatch[3]);
+    return boundary === "start"
+      ? new Date(year, month, day, 0, 0, 0, 0)
+      : new Date(year, month, day, 23, 59, 59, 999);
+  }
+
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return parsed;
+  if (boundary === "start") {
+    parsed.setHours(0, 0, 0, 0);
+  } else {
+    parsed.setHours(23, 59, 59, 999);
+  }
+  return parsed;
+};
+
 // ───────────────────────────────────────────────
 // REVENUE HELPER – only delivered orders + deliveryDate
 // ───────────────────────────────────────────────
@@ -446,39 +471,40 @@ export const getAllOrders = async (
     }
 
     // ───────────────────────────────────────────────
-    //       RENTAL PERIOD OVERLAP FILTER
-    //       (the actual hire/from → to date filter)
+    //       RESERVATION DATE FILTER
+    //       Filter strictly by estimatedDeliveryDate
     // ───────────────────────────────────────────────
     if (filters.rentalFrom || filters.rentalTo) {
-      const rentalMatch: any = {
-        "items.startDate": { $exists: true },
-        "items.endDate": { $exists: true },
-      };
+      const reservationDateRange: any = {};
 
       if (filters.rentalFrom) {
-        const fromDate = new Date(filters.rentalFrom);
-        // The rental must not END before the requested start date
-        rentalMatch["items.endDate"] = { $gte: fromDate };
+        const fromDate = parseDateBoundary(filters.rentalFrom, "start");
+        reservationDateRange.$gte = fromDate;
         console.log(
-          "Applied rentalFrom (items.endDate >=):",
+          "Applied rentalFrom (estimatedDeliveryDate >=):",
           fromDate.toISOString(),
         );
       }
 
       if (filters.rentalTo) {
-        const toDate = new Date(filters.rentalTo);
-        // The rental must not START after the requested end date
-        rentalMatch["items.startDate"] = { $lte: toDate };
+        const toDate = parseDateBoundary(filters.rentalTo, "end");
+        reservationDateRange.$lte = toDate;
         console.log(
-          "Applied rentalTo (items.startDate <=):",
+          "Applied rentalTo (estimatedDeliveryDate <=):",
           toDate.toISOString(),
         );
       }
+      if (Object.keys(reservationDateRange).length > 0) {
+        const reservationCondition = { estimatedDeliveryDate: reservationDateRange };
+        if (query.$or) {
+          query.$and = query.$and || [];
+          query.$and.push(reservationCondition);
+        } else {
+          Object.assign(query, reservationCondition);
+        }
+      }
 
-      // Use $elemMatch so it applies to at least one item in the array
-      query["items"] = { $elemMatch: rentalMatch };
-
-      console.log("Applied rental period overlap filter");
+      console.log("Applied reservation date filter");
     }
 
     console.log("Final query:", JSON.stringify(query, null, 2));

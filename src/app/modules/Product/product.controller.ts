@@ -285,6 +285,28 @@ const parseImageAltTexts = (body: Record<string, any>): string[] => {
   return indexedEntries.map((entry) => entry.value);
 };
 
+const parseExistingCertificates = (body: Record<string, any>): string[] => {
+  const raw = body.existingCertificates;
+  if (Array.isArray(raw)) {
+    return raw.map((value) => String(value || "").trim()).filter(Boolean);
+  }
+
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (!trimmed) return [];
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed.map((value) => String(value || "").trim()).filter(Boolean);
+      }
+    } catch {
+      return [trimmed];
+    }
+  }
+
+  return [];
+};
+
 /* ---------------- CREATE PRODUCT ---------------- */
 /* ---------------- CREATE PRODUCT ---------------- */
 
@@ -364,6 +386,10 @@ export const updateProduct = asyncHandler(
       updateData.imageAltTexts = parseImageAltTexts(req.body);
     }
 
+    if (Object.prototype.hasOwnProperty.call(req.body, "existingCertificates")) {
+      updateData.certificates = parseExistingCertificates(req.body);
+    }
+
     // ১. ইমেজ কভার আপডেট (Cloudinary)
     if (files?.["imageCover"]?.[0]) {
       updateData.imageCover = await uploadToCloudinary(
@@ -391,10 +417,10 @@ export const updateProduct = asyncHandler(
           }
         }),
       );
-
-      // আপনি চাইলে আগের সার্টিফিকেটের সাথে নতুনগুলো যোগ ($push) করতে পারেন
-      // অথবা পুরোটা রিপ্লেস করতে পারেন। এখানে রিপ্লেস লজিক দেওয়া হলো:
-      updateData.certificates = processedCerts;
+      const existing = Array.isArray(updateData.certificates)
+        ? updateData.certificates
+        : [];
+      updateData.certificates = [...existing, ...processedCerts];
     }
 
     // ৩. ডাটাবেজ আপডেট

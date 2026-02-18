@@ -210,14 +210,10 @@ export const getAllOrdersHandler = asyncHandler(
       paymentMethod: req.query.paymentMethod,
       userId: req.query.userId,
       search: (req.query.search || req.query.q) as any,
-
-      // Fix: Map these to match the Service logic
-      createdFrom: req.query.startDate, // Map startDate to createdFrom
-      createdTo: req.query.endDate, // Map endDate to createdTo
-
-      // If you want to filter by the rental period (hire dates):
-      rentalFrom: req.query.rentalFrom,
-      rentalTo: req.query.rentalTo,
+      // Admin order page date filter must apply to reservation/hire dates
+      // (items.startDate/items.endDate), not order createdAt.
+      rentalFrom: req.query.startDate || req.query.rentalFrom,
+      rentalTo: req.query.endDate || req.query.rentalTo,
 
       minAmount: req.query.minAmount
         ? parseFloat(req.query.minAmount as string)
