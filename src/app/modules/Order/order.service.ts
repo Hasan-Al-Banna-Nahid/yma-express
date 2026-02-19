@@ -22,7 +22,6 @@ import {
   sendOrderCancelledEmail,
   sendInvoiceEmail,
   notifyAdminNewOrder,
-  sendDeliveryCompleteEmail,
 } from "./email.service";
 
 const parseDateBoundary = (
@@ -48,6 +47,19 @@ const parseDateBoundary = (
     parsed.setHours(23, 59, 59, 999);
   }
   return parsed;
+};
+
+const isTomorrowByLocalDate = (deliveryDate?: Date): boolean => {
+  if (!deliveryDate) return false;
+  const now = new Date();
+  const tomorrowStart = new Date(now);
+  tomorrowStart.setHours(0, 0, 0, 0);
+  tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+
+  const tomorrowEnd = new Date(tomorrowStart);
+  tomorrowEnd.setDate(tomorrowEnd.getDate() + 1);
+
+  return deliveryDate >= tomorrowStart && deliveryDate < tomorrowEnd;
 };
 
 // ───────────────────────────────────────────────
@@ -820,13 +832,16 @@ export const updateOrder = async (
             await sendOrderConfirmedEmail(populatedOrder);
             break;
           case ORDER_STATUS.SHIPPED:
-            await sendDeliveryReminderEmail(populatedOrder);
+            if (isTomorrowByLocalDate(populatedOrder.estimatedDeliveryDate)) {
+              await sendDeliveryReminderEmail(populatedOrder);
+            } else {
+              console.log(
+                `[SKIP] Delivery reminder not sent for order ${populatedOrder.orderNumber} because estimatedDeliveryDate is not tomorrow.`,
+              );
+            }
             break;
           case ORDER_STATUS.CANCELLED:
             await sendOrderCancelledEmail(populatedOrder);
-            break;
-          case ORDER_STATUS.DELIVERED:
-            await sendDeliveryCompleteEmail(populatedOrder);
             break;
         }
       } catch (emailErr) {
@@ -886,10 +901,13 @@ export const updateOrderStatus = async (
             await sendOrderConfirmedEmail(populated);
             break;
           case ORDER_STATUS.SHIPPED:
-            await sendDeliveryReminderEmail(populated);
-            break;
-          case ORDER_STATUS.DELIVERED:
-            await sendDeliveryCompleteEmail(populated);
+            if (isTomorrowByLocalDate(populated.estimatedDeliveryDate)) {
+              await sendDeliveryReminderEmail(populated);
+            } else {
+              console.log(
+                `[SKIP] Delivery reminder not sent for order ${populated.orderNumber} because estimatedDeliveryDate is not tomorrow.`,
+              );
+            }
             break;
           case ORDER_STATUS.CANCELLED:
             await sendOrderCancelledEmail(populated);
