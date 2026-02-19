@@ -97,14 +97,15 @@ export const addItem = async (
 
   const product = await Product.findById(productId);
   if (!product) throw new ApiError("Product not found", 404);
-  if (product.stock < quantity) {
+  const normalizedQuantity = 1;
+  if (product.stock < normalizedQuantity) {
     throw new ApiError(`Insufficient stock. Available: ${product.stock}`, 400);
   }
 
   const existing = cart.items.find((i) => i.product === productId);
 
   if (existing) {
-    existing.quantity += quantity;
+    existing.quantity = 1;
     if (startDate) existing.startDate = startDate;
     if (endDate) existing.endDate = endDate;
     if (rentalType) existing.rentalType = rentalType;
@@ -112,7 +113,7 @@ export const addItem = async (
     cart.items.push({
       product: productId,
       productType: (product as any).productType || "physical",
-      quantity,
+      quantity: 1,
       price: product.price,
       startDate,
       endDate,
@@ -136,17 +137,17 @@ export const addMultipleItems = async (
 ) => {
   const cart = getOrCreateCart(cartId);
 
-  for (const { productId, quantity, startDate, endDate, rentalType } of items) {
+  for (const { productId, startDate, endDate, rentalType } of items) {
     const product = await Product.findById(productId);
     if (!product) throw new ApiError(`Product ${productId} not found`, 404);
-    if (product.stock < quantity) {
+    if (product.stock < 1) {
       throw new ApiError(`Insufficient stock for ${product.name}`, 400);
     }
 
     const existing = cart.items.find((i) => i.product === productId);
 
     if (existing) {
-      existing.quantity += quantity;
+      existing.quantity = 1;
       if (startDate) existing.startDate = startDate;
       if (endDate) existing.endDate = endDate;
       if (rentalType) existing.rentalType = rentalType;
@@ -154,7 +155,7 @@ export const addMultipleItems = async (
       cart.items.push({
         product: productId,
         productType: (product as any).productType || "physical",
-        quantity,
+        quantity: 1,
         price: product.price,
         startDate,
         endDate,
@@ -180,7 +181,6 @@ export const updateItem = async (
   const idx = cart.items.findIndex((i) => i.product === productId);
 
   if (idx === -1) {
-    // treat as add new if quantity > 0
     if (quantity > 0) {
       return addItem(
         cartId,
@@ -199,16 +199,10 @@ export const updateItem = async (
   } else {
     const product = await Product.findById(productId);
     if (!product) throw new ApiError("Product not found", 404);
-
-    const currentQty = cart.items[idx].quantity;
-    if (quantity > currentQty) {
-      const increase = quantity - currentQty;
-      if (product.stock < increase) {
-        throw new ApiError(`Not enough stock. Need ${increase} more`, 400);
-      }
+    if (product.stock < 1) {
+      throw new ApiError(`Insufficient stock. Available: ${product.stock}`, 400);
     }
-
-    cart.items[idx].quantity = quantity;
+    cart.items[idx].quantity = 1;
     if (startDate) cart.items[idx].startDate = startDate;
     if (endDate) cart.items[idx].endDate = endDate;
     if (rentalType) cart.items[idx].rentalType = rentalType;
@@ -252,16 +246,10 @@ export const updateMultipleItems = async (
     } else {
       const product = await Product.findById(productId);
       if (!product) throw new ApiError(`Product ${productId} not found`, 404);
-
-      const currentQty = cart.items[idx].quantity;
-      if (quantity > currentQty) {
-        const increase = quantity - currentQty;
-        if (product.stock < increase) {
-          throw new ApiError(`Not enough stock for ${product.name}`, 400);
-        }
+      if (product.stock < 1) {
+        throw new ApiError(`Insufficient stock for ${product.name}`, 400);
       }
-
-      cart.items[idx].quantity = quantity;
+      cart.items[idx].quantity = 1;
       if (startDate) cart.items[idx].startDate = startDate;
       if (endDate) cart.items[idx].endDate = endDate;
       if (rentalType) cart.items[idx].rentalType = rentalType;

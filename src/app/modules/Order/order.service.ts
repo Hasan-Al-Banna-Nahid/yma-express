@@ -109,23 +109,23 @@ export const createOrder = async (
       if (!product)
         throw new ApiError(`Product ${item.product} not found`, 404);
 
-      if (product.stock < item.quantity) {
+      if (product.stock < 1) {
         throw new ApiError(
           `Insufficient stock for ${product.name}. Available: ${product.stock}`,
           400,
         );
       }
 
-      product.stock -= item.quantity;
+      product.stock -= 1;
       await product.save({ session });
 
-      const itemTotal = product.price * item.quantity;
+      const itemTotal = product.price;
       subtotalAmount += itemTotal;
 
       processedItems.push({
         product: product._id,
         name: product.name,
-        quantity: item.quantity,
+        quantity: 1,
         price: product.price,
         startDate: item.startDate ? new Date(item.startDate) : undefined,
         endDate: item.endDate ? new Date(item.endDate) : undefined,

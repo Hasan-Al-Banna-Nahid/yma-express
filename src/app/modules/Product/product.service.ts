@@ -10,6 +10,7 @@ import {
 } from "./product.interface";
 import { deleteFromCloudinary } from "../../utils/cloudinary.util";
 import Booking from "../../modules/Bookings/booking.model";
+import Order from "../../modules/Order/order.model";
 
 const AVAILABLE_PRODUCT_FILTER = {
   active: true,
@@ -511,6 +512,8 @@ export const getAllProducts = async (
   productId?: string,
 ) => {
   const query: any = {};
+  let effectiveStartDate: Date | undefined;
+  let effectiveEndDate: Date | undefined;
 
   // 1. Specific Product ID
   if (productId) {
@@ -554,9 +557,78 @@ export const getAllProducts = async (
   }
 
   if (startDate || endDate) {
-    query.availableFrom = {};
-    if (startDate) query.availableFrom.$gte = new Date(startDate);
-    if (endDate) query.availableFrom.$lte = new Date(endDate);
+    const parsedStart = startDate ? new Date(startDate) : undefined;
+    const parsedEnd = endDate ? new Date(endDate) : parsedStart;
+
+    if (parsedStart && !Number.isNaN(parsedStart.getTime())) {
+      parsedStart.setHours(0, 0, 0, 0);
+      effectiveStartDate = parsedStart;
+    }
+    if (parsedEnd && !Number.isNaN(parsedEnd.getTime())) {
+      parsedEnd.setHours(23, 59, 59, 999);
+      effectiveEndDate = parsedEnd;
+    }
+  }
+
+  if (effectiveStartDate && effectiveEndDate) {
+    query.availableFrom = { $lte: effectiveEndDate };
+    query.availableUntil = { $gte: effectiveStartDate };
+
+    const overlappingBookings = await Booking.find({
+      status: { $nin: ["cancelled", "completed"] },
+      items: {
+        $elemMatch: {
+          startDate: { $lte: effectiveEndDate },
+          endDate: { $gte: effectiveStartDate },
+        },
+      },
+    })
+      .select("items.product")
+      .lean();
+
+    const overlappingOrders = await Order.find({
+      status: { $nin: ["cancelled"] },
+      items: {
+        $elemMatch: {
+          startDate: { $lte: effectiveEndDate },
+          endDate: { $gte: effectiveStartDate },
+        },
+      },
+    })
+      .select("items.product items.startDate items.endDate")
+      .lean();
+
+    const bookedProductIds = new Set<string>();
+    overlappingBookings.forEach((booking: any) => {
+      (booking.items || []).forEach((item: any) => {
+        if (!item?.product) return;
+        const itemStart = item.startDate ? new Date(item.startDate) : null;
+        const itemEnd = item.endDate ? new Date(item.endDate) : null;
+        if (!itemStart || !itemEnd) return;
+        if (itemStart <= effectiveEndDate! && itemEnd >= effectiveStartDate!) {
+          bookedProductIds.add(String(item.product));
+        }
+      });
+    });
+
+    overlappingOrders.forEach((order: any) => {
+      (order.items || []).forEach((item: any) => {
+        if (!item?.product) return;
+        const itemStart = item.startDate ? new Date(item.startDate) : null;
+        const itemEnd = item.endDate ? new Date(item.endDate) : null;
+        if (!itemStart || !itemEnd) return;
+        if (itemStart <= effectiveEndDate! && itemEnd >= effectiveStartDate!) {
+          bookedProductIds.add(String(item.product));
+        }
+      });
+    });
+
+    if (bookedProductIds.size > 0) {
+      query._id = {
+        ...(query._id || {}),
+        $nin: Array.from(bookedProductIds).map((id) => new Types.ObjectId(id)),
+      };
+    }
   }
 
   // 6. Execution
@@ -750,7 +822,11 @@ export const deleteProduct = async (productId: string): Promise<void> => {
 
   const product = await Product.findByIdAndUpdate(
     productId,
-    { active: false },
+    {
+      isActive: false,
+      active: false,
+      stock: 0,
+    },
     { new: true },
   );
 

@@ -64,26 +64,24 @@ export const addToCart = asyncHandler(async (req: Request, res: Response) => {
       throw new ApiError("Items array cannot be empty", 400);
 
     const processedItems = items.map((item: any) => {
-      if (!item.productId || !item.quantity) {
-        throw new ApiError("Each item must have productId and quantity", 400);
+      if (!item.productId) {
+        throw new ApiError("Each item must have productId", 400);
       }
-      if (item.quantity <= 0) throw new ApiError("Quantity must be > 0", 400);
 
       return {
         ...item,
+        quantity: 1,
         startDate: item.startDate ? new Date(item.startDate) : undefined,
         endDate: item.endDate ? new Date(item.endDate) : undefined,
       };
     });
 
     cart = await cartService.addMultipleItems(cartId, processedItems);
-  } else if (productId && quantity) {
-    if (quantity <= 0) throw new ApiError("Quantity must be > 0", 400);
-
+  } else if (productId) {
     cart = await cartService.addItem(
       cartId,
       productId,
-      quantity,
+      1,
       startDate ? new Date(startDate) : undefined,
       endDate ? new Date(endDate) : undefined,
       rentalType,
@@ -119,27 +117,24 @@ export const updateCartItems = asyncHandler(
         throw new ApiError("Items array cannot be empty", 400);
 
       const processedItems = items.map((item: any) => {
-        if (!item.productId || item.quantity === undefined) {
-          throw new ApiError("Each item must have productId and quantity", 400);
+        if (!item.productId) {
+          throw new ApiError("Each item must have productId", 400);
         }
-        if (item.quantity < 0)
-          throw new ApiError("Quantity cannot be negative", 400);
 
         return {
           ...item,
+          quantity: 1,
           startDate: item.startDate ? new Date(item.startDate) : undefined,
           endDate: item.endDate ? new Date(item.endDate) : undefined,
         };
       });
 
       cart = await cartService.updateMultipleItems(cartId, processedItems);
-    } else if (productId && quantity !== undefined) {
-      if (quantity < 0) throw new ApiError("Quantity cannot be negative", 400);
-
+    } else if (productId) {
       cart = await cartService.updateItem(
         cartId,
         productId,
-        quantity,
+        1,
         startDate ? new Date(startDate) : undefined,
         endDate ? new Date(endDate) : undefined,
         rentalType,

@@ -22,12 +22,7 @@ export const createOrderHandler = asyncHandler(
       if (!item.productId) {
         throw new ApiError(`Item ${index + 1}: Product ID is required`, 400);
       }
-      if (!item.quantity || item.quantity < 1) {
-        throw new ApiError(
-          `Item ${index + 1}: Valid quantity is required`,
-          400,
-        );
-      }
+      item.quantity = 1;
     }
 
     if (!orderData.shippingAddress) {

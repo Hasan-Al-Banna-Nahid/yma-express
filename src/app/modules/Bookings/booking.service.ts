@@ -53,7 +53,7 @@ export class BookingService {
       for (const [index, item] of data.items.entries()) {
         console.log(`\n🔍 Processing item ${index + 1}:`);
         console.log("   Product ID:", item.productId);
-        console.log("   Quantity:", item.quantity);
+        console.log("   Quantity:", 1);
         console.log("   Start Date:", item.startDate);
         console.log("   End Date:", item.endDate);
 
@@ -97,7 +97,7 @@ export class BookingService {
           product._id.toString(),
           startDate,
           endDate,
-          item.quantity,
+          1,
         );
 
         console.log("📊 Availability Result:", {
@@ -139,7 +139,7 @@ export class BookingService {
           product._id.toString(),
           startDate,
           endDate,
-          item.quantity,
+          1,
           tempBookingId,
         );
 
@@ -155,7 +155,7 @@ export class BookingService {
 
         // Calculate price
         const rentalFee = product.price;
-        const itemTotal = rentalFee * item.quantity * totalDays;
+        const itemTotal = rentalFee * 1 * totalDays;
         subTotal += itemTotal;
 
         console.log("💰 Price Calculation:");
@@ -165,7 +165,7 @@ export class BookingService {
 
         bookingItems.push({
           product: product._id,
-          quantity: item.quantity,
+          quantity: 1,
           price: rentalFee,
           name: product.name,
           startDate,
@@ -256,7 +256,7 @@ export class BookingService {
           allBookedDates.push({
             date: currentDate,
             itemIndex: i,
-            quantity: item.quantity,
+            quantity: 1,
           });
         }
       }
