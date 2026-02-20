@@ -28,9 +28,10 @@ export const createBooking = asyncHandler(
     if (!items || items.length === 0) {
       throw new ApiError("At least one booking item is required", 400);
     }
+    const normalizedItems = items.map((item: any) => ({ ...item, quantity: 1 }));
 
     const booking = await BookingService.createBooking(userId, {
-      items,
+      items: normalizedItems,
       shippingAddress,
       paymentMethod,
       invoiceType,

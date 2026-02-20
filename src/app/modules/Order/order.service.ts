@@ -22,8 +22,45 @@ import {
   sendOrderCancelledEmail,
   sendInvoiceEmail,
   notifyAdminNewOrder,
-  sendDeliveryCompleteEmail,
 } from "./email.service";
+
+const parseDateBoundary = (
+  raw: string,
+  boundary: "start" | "end" = "start",
+): Date => {
+  if (!raw) return new Date(NaN);
+  const dateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw.trim());
+  if (dateOnlyMatch) {
+    const year = Number(dateOnlyMatch[1]);
+    const month = Number(dateOnlyMatch[2]) - 1;
+    const day = Number(dateOnlyMatch[3]);
+    return boundary === "start"
+      ? new Date(year, month, day, 0, 0, 0, 0)
+      : new Date(year, month, day, 23, 59, 59, 999);
+  }
+
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return parsed;
+  if (boundary === "start") {
+    parsed.setHours(0, 0, 0, 0);
+  } else {
+    parsed.setHours(23, 59, 59, 999);
+  }
+  return parsed;
+};
+
+const isTomorrowByLocalDate = (deliveryDate?: Date): boolean => {
+  if (!deliveryDate) return false;
+  const now = new Date();
+  const tomorrowStart = new Date(now);
+  tomorrowStart.setHours(0, 0, 0, 0);
+  tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+
+  const tomorrowEnd = new Date(tomorrowStart);
+  tomorrowEnd.setDate(tomorrowEnd.getDate() + 1);
+
+  return deliveryDate >= tomorrowStart && deliveryDate < tomorrowEnd;
+};
 
 // ───────────────────────────────────────────────
 // REVENUE HELPER – only delivered orders + deliveryDate
@@ -84,23 +121,23 @@ export const createOrder = async (
       if (!product)
         throw new ApiError(`Product ${item.product} not found`, 404);
 
-      if (product.stock < item.quantity) {
+      if (product.stock < 1) {
         throw new ApiError(
           `Insufficient stock for ${product.name}. Available: ${product.stock}`,
           400,
         );
       }
 
-      product.stock -= item.quantity;
+      product.stock -= 1;
       await product.save({ session });
 
-      const itemTotal = product.price * item.quantity;
+      const itemTotal = product.price;
       subtotalAmount += itemTotal;
 
       processedItems.push({
         product: product._id,
         name: product.name,
-        quantity: item.quantity,
+        quantity: 1,
         price: product.price,
         startDate: item.startDate ? new Date(item.startDate) : undefined,
         endDate: item.endDate ? new Date(item.endDate) : undefined,
@@ -446,39 +483,40 @@ export const getAllOrders = async (
     }
 
     // ───────────────────────────────────────────────
-    //       RENTAL PERIOD OVERLAP FILTER
-    //       (the actual hire/from → to date filter)
+    //       RESERVATION DATE FILTER
+    //       Filter strictly by estimatedDeliveryDate
     // ───────────────────────────────────────────────
     if (filters.rentalFrom || filters.rentalTo) {
-      const rentalMatch: any = {
-        "items.startDate": { $exists: true },
-        "items.endDate": { $exists: true },
-      };
+      const reservationDateRange: any = {};
 
       if (filters.rentalFrom) {
-        const fromDate = new Date(filters.rentalFrom);
-        // The rental must not END before the requested start date
-        rentalMatch["items.endDate"] = { $gte: fromDate };
+        const fromDate = parseDateBoundary(filters.rentalFrom, "start");
+        reservationDateRange.$gte = fromDate;
         console.log(
-          "Applied rentalFrom (items.endDate >=):",
+          "Applied rentalFrom (estimatedDeliveryDate >=):",
           fromDate.toISOString(),
         );
       }
 
       if (filters.rentalTo) {
-        const toDate = new Date(filters.rentalTo);
-        // The rental must not START after the requested end date
-        rentalMatch["items.startDate"] = { $lte: toDate };
+        const toDate = parseDateBoundary(filters.rentalTo, "end");
+        reservationDateRange.$lte = toDate;
         console.log(
-          "Applied rentalTo (items.startDate <=):",
+          "Applied rentalTo (estimatedDeliveryDate <=):",
           toDate.toISOString(),
         );
       }
+      if (Object.keys(reservationDateRange).length > 0) {
+        const reservationCondition = { estimatedDeliveryDate: reservationDateRange };
+        if (query.$or) {
+          query.$and = query.$and || [];
+          query.$and.push(reservationCondition);
+        } else {
+          Object.assign(query, reservationCondition);
+        }
+      }
 
-      // Use $elemMatch so it applies to at least one item in the array
-      query["items"] = { $elemMatch: rentalMatch };
-
-      console.log("Applied rental period overlap filter");
+      console.log("Applied reservation date filter");
     }
 
     console.log("Final query:", JSON.stringify(query, null, 2));
@@ -794,13 +832,16 @@ export const updateOrder = async (
             await sendOrderConfirmedEmail(populatedOrder);
             break;
           case ORDER_STATUS.SHIPPED:
-            await sendDeliveryReminderEmail(populatedOrder);
+            if (isTomorrowByLocalDate(populatedOrder.estimatedDeliveryDate)) {
+              await sendDeliveryReminderEmail(populatedOrder);
+            } else {
+              console.log(
+                `[SKIP] Delivery reminder not sent for order ${populatedOrder.orderNumber} because estimatedDeliveryDate is not tomorrow.`,
+              );
+            }
             break;
           case ORDER_STATUS.CANCELLED:
             await sendOrderCancelledEmail(populatedOrder);
-            break;
-          case ORDER_STATUS.DELIVERED:
-            await sendDeliveryCompleteEmail(populatedOrder);
             break;
         }
       } catch (emailErr) {
@@ -860,10 +901,13 @@ export const updateOrderStatus = async (
             await sendOrderConfirmedEmail(populated);
             break;
           case ORDER_STATUS.SHIPPED:
-            await sendDeliveryReminderEmail(populated);
-            break;
-          case ORDER_STATUS.DELIVERED:
-            await sendDeliveryCompleteEmail(populated);
+            if (isTomorrowByLocalDate(populated.estimatedDeliveryDate)) {
+              await sendDeliveryReminderEmail(populated);
+            } else {
+              console.log(
+                `[SKIP] Delivery reminder not sent for order ${populated.orderNumber} because estimatedDeliveryDate is not tomorrow.`,
+              );
+            }
             break;
           case ORDER_STATUS.CANCELLED:
             await sendOrderCancelledEmail(populated);

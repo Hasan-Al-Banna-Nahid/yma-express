@@ -499,7 +499,7 @@ const emailTemplates = {
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Delivery Reminder - YMA Bouncy Castle</title>
+        <title>Ready to be Delivered - YMA Bouncy Castle</title>
         <style>
           @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
           * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -523,7 +523,7 @@ const emailTemplates = {
         <div class="email-container">
           <div class="header">
             <img src="https://res.cloudinary.com/dj785gqtu/image/upload/v1767711924/logo2_xos8xa.png" alt="YMA Bouncy Castle" class="logo">
-            <h1>⏰ Delivery Day Reminder</h1>
+            <h1>📦 Ready to be Delivered</h1>
             <p>Your YMA Bouncy Castle is arriving tomorrow!</p>
           </div>
           
@@ -762,90 +762,6 @@ const emailTemplates = {
             <p style="font-size: 12px; opacity: 0.6; margin-top: 20px;">
               This cancellation email serves as confirmation of order cancellation.
             </p>
-          </div>
-        </div>
-      </body>
-      </html>
-    `;
-  },
-
-  deliveryComplete: (order: IOrderDocument): string => {
-    return `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Delivery Complete - YMA Bouncy Castle</title>
-        <style>
-          @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
-          * { margin: 0; padding: 0; box-sizing: border-box; }
-          body { font-family: 'Poppins', sans-serif; line-height: 1.6; color: #333; background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%); min-height: 100vh; padding: 20px; }
-          .email-container { max-width: 600px; margin: 0 auto; background: white; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
-          .header { background: linear-gradient(135deg, #4CAF50 0%, #388E3C 100%); padding: 40px 30px; text-align: center; color: white; }
-          .logo { max-width: 150px; margin-bottom: 20px; }
-          .header h1 { font-size: 28px; font-weight: 700; margin-bottom: 10px; }
-          .content { padding: 40px 30px; }
-          .success-badge { background: #4CAF50; color: white; padding: 10px 20px; border-radius: 20px; display: inline-block; font-weight: 600; margin-bottom: 20px; }
-          .thank-you-box { background: #f1f8e9; border-radius: 12px; padding: 25px; margin: 30px 0; text-align: center; border: 2px solid #4CAF50; }
-          .footer { background: #2c3e50; color: white; padding: 30px; text-align: center; }
-          @media (max-width: 600px) { .content { padding: 20px; } }
-        </style>
-      </head>
-      <body>
-        <div class="email-container">
-          <div class="header">
-            <img src="https://res.cloudinary.com/dj785gqtu/image/upload/v1767711924/logo2_xos8xa.png" alt="YMA Bouncy Castle" class="logo">
-            <h1>✅ Delivery Complete!</h1>
-            <p>Your YMA Bouncy Castle has been delivered</p>
-          </div>
-          
-          <div class="content">
-            <div class="success-badge">🎉 DELIVERY SUCCESSFUL</div>
-            
-            <h2 style="color: #4CAF50; margin-bottom: 20px;">Hi ${
-              order.shippingAddress.firstName
-            },</h2>
-            <p style="font-size: 16px; margin-bottom: 20px; color: #555;">
-              We're delighted to confirm that your <strong>YMA Bouncy Castle</strong> has been successfully delivered and set up!
-            </p>
-            
-            <div class="thank-you-box">
-              <h3 style="color: #388E3C; margin-bottom: 15px;">🎈 Thank You For Your Booking!</h3>
-              <p style="color: #555; margin-bottom: 15px;">
-                We hope you have an amazing time with your bouncy castle! 
-                If you have any questions or need assistance during your hire period, please don't hesitate to contact us.
-              </p>
-              <div style="font-size: 20px; font-weight: 700; color: #1976D2; margin: 15px 0;">
-                📞 07951 431111
-              </div>
-              <p style="color: #666; font-size: 14px;">Available for emergencies during your hire period</p>
-            </div>
-            
-            <div style="background: #f8f9fa; padding: 20px; border-radius: 12px; margin: 30px 0;">
-              <h4 style="color: #FF9800; margin-bottom: 15px;">⏰ Collection Reminder</h4>
-              <p style="color: #555; margin-bottom: 10px;">
-                <strong>Collection Time:</strong> ${
-                  order.shippingAddress.collectionTime || "Before 5:00 PM"
-                }
-              </p>
-              <p style="color: #666; font-size: 14px;">
-                Please ensure the castle is ready for collection at the scheduled time. 
-                If you need to adjust the collection time, please contact us at least 2 hours in advance.
-              </p>
-            </div>
-            
-            <div style="text-align: center; margin: 30px 0;">
-              <a href="tel:07951431111" 
-                 style="display: inline-block; background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%); color: white; padding: 15px 30px; text-decoration: none; border-radius: 10px; font-weight: 600; font-size: 16px;">
-                Contact Us for Assistance
-              </a>
-            </div>
-          </div>
-          
-          <div class="footer">
-            <p>YMA Bouncy Castle Team</p>
-            <p style="opacity: 0.8; margin-top: 10px;">Thank you for choosing us for your celebration! We hope to see you again soon! 🎈</p>
           </div>
         </div>
       </body>
@@ -1164,9 +1080,9 @@ export const sendDeliveryReminderEmail = async (
     await sendEmail({
       to: order.shippingAddress.email,
       bcc: emailConfig.adminEmail,
-      subject: `⏰ Delivery Reminder #${order.orderNumber} - YMA Bouncy Castle`,
+      subject: `📦 Ready to be Delivered #${order.orderNumber} - YMA Bouncy Castle`,
       html,
-      text: `Reminder: Your delivery is scheduled for ${order.shippingAddress.deliveryTime}. Contact: 07951 431111`,
+      text: `Ready to be delivered tomorrow: your order ${order.orderNumber} is scheduled for ${order.shippingAddress.deliveryTime}. Contact: 07951 431111`,
     });
 
     console.log(
@@ -1196,28 +1112,6 @@ export const sendOrderCancelledEmail = async (
     );
   } catch (error) {
     console.error("❌ Failed to send order cancelled email:", error);
-  }
-};
-
-export const sendDeliveryCompleteEmail = async (
-  order: IOrderDocument
-): Promise<void> => {
-  try {
-    const html = emailTemplates.deliveryComplete(order);
-
-    await sendEmail({
-      to: order.shippingAddress.email,
-      bcc: emailConfig.adminEmail,
-      subject: `✅ Delivery Complete #${order.orderNumber} - YMA Bouncy Castle`,
-      html,
-      text: `Your order ${order.orderNumber} has been delivered. Thank you for choosing us!`,
-    });
-
-    console.log(
-      `✅ Delivery complete email sent to ${order.shippingAddress.email}`
-    );
-  } catch (error) {
-    console.error("❌ Failed to send delivery complete email:", error);
   }
 };
 
