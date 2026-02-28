@@ -180,46 +180,67 @@ const orderSchema = new Schema<IOrderDocument>(
 );
 
 // ==================== PRE-SAVE MIDDLEWARE ====================
-orderSchema.pre("save", function (next) {
-  // Generate order number if not set
-  if (!this.orderNumber) {
-    const date = new Date();
-    const year = date.getFullYear().toString().slice(-2);
-    const month = (date.getMonth() + 1).toString().padStart(2, "0");
-    const day = date.getDate().toString().padStart(2, "0");
-    const random = Math.floor(1000 + Math.random() * 9000);
-    this.orderNumber = `ORD${year}${month}${day}${random}`;
+const generateSixDigitOrderNumber = (): string =>
+  Math.floor(100000 + Math.random() * 900000).toString();
+
+orderSchema.pre("save", async function (next) {
+  try {
+    // Generate unique 6-digit order number if not set
+    if (!this.orderNumber) {
+      const OrderModel = this.constructor as mongoose.Model<IOrderDocument>;
+      let attempts = 0;
+      let candidate = "";
+      let isUnique = false;
+
+      while (attempts < 25) {
+        candidate = generateSixDigitOrderNumber();
+        const exists = await OrderModel.exists({ orderNumber: candidate });
+        if (!exists) {
+          isUnique = true;
+          break;
+        }
+        attempts += 1;
+      }
+
+      if (!isUnique) {
+        throw new Error("Unable to generate a unique 6-digit order number");
+      }
+
+      this.orderNumber = candidate;
+    }
+
+    // ─── Calculate delivery + collection fee ─────────────────────────────
+    let deliveryFee = 0;
+    let collectionFee = 0;
+
+    if (this.shippingAddress?.deliveryTime) {
+      deliveryFee = DeliveryTimeManager.getDeliveryFee(
+        this.shippingAddress.deliveryTime,
+      );
+    }
+
+    if (
+      this.shippingAddress?.collectionTime &&
+      this.shippingAddress.collectionTime.trim() !== ""
+    ) {
+      collectionFee = DeliveryTimeManager.getCollectionFee(
+        this.shippingAddress.collectionTime,
+      );
+    }
+
+    this.deliveryFee = deliveryFee + collectionFee;
+
+    // Total calculation (overnightFee should already be set elsewhere or here)
+    this.totalAmount =
+      this.subtotalAmount +
+      this.deliveryFee +
+      this.overnightFee -
+      this.discountAmount;
+
+    next();
+  } catch (error) {
+    next(error as Error);
   }
-
-  // ─── Calculate delivery + collection fee ─────────────────────────────
-  let deliveryFee = 0;
-  let collectionFee = 0;
-
-  if (this.shippingAddress?.deliveryTime) {
-    deliveryFee = DeliveryTimeManager.getDeliveryFee(
-      this.shippingAddress.deliveryTime,
-    );
-  }
-
-  if (
-    this.shippingAddress?.collectionTime &&
-    this.shippingAddress.collectionTime.trim() !== ""
-  ) {
-    collectionFee = DeliveryTimeManager.getCollectionFee(
-      this.shippingAddress.collectionTime,
-    );
-  }
-
-  this.deliveryFee = deliveryFee + collectionFee;
-
-  // Total calculation (overnightFee should already be set elsewhere or here)
-  this.totalAmount =
-    this.subtotalAmount +
-    this.deliveryFee +
-    this.overnightFee -
-    this.discountAmount;
-
-  next();
 });
 
 // ==================== MODEL EXPORT ====================
