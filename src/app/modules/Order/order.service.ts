@@ -49,6 +49,9 @@ const parseDateBoundary = (
   return parsed;
 };
 
+const escapeRegex = (value: string): string =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 const isTomorrowByLocalDate = (deliveryDate?: Date): boolean => {
   if (!deliveryDate) return false;
   const now = new Date();
@@ -460,7 +463,9 @@ export const getAllOrders = async (
 
     // Text search
     if (filters.search && filters.search.trim()) {
-      const searchRegex = new RegExp(filters.search.trim(), "i");
+      const searchTerm = filters.search.trim();
+      const isSixDigitOrderId = /^\d{6}$/.test(searchTerm);
+      const searchRegex = new RegExp(escapeRegex(searchTerm), "i");
       const matchingUsers = await User.find({
         $or: [{ name: searchRegex }, { email: searchRegex }],
       })
@@ -468,23 +473,29 @@ export const getAllOrders = async (
         .lean();
       const userIds = matchingUsers.map((u: any) => u._id);
 
-      query.$or = [
-        { orderNumber: searchRegex },
-        { "shippingAddress.firstName": searchRegex },
-        { "shippingAddress.lastName": searchRegex },
-        { "shippingAddress.email": searchRegex },
-        { "shippingAddress.phone": searchRegex },
-        { "shippingAddress.city": searchRegex },
-        { "shippingAddress.zipCode": searchRegex },
-        { "shippingAddress.companyName": searchRegex },
-        ...(userIds.length > 0 ? [{ user: { $in: userIds } }] : []),
-      ];
-      console.log("Applied search filter:", filters.search);
+      if (isSixDigitOrderId) {
+        query.$or = [{ orderNumber: searchTerm }];
+        console.log("Applied exact 6-digit order id search:", searchTerm);
+      } else {
+        query.$or = [
+          { orderNumber: searchRegex },
+          { "shippingAddress.firstName": searchRegex },
+          { "shippingAddress.lastName": searchRegex },
+          { "shippingAddress.email": searchRegex },
+          { "shippingAddress.phone": searchRegex },
+          { "shippingAddress.city": searchRegex },
+          { "shippingAddress.zipCode": searchRegex },
+          { "shippingAddress.companyName": searchRegex },
+          ...(userIds.length > 0 ? [{ user: { $in: userIds } }] : []),
+        ];
+        console.log("Applied search filter:", searchTerm);
+      }
     }
 
     // ───────────────────────────────────────────────
     //       RESERVATION DATE FILTER
-    //       Filter strictly by estimatedDeliveryDate
+    //       Match against all reservation-related date fields
+    //       used by the admin UI display logic.
     // ───────────────────────────────────────────────
     if (filters.rentalFrom || filters.rentalTo) {
       const reservationDateRange: any = {};
@@ -492,22 +503,21 @@ export const getAllOrders = async (
       if (filters.rentalFrom) {
         const fromDate = parseDateBoundary(filters.rentalFrom, "start");
         reservationDateRange.$gte = fromDate;
-        console.log(
-          "Applied rentalFrom (estimatedDeliveryDate >=):",
-          fromDate.toISOString(),
-        );
+        console.log("Applied rentalFrom (reservation >=):", fromDate.toISOString());
       }
 
       if (filters.rentalTo) {
         const toDate = parseDateBoundary(filters.rentalTo, "end");
         reservationDateRange.$lte = toDate;
-        console.log(
-          "Applied rentalTo (estimatedDeliveryDate <=):",
-          toDate.toISOString(),
-        );
+        console.log("Applied rentalTo (reservation <=):", toDate.toISOString());
       }
       if (Object.keys(reservationDateRange).length > 0) {
-        const reservationCondition = { estimatedDeliveryDate: reservationDateRange };
+        const reservationCondition = {
+          $or: [
+            { startDate: reservationDateRange },
+            { "items.startDate": reservationDateRange },
+          ],
+        };
         if (query.$or) {
           query.$and = query.$and || [];
           query.$and.push(reservationCondition);
@@ -1402,20 +1412,24 @@ export const searchOrders = async (
   limit: number = 20,
 ): Promise<{ orders: IOrderDocument[]; total: number; pages: number }> => {
   const skip = (page - 1) * limit;
-  const searchRegex = new RegExp(searchTerm, "i");
+  const trimmedSearch = searchTerm.trim();
+  const isSixDigitOrderId = /^\d{6}$/.test(trimmedSearch);
+  const searchRegex = new RegExp(escapeRegex(trimmedSearch), "i");
 
-  const query = {
-    $or: [
-      { orderNumber: searchRegex },
-      { "shippingAddress.firstName": searchRegex },
-      { "shippingAddress.lastName": searchRegex },
-      { "shippingAddress.email": searchRegex },
-      { "shippingAddress.phone": searchRegex },
-      { "shippingAddress.city": searchRegex },
-      { "shippingAddress.zipCode": searchRegex },
-      { "shippingAddress.companyName": searchRegex },
-    ],
-  };
+  const query = isSixDigitOrderId
+    ? { $or: [{ orderNumber: trimmedSearch }] }
+    : {
+        $or: [
+          { orderNumber: searchRegex },
+          { "shippingAddress.firstName": searchRegex },
+          { "shippingAddress.lastName": searchRegex },
+          { "shippingAddress.email": searchRegex },
+          { "shippingAddress.phone": searchRegex },
+          { "shippingAddress.city": searchRegex },
+          { "shippingAddress.zipCode": searchRegex },
+          { "shippingAddress.companyName": searchRegex },
+        ],
+      };
 
   const [orders, total] = await Promise.all([
     Order.find(query)

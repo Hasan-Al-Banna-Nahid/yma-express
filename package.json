@@ -8,6 +8,7 @@
     "build": "tsc",
     "slug:backfill": "ts-node src/scripts/backfillProductSlugs.ts",
     "blog:slug:backfill": "ts-node src/scripts/backfillBlogSlugs.ts",
+    "order:id:backfill": "ts-node src/scripts/backfillOrderNumbersToSixDigits.ts",
     "quantity:normalize": "ts-node src/scripts/normalizeProductQuantityToOne.ts",
     "test": "jest",
     "test:watch": "jest --watch",
