@@ -358,7 +358,7 @@ export const deleteOrder = async (
 export const getAllOrders = async (
   page: number = 1,
   limit: number = 20,
-  filters: FilterOptions = {},
+  filters: any = {},
 ): Promise<{
   orders: IOrderDocument[];
   total: number;
@@ -372,217 +372,82 @@ export const getAllOrders = async (
     const skip = (page - 1) * limit;
     const query: any = {};
 
-    console.log("=== ORDER FILTER DEBUG ===");
-    console.log("Filters received:", filters);
-    console.log("Page:", page, "Limit:", limit);
-
-    // Status filter
+    // ১. স্ট্যাটাস ফিল্টার
     if (filters.status && filters.status !== "all") {
       query.status = filters.status;
-      console.log("Applied status filter:", filters.status);
     }
 
-    // User filter
-    if (filters.userId && mongoose.Types.ObjectId.isValid(filters.userId)) {
-      query.user = new mongoose.Types.ObjectId(filters.userId);
-      console.log("Applied user filter:", filters.userId);
+    // ──────────────────────────────────────────────────────────────
+    // ২. SPECIFIC DATE FILTER (Range Overlap Logic)
+    // ক্লায়েন্ট যদি একটি নির্দিষ্ট দিন (selectedDate) সিলেক্ট করেন
+    // ──────────────────────────────────────────────────────────────
+    // Query Logic: estimatedDeliveryDate ফিল্ড ব্যবহার করে
+    if (filters.selectedDates) {
+      // ১. ফ্রন্টএন্ড থেকে আসা 'selectedDates' কে ডেট অবজেক্টে রূপান্তর
+      const targetDate = new Date(filters.selectedDates as string);
+
+      // ২. ওই নির্দিষ্ট দিনের শুরু (00:00:00) এবং শেষ (23:59:59) সেট করা
+      const startOfDay = new Date(targetDate);
+      startOfDay.setUTCHours(0, 0, 0, 0);
+
+      const endOfDay = new Date(targetDate);
+      endOfDay.setUTCHours(23, 59, 59, 999);
+
+      // ৩. সরাসরি DB-র estimatedDeliveryDate ফিল্ডে কুয়েরি করা
+      query.estimatedDeliveryDate = {
+        $gte: startOfDay,
+        $lte: endOfDay,
+      };
+
+      console.log(
+        "Applied Filter on estimatedDeliveryDate for:",
+        filters.selectedDates,
+      );
     }
 
-    // Payment method filter
-    if (filters.paymentMethod && filters.paymentMethod !== "all") {
-      query.paymentMethod = filters.paymentMethod;
-      console.log("Applied payment method filter:", filters.paymentMethod);
-    }
-
-    // Created-at date range (when the order was placed)
-    if (filters.createdFrom || filters.createdTo) {
-      query.createdAt = {};
-      if (filters.createdFrom) {
-        query.createdAt.$gte = new Date(filters.createdFrom);
-        console.log("Applied createdFrom:", filters.createdFrom);
-      }
-      if (filters.createdTo) {
-        query.createdAt.$lte = new Date(filters.createdTo);
-        console.log("Applied createdTo:", filters.createdTo);
-      }
-    }
-
-    // Amount range filter
-    if (filters.minAmount !== undefined) {
-      query.totalAmount = { $gte: filters.minAmount };
-      console.log("Applied min amount filter:", filters.minAmount);
-    }
-    if (filters.maxAmount !== undefined) {
-      if (query.totalAmount) {
-        query.totalAmount.$lte = filters.maxAmount;
-      } else {
-        query.totalAmount = { $lte: filters.maxAmount };
-      }
-      console.log("Applied max amount filter:", filters.maxAmount);
-    }
-
-    // Text search
+    // ৩. অন্যান্য ফিল্টার (Search, User, Amount ইত্যাদি)
     if (filters.search && filters.search.trim()) {
       const searchRegex = new RegExp(filters.search.trim(), "i");
-      const matchingUsers = await User.find({
-        $or: [{ name: searchRegex }, { email: searchRegex }],
-      })
-        .select("_id")
-        .lean();
-      const userIds = matchingUsers.map((u: any) => u._id);
-
       query.$or = [
         { orderNumber: searchRegex },
         { "shippingAddress.firstName": searchRegex },
-        { "shippingAddress.lastName": searchRegex },
-        { "shippingAddress.email": searchRegex },
         { "shippingAddress.phone": searchRegex },
-        { "shippingAddress.city": searchRegex },
-        { "shippingAddress.zipCode": searchRegex },
-        { "shippingAddress.companyName": searchRegex },
-        ...(userIds.length > 0 ? [{ user: { $in: userIds } }] : []),
       ];
-      console.log("Applied search filter:", filters.search);
     }
 
-    // ───────────────────────────────────────────────
-    //       RENTAL PERIOD OVERLAP FILTER
-    //       (the actual hire/from → to date filter)
-    // ───────────────────────────────────────────────
-    if (filters.rentalFrom || filters.rentalTo) {
-      const rentalMatch: any = {
-        "items.startDate": { $exists: true },
-        "items.endDate": { $exists: true },
-      };
-
-      if (filters.rentalFrom) {
-        const fromDate = new Date(filters.rentalFrom);
-        // The rental must not END before the requested start date
-        rentalMatch["items.endDate"] = { $gte: fromDate };
-        console.log(
-          "Applied rentalFrom (items.endDate >=):",
-          fromDate.toISOString(),
-        );
-      }
-
-      if (filters.rentalTo) {
-        const toDate = new Date(filters.rentalTo);
-        // The rental must not START after the requested end date
-        rentalMatch["items.startDate"] = { $lte: toDate };
-        console.log(
-          "Applied rentalTo (items.startDate <=):",
-          toDate.toISOString(),
-        );
-      }
-
-      // Use $elemMatch so it applies to at least one item in the array
-      query["items"] = { $elemMatch: rentalMatch };
-
-      console.log("Applied rental period overlap filter");
+    // ৪. পেমেন্ট মেথড ফিল্টার
+    if (filters.paymentMethod && filters.paymentMethod !== "all") {
+      query.paymentMethod = filters.paymentMethod;
     }
 
-    console.log("Final query:", JSON.stringify(query, null, 2));
-
+    // ৫. ডেটা ফেচিং এবং সর্টিং
     const total = await Order.countDocuments(query);
-    console.log("Total documents matching query:", total);
-
     const pages = Math.ceil(total / limit);
-    const hasNextPage = page < pages;
-    const hasPrevPage = page > 1;
-
-    if (page > pages && total > 0) {
-      return {
-        orders: [],
-        total,
-        pages,
-        currentPage: page,
-        limit,
-        hasNextPage: false,
-        hasPrevPage,
-      };
-    }
-
-    // ─── Sorting ────────────────────────────────────────────────
-    let sortObj: any = { createdAt: -1 }; // default newest first
-
-    if (filters.sortBy) {
-      switch (filters.sortBy) {
-        case "startDate":
-          sortObj = {
-            "items.startDate": filters.sortOrder === "desc" ? -1 : 1,
-          };
-          break;
-        case "deliveryDate":
-          sortObj = { deliveryDate: filters.sortOrder === "desc" ? -1 : 1 };
-          break;
-        case "totalAmount":
-          sortObj = { totalAmount: filters.sortOrder === "desc" ? -1 : 1 };
-          break;
-        case "createdAt":
-        default:
-          sortObj = { createdAt: filters.sortOrder === "desc" ? -1 : 1 };
-          break;
-      }
-    }
-
-    console.log("Sort applied:", sortObj);
 
     const orders = await Order.find(query)
-      .populate({
-        path: "user",
-        select: "name email phone avatar",
-        model: User,
-      })
+      .populate({ path: "user", select: "name email phone", model: User })
       .populate({
         path: "items.product",
-        select: "name imageCover price category sku",
+        select: "name imageCover price",
         model: Product,
       })
-      .sort(sortObj)
+      .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
       .lean();
 
-    // Ensure items.product has fallback data when populate returns null
+    // ৬. ডাটা হাইড্রেশন (প্রোডাক্ট না থাকলে ব্যাকআপ নাম দেওয়া)
     const hydratedOrders = (orders || []).map((order: any) => {
       if (!Array.isArray(order.items)) return order;
-      order.items = order.items.map((item: any) => {
-        const productImage =
-          (Array.isArray(item?.product?.imageCover)
-            ? item.product.imageCover[0]
-            : item?.product?.imageCover) || item?.imageCover || null;
-        const productName = item?.product?.name || item?.name || "Unknown Item";
-        const productPrice = item?.product?.price || item?.price || 0;
-
-        if (!item?.product) {
-          return {
-            ...item,
-            imageCover: productImage,
-            product: {
-              name: productName,
-              imageCover: productImage,
-              price: productPrice,
-            },
-          };
-        }
-
-        return {
-          ...item,
-          name: item?.name || productName,
-          imageCover: productImage,
-          product: {
-            ...item.product,
-            name: productName,
-            imageCover: productImage,
-            price: productPrice,
-          },
-        };
-      });
+      order.items = order.items.map((item: any) => ({
+        ...item,
+        product: item.product || {
+          name: item.name || "Unknown Item",
+          imageCover: item.imageCover,
+        },
+      }));
       return order;
     });
-
-    console.log(`Retrieved ${orders.length} orders for page ${page}`);
-    console.log("=== END ORDER FILTER DEBUG ===\n");
 
     return {
       orders: hydratedOrders as unknown as IOrderDocument[],
@@ -590,21 +455,12 @@ export const getAllOrders = async (
       pages,
       currentPage: page,
       limit,
-      hasNextPage,
-      hasPrevPage,
+      hasNextPage: page < pages,
+      hasPrevPage: page > 1,
     };
   } catch (error: any) {
     console.error("Error in getAllOrders:", error.message);
-    console.error("Error stack:", error.stack);
-    return {
-      orders: [],
-      total: 0,
-      pages: 0,
-      currentPage: page,
-      limit,
-      hasNextPage: false,
-      hasPrevPage: false,
-    };
+    throw error;
   }
 };
 
@@ -1390,7 +1246,9 @@ export const searchOrders = async (
       const productImage =
         (Array.isArray(item?.product?.imageCover)
           ? item.product.imageCover[0]
-          : item?.product?.imageCover) || item?.imageCover || null;
+          : item?.product?.imageCover) ||
+        item?.imageCover ||
+        null;
       const productName = item?.product?.name || item?.name || "Unknown Item";
       const productPrice = item?.product?.price || item?.price || 0;
 

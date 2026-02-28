@@ -97,7 +97,11 @@ export const seedCategories = async (): Promise<ICategoryModel[]> => {
       isActive: true,
     },
     { name: "Fun Food", description: "Food & catering", isActive: true },
-    { name: "Tower Castle", description: "Large castles", isActive: true },
+    {
+      name: "Obstacle Course/Slides",
+      description: "Large castles",
+      isActive: true,
+    },
   ];
 
   const results: ICategoryModel[] = [];
@@ -128,7 +132,7 @@ export const getHardcodedCategories = async (): Promise<ICategoryModel[]> => {
         "Soft Play",
         "Bouncy Castle",
         "Fun Food",
-        "Tower Castle",
+        "Obstacle Course/Slides",
       ],
     },
   }).sort({ name: 1 });
